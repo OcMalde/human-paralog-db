@@ -1,0 +1,74 @@
+[
+  {
+    "id": "ARID1A_ARID1B",
+    "geneA": "ARID1A",
+    "geneB": "ARID1B",
+    "accA": "O14497",
+    "accB": "Q8NFD5",
+    "tm": 0.2944,
+    "fident": 0.498
+  },
+  {
+    "id": "ENO1_ENO2",
+    "geneA": "ENO1",
+    "geneB": "ENO2",
+    "accA": "P06733",
+    "accB": "P09104",
+    "tm": 0.9985,
+    "fident": 0.839
+  },
+  {
+    "id": "MAGOH_MAGOHB",
+    "geneA": "MAGOH",
+    "geneB": "MAGOHB",
+    "accA": "P61326",
+    "accB": "Q96A72",
+    "tm": 0.9977,
+    "fident": 1.0
+  },
+  {
+    "id": "ME2_ME3",
+    "geneA": "ME2",
+    "geneB": "ME3",
+    "accA": "P23368",
+    "accB": "Q16798",
+    "tm": 0.9576,
+    "fident": 0.528
+  },
+  {
+    "id": "SMARCA2_SMARCA4",
+    "geneA": "SMARCA2",
+    "geneB": "SMARCA4",
+    "accA": "P51531",
+    "accB": "P51532",
+    "tm": 0.5933,
+    "fident": 0.732
+  },
+  {
+    "id": "SMARCC1_SMARCC2",
+    "geneA": "SMARCC1",
+    "geneB": "SMARCC2",
+    "accA": "Q92922",
+    "accB": "Q8TAQ2",
+    "tm": 0.2526,
+    "fident": 0.621
+  },
+  {
+    "id": "STAG1_STAG2",
+    "geneA": "STAG1",
+    "geneB": "STAG2",
+    "accA": "Q68DW7",
+    "accB": "Q8N3U4",
+    "tm": null,
+    "fident": null
+  },
+  {
+    "id": "UBB_UBC",
+    "geneA": "UBB",
+    "geneB": "UBC",
+    "accA": "P0CG47",
+    "accB": "P0CG48",
+    "tm": 0.8543,
+    "fident": 0.995
+  }
+]

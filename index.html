@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Paralog Pair Explorer</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f5fb;min-height:100vh}
+.top-bar{position:sticky;top:0;z-index:1000;padding:12px 20px;background:#21244d;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.top-bar h1{margin:0;font-size:18px;font-weight:600}
+.search-box{display:flex;gap:8px;flex:1;min-width:250px;max-width:400px}
+.search-box input{flex:1;border:none;border-radius:8px;padding:8px 12px;font-size:14px}
+.search-box button{background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
+.search-box button:hover{background:#4338ca}
+.pair-chips{display:flex;gap:6px;flex-wrap:wrap}
+.pair-chip{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+.pair-chip:hover{background:rgba(255,255,255,0.25)}
+.pair-chip.active{background:#4f46e5;border-color:#4f46e5}
+#reportFrame{width:100%;border:none;min-height:calc(100vh - 60px)}
+.loading{display:flex;align-items:center;justify-content:center;height:calc(100vh - 60px);font-size:16px;color:#666}
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <h1>Paralog Explorer</h1>
+  <div class="search-box">
+    <input id="pairInput" type="text" placeholder="Search pair (e.g. DOCK1_DOCK5)" list="pairOptions" autocomplete="off"/>
+    <datalist id="pairOptions"></datalist>
+    <button id="loadBtn">Load</button>
+  </div>
+  <div class="pair-chips" id="pairChips"></div>
+</div>
+<iframe id="reportFrame" src="about:blank"></iframe>
+<div class="loading" id="loading">Loading pairs...</div>
+
+<script>
+let pairs = [];
+let current = null;
+
+async function init() {
+  try {
+    const resp = await fetch('./data/index.json');
+    pairs = await resp.json();
+    renderChips();
+    renderDatalist();
+    document.getElementById('loading').style.display = 'none';
+    
+    const hash = window.location.hash.slice(1);
+    if (hash) loadPair(hash);
+    else if (pairs.length) loadPair(pairs[0].id);
+  } catch(e) {
+    document.getElementById('loading').textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderChips() {
+  const c = document.getElementById('pairChips');
+  c.innerHTML = '';
+  
+  // Show max 5 random pairs as quick-access chips (or current + 4 others)
+  let chipsToShow = [];
+  if (current) {
+    const currentPair = pairs.find(p => p.id === current);
+    if (currentPair) chipsToShow.push(currentPair);
+  }
+  
+  // Add random pairs to fill up to 5
+  const others = pairs.filter(p => p.id !== current);
+  const shuffled = others.sort(() => Math.random() - 0.5);
+  while (chipsToShow.length < 5 && shuffled.length > 0) {
+    chipsToShow.push(shuffled.shift());
+  }
+  
+  chipsToShow.forEach(p => {
+    const chip = document.createElement('span');
+    chip.className = 'pair-chip' + (p.id === current ? ' active' : '');
+    chip.textContent = `${p.geneA}↔${p.geneB}`;
+    chip.onclick = () => loadPair(p.id);
+    c.appendChild(chip);
+  });
+  
+  // Show count
+  if (pairs.length > 5) {
+    const countSpan = document.createElement('span');
+    countSpan.className = 'pair-chip';
+    countSpan.style.cursor = 'default';
+    countSpan.style.opacity = '0.7';
+    countSpan.textContent = `+${pairs.length - 5} more`;
+    c.appendChild(countSpan);
+  }
+}
+
+function renderDatalist() {
+  const dl = document.getElementById('pairOptions');
+  dl.innerHTML = '';
+  // Only show first 50 in datalist for performance
+  pairs.slice(0, 50).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    dl.appendChild(opt);
+  });
+}
+
+function loadPair(id) {
+  const p = pairs.find(x => x.id === id || x.id.toLowerCase() === id.toLowerCase());
+  if (!p) {
+    alert(`Pair "${id}" not found`);
+    return;
+  }
+  
+  current = p.id;
+  document.getElementById('pairInput').value = p.id;
+  window.location.hash = p.id;
+  renderChips();
+  
+  document.getElementById('reportFrame').src = `report.html?pair=${encodeURIComponent(p.id)}`;
+}
+
+document.getElementById('loadBtn').onclick = () => loadPair(document.getElementById('pairInput').value);
+document.getElementById('pairInput').onkeydown = e => { if (e.key === 'Enter') loadPair(e.target.value); };
+
+init();
+</script>
+</body>
+</html>

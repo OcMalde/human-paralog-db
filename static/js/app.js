@@ -1,0 +1,3553 @@
+/**
+ * app.js - Loads data from static JSON files (GitHub Pages / CDN compatible)
+ *
+ * For GitHub Pages: DATA_BASE = './data'
+ * For Bunny CDN:    DATA_BASE = 'https://your-zone.b-cdn.net'
+ */
+
+// ============= CONFIGURATION =============
+// Change this URL when moving to Bunny CDN
+const DATA_BASE = './data';
+// =========================================
+
+// Get pair ID from URL
+const urlParams = new URLSearchParams(window.location.search);
+const PAIR_ID = urlParams.get('pair');
+
+// Family index cache (loaded once)
+let FAMILY_INDEX = null;
+
+// These will be populated from API
+let DATA = null;
+let SUMMARY = null;
+let PDB64_FULL = "";
+
+// Block Molstar volume server
+(function() {
+    const block = ['molstarvolseg.ncbr.muni.cz', 'localhost:9000'];
+    const _f = window.fetch.bind(window);
+    window.fetch = (u, i) => {
+        try { if (block.some(h => (typeof u === 'string' ? u : u?.url || '').includes(h))) return Promise.resolve(new Response('{"items":[]}', {status:200})); } catch(e){}
+        return _f(u, i);
+    };
+})();
+
+// Main initialization - loads data then runs notebook code
+async function loadDataAndInit() {
+    if (!PAIR_ID) {
+        document.getElementById('loadingOverlay').textContent = 'No pair specified';
+        return;
+    }
+    
+    try {
+        // Static file fetches (GitHub Pages / CDN compatible)
+        const [dataResp, summaryResp, variantsResp] = await Promise.all([
+            fetch(`${DATA_BASE}/pairs/${PAIR_ID}/report.json`),
+            fetch(`${DATA_BASE}/pairs/${PAIR_ID}/summary.json`),
+            fetch(`${DATA_BASE}/pairs/${PAIR_ID}/pdb.json`)
+        ]);
+
+        if (!dataResp.ok) throw new Error(`Failed to load pair: ${PAIR_ID}`);
+
+        DATA = await dataResp.json();
+        SUMMARY = summaryResp.ok ? await summaryResp.json() : { gene1: {}, gene2: {}, pair: {}, conservation: {}, boxplots: {} };
+
+        // Load PDB variants from combined pdb.json file
+        if (variantsResp.ok) {
+            const variants = await variantsResp.json();
+            PDB64_FULL = variants.pdb64_full || "";
+            window.PDB64_A = variants.pdb64_a || PDB64_FULL;
+            window.PDB64_B = variants.pdb64_b || PDB64_FULL;
+
+            // Store AM-colored PDB variants by mode
+            window.PDB64_AM_BY_MODE = {};
+            for (const key in variants) {
+                if (key.startsWith('pdb64_am_')) {
+                    const mode = key.replace('pdb64_am_', '');
+                    window.PDB64_AM_BY_MODE[mode] = variants[key];
+                }
+            }
+
+            // Store other color mode variants
+            window.PDB64_PLDDT = variants.pdb64_plddt || PDB64_FULL;
+            window.PDB64_ALIGNED = variants.pdb64_aligned || null;
+            window.PDB64_DOMAINS = variants.pdb64_domains || null;
+
+            console.log('Loaded PDB variants:', Object.keys(variants));
+        } else {
+            window.PDB64_A = PDB64_FULL;
+            window.PDB64_B = PDB64_FULL;
+            window.PDB64_AM_BY_MODE = {};
+            window.PDB64_PLDDT = PDB64_FULL;
+            window.PDB64_ALIGNED = null;
+            window.PDB64_DOMAINS = null;
+        }
+        
+        // Initialize DATA-dependent variables
+        AM_MODES = DATA.amModes || ['raw'];
+        PDBe_COMPLEXES = DATA.pdbeComplexes || [];
+        UNIPROT_A = DATA.a1 || '';
+        UNIPROT_B = DATA.a2 || '';
+        
+        // Update title
+        document.title = `${DATA.g1} vs ${DATA.g2}`;
+        document.getElementById('titleMain').textContent = `${DATA.g1} ↔ ${DATA.g2}`;
+        document.getElementById('titleSub').textContent = `Paralog pair ${DATA.PAIR}`;
+
+        // Load family data
+        await loadFamilyData();
+
+        // Now run the notebook initialization code (main is defined at the end of the file)
+        await main();
+        
+        document.getElementById('loadingOverlay').style.display = 'none';
+    } catch(e) {
+        console.error(e);
+        document.getElementById('loadingOverlay').textContent = 'Error: ' + e.message;
+    }
+}
+
+// Family navigation
+async function loadFamilyData() {
+  if (!DATA || (!DATA.g1 && !DATA.g2)) {
+    console.log('Family: No DATA or genes');
+    return;
+  }
+
+  const familyNav = document.getElementById('familyNav');
+  const familyPairs = document.getElementById('familyPairs');
+  const familySubtitle = document.getElementById('familySubtitle');
+
+  if (!familyNav || !familyPairs) {
+    console.log('Family: DOM elements not found');
+    return;
+  }
+
+  try {
+    console.log(`Loading family data for ${DATA.g1} and ${DATA.g2}...`);
+
+    // Load family index if not already loaded
+    if (!FAMILY_INDEX) {
+      const indexResp = await fetch(`${DATA_BASE}/family_index.json`);
+      if (indexResp.ok) {
+        FAMILY_INDEX = await indexResp.json();
+      } else {
+        console.log('Family index not available');
+        return;
+      }
+    }
+
+    // Get pair IDs for both genes from the index
+    const pairsForGene1 = FAMILY_INDEX[DATA.g1] || [];
+    const pairsForGene2 = FAMILY_INDEX[DATA.g2] || [];
+
+    console.log(`Family sizes: ${DATA.g1}=${pairsForGene1.length}, ${DATA.g2}=${pairsForGene2.length}`);
+
+    // Merge and deduplicate pair IDs
+    const allPairIds = [...new Set([...pairsForGene1, ...pairsForGene2])];
+    console.log(`Total unique pairs in family: ${allPairIds.length}`);
+
+    // Load index.json to get pair metadata
+    const indexResp = await fetch(`${DATA_BASE}/index.json`);
+    const allPairsIndex = indexResp.ok ? await indexResp.json() : [];
+    const pairMap = new Map(allPairsIndex.map(p => [p.id, p]));
+
+    // Build pair objects with metadata
+    const uniquePairs = allPairIds.map(id => {
+      const meta = pairMap.get(id) || {};
+      return {
+        pair_id: id,
+        gene_a: meta.geneA || id.split('_')[0],
+        gene_b: meta.geneB || id.split('_')[1],
+        fident: meta.fident,
+        tm_score: meta.tm,
+        has_report: true  // All exported pairs have reports
+      };
+    });
+
+    // Sort by sequence identity (highest first)
+    uniquePairs.sort((a, b) => (b.fident || 0) - (a.fident || 0));
+
+    if (uniquePairs.length >= 1) {
+      familyNav.style.display = 'block';
+      familySubtitle.textContent = `${uniquePairs.length} paralog pairs involving ${DATA.g1} or ${DATA.g2}`;
+
+      // Render pair cards
+      familyPairs.innerHTML = '';
+      for (const pair of uniquePairs) {
+        const card = document.createElement('div');
+        card.className = 'family-pair-card';
+
+        if (pair.pair_id === DATA.PAIR) {
+          card.classList.add('current');
+        }
+
+        if (!pair.has_report) {
+          card.classList.add('no-report');
+        }
+
+        // Determine identity class
+        let identClass = 'low';
+        if (pair.fident && pair.fident > 0.5) identClass = 'high';
+        else if (pair.fident && pair.fident > 0.3) identClass = 'medium';
+
+        card.innerHTML = `
+          <div class="family-pair-title">${pair.pair_id}</div>
+          <div class="family-pair-genes">${pair.gene_a} ↔ ${pair.gene_b}</div>
+          <div class="family-pair-stats">
+            <div class="family-pair-stat">
+              <span class="family-pair-stat-label">Identity</span>
+              <span class="family-pair-stat-value ${identClass}">${pair.fident ? (pair.fident * 100).toFixed(1) + '%' : '—'}</span>
+            </div>
+            <div class="family-pair-stat">
+              <span class="family-pair-stat-label">TM-score</span>
+              <span class="family-pair-stat-value">${pair.tm_score ? pair.tm_score.toFixed(3) : '—'}</span>
+            </div>
+          </div>
+        `;
+
+        if (pair.has_report && pair.pair_id !== DATA.PAIR) {
+          card.style.cursor = 'pointer';
+          card.addEventListener('click', () => {
+            window.location.href = `/?pair=${pair.pair_id}`;
+          });
+        }
+
+        familyPairs.appendChild(card);
+      }
+
+      // Render family network visualization
+      renderFamilyNetwork(uniquePairs);
+    }
+
+  } catch (e) {
+    console.error('Failed to load family data:', e);
+  }
+}
+
+function renderFamilyNetwork(pairs) {
+  const canvas = document.getElementById('familyNetworkCanvas');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // Extract unique genes (nodes)
+  const geneSet = new Set();
+  pairs.forEach(p => {
+    geneSet.add(p.gene_a);
+    geneSet.add(p.gene_b);
+  });
+  const genes = Array.from(geneSet);
+
+  // Find closest pair (highest TM-score)
+  let closestPair = null;
+  let maxTM = -1;
+  pairs.forEach(p => {
+    if (p.tm_score && p.tm_score > maxTM) {
+      maxTM = p.tm_score;
+      closestPair = p;
+    }
+  });
+
+  // Simple circular layout
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) * 0.35;
+
+  const nodes = {};
+  genes.forEach((gene, i) => {
+    const angle = (i / genes.length) * 2 * Math.PI - Math.PI / 2;
+    nodes[gene] = {
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle),
+      gene: gene
+    };
+  });
+
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+
+  // Draw edges (pairs)
+  ctx.lineCap = 'round';
+  pairs.forEach(p => {
+    const n1 = nodes[p.gene_a];
+    const n2 = nodes[p.gene_b];
+    if (!n1 || !n2) return;
+
+    const isCurrent = p.pair_id === DATA.PAIR;
+    const isClosest = closestPair && p.pair_id === closestPair.pair_id;
+
+    // Line thickness based on TM-score
+    const lineWidth = p.tm_score ? 1 + (p.tm_score * 4) : 1;
+
+    ctx.beginPath();
+    ctx.moveTo(n1.x, n1.y);
+    ctx.lineTo(n2.x, n2.y);
+
+    if (isCurrent) {
+      ctx.strokeStyle = '#c39b63';
+      ctx.lineWidth = lineWidth + 2;
+    } else if (isClosest) {
+      ctx.strokeStyle = '#2e7d32';
+      ctx.lineWidth = lineWidth + 1;
+    } else {
+      ctx.strokeStyle = '#999';
+      ctx.lineWidth = lineWidth;
+    }
+
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  genes.forEach(gene => {
+    const node = nodes[gene];
+    const isInCurrent = DATA.g1 === gene || DATA.g2 === gene;
+
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, isInCurrent ? 8 : 6, 0, 2 * Math.PI);
+    ctx.fillStyle = isInCurrent ? '#c39b63' : '#666';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#352a18';
+    ctx.font = isInCurrent ? 'bold 12px sans-serif' : '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Position label outside the circle
+    const angle = Math.atan2(node.y - cy, node.x - cx);
+    const labelDist = isInCurrent ? 22 : 18;
+    const labelX = node.x + Math.cos(angle) * labelDist;
+    const labelY = node.y + Math.sin(angle) * labelDist;
+
+    ctx.fillText(gene, labelX, labelY);
+  });
+
+  // Add simple pan interaction
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStartX = e.offsetX - offsetX;
+    dragStartY = e.offsetY - offsetY;
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      offsetX = e.offsetX - dragStartX;
+      offsetY = e.offsetY - dragStartY;
+
+      // Redraw with offset (simple pan)
+      ctx.save();
+      ctx.clearRect(0, 0, width, height);
+      ctx.translate(offsetX, offsetY);
+
+      // Redraw edges and nodes with current transform
+      // (For simplicity, just re-render without transform for now)
+      ctx.restore();
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    isDragging = false;
+  });
+}
+
+// Start loading when DOM is ready
+document.addEventListener('DOMContentLoaded', loadDataAndInit);
+
+// ========== SEARCH BAR FUNCTIONALITY ==========
+(function initSearchBar() {
+  const searchInput = document.getElementById('pairSearch');
+  const searchBtn = document.getElementById('searchBtn');
+  const datalist = document.getElementById('pairSearchOptions');
+
+  if (!searchInput || !searchBtn) return;
+
+  // Load available pairs for autocomplete from static index
+  fetch(`${DATA_BASE}/index.json`)
+    .then(resp => resp.json())
+    .then(pairs => {
+      if (datalist && Array.isArray(pairs)) {
+        // Populate datalist with first 100 pairs for performance
+        pairs.slice(0, 100).forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id || p.pair_id || `${p.geneA}_${p.geneB}`;
+          datalist.appendChild(opt);
+        });
+      }
+    })
+    .catch(e => console.warn('Failed to load pairs for search:', e));
+
+  // Navigate to selected pair
+  function navigateToPair() {
+    const value = searchInput.value.trim();
+    if (value) {
+      window.location.href = `/?pair=${encodeURIComponent(value)}`;
+    }
+  }
+
+  searchBtn.addEventListener('click', navigateToPair);
+  searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') navigateToPair();
+  });
+
+  // Pre-fill current pair if available
+  if (PAIR_ID) {
+    searchInput.value = PAIR_ID;
+  }
+})();
+
+// ========== NOTEBOOK CODE BELOW ==========
+// (Adapted from the original notebook - DATA, SUMMARY, PDB64_FULL are now loaded via API)
+
+
+const AA_ORDER = ['K','R','H','E','D','N','Q','T','S','C','G','A','V','L','I','M','P','Y','F','W'];
+let AM_MODES = ["raw"];
+const MAX_SHARED_LIST = 18;
+const MAX_UNIQUE_LIST = 12;
+const MAX_SHARED_GRAPH = 7;
+const MAX_UNIQUE_GRAPH = 4;
+
+let amMode = 'raw';
+let amTrackA = null;
+let amTrackB = null;
+let damTrack = null;
+let amMatrixTracksA = [];
+let amMatrixTracksB = [];
+
+/* ----------------- PDBe complexes data ----------------- */
+let PDBe_COMPLEXES = [];
+let UNIPROT_A = "";
+let UNIPROT_B = "";
+
+/* ========== SUMMARY SECTION FUNCTIONS ========== */
+let radarChart = null;
+let boxplotChart = null;
+let activeMetricKey = null;
+let PPI_GRAPH_DATA = null;
+let showUniquePpis = true;
+const DEFAULT_BOXPLOT_HINT = 'Click a radar point or metric card to compare this pair with the cohort';
+
+function initSummarySection() {
+  const pair = SUMMARY.pair || {};
+  const gene1 = SUMMARY.gene1 || {};
+  const gene2 = SUMMARY.gene2 || {};
+  
+  // Update gene symbols throughout the page
+  const g1 = DATA.g1 || gene1.symbol || 'Gene A';
+  const g2 = DATA.g2 || gene2.symbol || 'Gene B';
+  const a1 = DATA.a1 || gene1.uniprot || '';
+  const a2 = DATA.a2 || gene2.uniprot || '';
+  
+  // Update header/title
+  document.getElementById('titleMain').textContent = `${g1} vs ${g2}`;
+  document.getElementById('gene1Symbol').textContent = g1;
+  document.getElementById('gene2Symbol').textContent = g2;
+  document.getElementById('acc1Display').textContent = a1;
+  document.getElementById('acc2Display').textContent = a2;
+  
+  // Update legend labels
+  const legendA = document.getElementById('legendA');
+  const legendB = document.getElementById('legendB');
+  if (legendA) legendA.textContent = g1;
+  if (legendB) legendB.textContent = g2;
+  
+  // Update PPI labels
+  const ppiLabelA = document.getElementById('ppiLabelA');
+  const ppiLabelB = document.getElementById('ppiLabelB');
+  if (ppiLabelA) ppiLabelA.textContent = g1;
+  if (ppiLabelB) ppiLabelB.textContent = g2;
+  
+  // Update domain table headers
+  const domAHeader = document.getElementById('domAHeader');
+  const domBHeader = document.getElementById('domBHeader');
+  if (domAHeader) domAHeader.textContent = `${g1} (${a1}) domain`;
+  if (domBHeader) domBHeader.textContent = `${g2} (${a2}) domain`;
+  
+  // Update UniProt links
+  const link1Up = document.getElementById('link1Up');
+  const link2Up = document.getElementById('link2Up');
+  const link1Pdbe = document.getElementById('link1Pdbe');
+  const link2Pdbe = document.getElementById('link2Pdbe');
+  if (link1Up && a1) link1Up.href = `https://www.uniprot.org/uniprotkb/${a1}`;
+  if (link2Up && a2) link2Up.href = `https://www.uniprot.org/uniprotkb/${a2}`;
+  if (link1Pdbe && a1) link1Pdbe.href = `https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/${a1}`;
+  if (link2Pdbe && a2) link2Pdbe.href = `https://www.ebi.ac.uk/pdbe/pdbe-kb/proteins/${a2}`;
+  
+  if (gene1.is_essential) {
+    document.getElementById('sum-essential1').textContent = 'Essential (DepMap)';
+    document.getElementById('sum-essential1').className = 'essential-badge';
+  }
+  if (gene2.is_essential) {
+    document.getElementById('sum-essential2').textContent = 'Essential (DepMap)';
+    document.getElementById('sum-essential2').className = 'essential-badge';
+  }
+  
+  if (gene1.chromosome && gene1.chromosome.chromosome && gene1.chromosome.chromosome !== 'NA') {
+    const chr1 = gene1.chromosome;
+    document.getElementById('chr-loc1').innerHTML = `<strong>Chr:</strong> ${chr1.chromosome} : ${Number(chr1.start).toLocaleString()} - ${Number(chr1.end).toLocaleString()}`;
+  } else {
+    document.getElementById('chr-loc1').textContent = 'Chromosome info not available';
+  }
+  
+  if (gene2.chromosome && gene2.chromosome.chromosome && gene2.chromosome.chromosome !== 'NA') {
+    const chr2 = gene2.chromosome;
+    document.getElementById('chr-loc2').innerHTML = `<strong>Chr:</strong> ${chr2.chromosome} : ${Number(chr2.start).toLocaleString()} - ${Number(chr2.end).toLocaleString()}`;
+  } else {
+    document.getElementById('chr-loc2').textContent = 'Chromosome info not available';
+  }
+  
+  const boolToStr = (v) => v === true ? 'Yes' : (v === false ? 'No' : '–');
+  document.getElementById('sum-wgd').textContent = boolToStr(pair.wgd);
+  document.getElementById('sum-family-size').textContent = (pair.family_size ?? '–');
+  document.getElementById('sum-closest').textContent = boolToStr(pair.closest);
+  document.getElementById('sum-same-chr').textContent = boolToStr(pair.same_chr);
+  document.getElementById('sum-interact').textContent = boolToStr(pair.interact_bioplex);
+  document.getElementById('sum-shared-ppi').textContent = (pair.n_shared_ppi ?? '0');
+  
+  renderPpiSection(pair, gene1, gene2);
+  initRadarChart();
+  renderConservationList();
+  resetMetricSelection();
+
+  const resetBtn = document.getElementById('resetMetricView');
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.addEventListener('click', () => resetMetricSelection(), { passive: true });
+    resetBtn.dataset.bound = '1';
+  }
+}
+
+function initRadarChart() {
+  const conservation = SUMMARY.conservation || {};
+  const wrapper = document.getElementById('radarChartWrapper');
+  if (!wrapper) return false;
+
+  const labels = [];
+  const radarValues = [];
+  const metricKeys = [];
+  
+  for (const [key, info] of Object.entries(conservation)) {
+    labels.push(info.label || key);
+    radarValues.push(typeof info.radar_value === "number" ? info.radar_value : 50);
+    metricKeys.push(key);
+  }
+  
+  if (labels.length === 0) {
+    wrapper.innerHTML = '<div class="boxplot-hint">Conservation data not available</div>';
+    return false;
+  }
+
+  if (typeof Chart === 'undefined') {
+    renderStaticRadar(wrapper, labels, radarValues);
+    radarChart = null;
+    return false;
+  }
+
+  const canvas = ensureRadarCanvas(wrapper);
+  const ctx = canvas.getContext('2d');
+  if (radarChart) {
+    radarChart.destroy();
+    radarChart = null;
+  }
+  
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Conservation Percentile',
+        data: radarValues,
+        fill: true,
+        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+        borderColor: 'rgba(102, 126, 234, 1)',
+        pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: 'rgba(102, 126, 234, 1)',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          angleLines: { display: true },
+          suggestedMin: 0,
+          suggestedMax: 100,
+          ticks: { stepSize: 25, callback: (v) => v + '%' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
+      },
+      onClick: (event, elements) => {
+        if (elements.length > 0) {
+          const idx = elements[0].index;
+          showBoxplotForMetric(metricKeys[idx]);
+        }
+      }
+    }
+  });
+  return true;
+}
+
+function ensureRadarCanvas(wrapper){
+  let canvas = wrapper.querySelector('canvas#radarChart');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'radarChart';
+    wrapper.innerHTML = '';
+    wrapper.appendChild(canvas);
+  }
+  return canvas;
+}
+
+function renderStaticRadar(wrapper, labels, values){
+  const size = 320;
+  const center = size / 2;
+  const radius = Math.min(center - 20, 130);
+  const rings = 4;
+  wrapper.innerHTML = '';
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+  const angleStep = (Math.PI * 2) / labels.length;
+  const toPoint = (val, idx) => {
+    const angle = -Math.PI / 2 + idx * angleStep;
+    const r = (Math.max(0, Math.min(100, val)) / 100) * radius;
+    return {
+      x: center + r * Math.cos(angle),
+      y: center + r * Math.sin(angle)
+    };
+  };
+
+  // rings
+  for (let i = 1; i <= rings; i++){
+    const r = (i / rings) * radius;
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('cx', center);
+    circle.setAttribute('cy', center);
+    circle.setAttribute('r', r);
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke', '#f0e7d3');
+    circle.setAttribute('stroke-width', '1');
+    svg.appendChild(circle);
+  }
+
+  // axes + labels
+  labels.forEach((label, idx) => {
+    const angle = -Math.PI / 2 + idx * angleStep;
+    const x = center + radius * Math.cos(angle);
+    const y = center + radius * Math.sin(angle);
+
+    const axis = document.createElementNS(svgNS, 'line');
+    axis.setAttribute('x1', center);
+    axis.setAttribute('y1', center);
+    axis.setAttribute('x2', x);
+    axis.setAttribute('y2', y);
+    axis.setAttribute('stroke', '#e0d5bf');
+    svg.appendChild(axis);
+
+    const text = document.createElementNS(svgNS, 'text');
+    text.setAttribute('x', center + (radius + 12) * Math.cos(angle));
+    text.setAttribute('y', center + (radius + 12) * Math.sin(angle));
+    text.setAttribute('text-anchor', Math.cos(angle) > 0.1 ? 'start' : (Math.cos(angle) < -0.1 ? 'end' : 'middle'));
+    text.setAttribute('dominant-baseline', Math.sin(angle) > 0.1 ? 'hanging' : (Math.sin(angle) < -0.1 ? 'baseline' : 'middle'));
+    text.setAttribute('font-size', '11px');
+    text.setAttribute('fill', '#5c4d30');
+    text.textContent = label;
+    svg.appendChild(text);
+  });
+
+  // polygon
+  const polygon = document.createElementNS(svgNS, 'polygon');
+  const pts = values.map((val, idx) => {
+    const pt = toPoint(val, idx);
+    return `${pt.x},${pt.y}`;
+  });
+  polygon.setAttribute('points', pts.join(' '));
+  polygon.setAttribute('fill', 'rgba(102,126,234,0.25)');
+  polygon.setAttribute('stroke', 'rgba(102,126,234,0.9)');
+  polygon.setAttribute('stroke-width', '2');
+  svg.appendChild(polygon);
+
+  wrapper.appendChild(svg);
+  const note = document.createElement('div');
+  note.className = 'radar-fallback-note';
+  note.textContent = 'Static radar preview (Chart.js unavailable).';
+  wrapper.appendChild(note);
+}
+
+function renderConservationList() {
+  const container = document.getElementById('conservationList');
+  if (!container) return;
+  const conservation = SUMMARY.conservation || {};
+  const entries = Object.entries(conservation);
+  if (!entries.length) {
+    container.innerHTML = '<div class="boxplot-hint">Conservation metrics unavailable.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  entries.forEach(([metricKey, info]) => {
+    const card = document.createElement('div');
+    card.className = 'metric';
+    card.dataset.metric = metricKey;
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    const directionTitle = info.direction_hint || (info.higher_is_more_conserved ? 'Higher values = more conserved' : 'Lower values = more conserved');
+    card.title = directionTitle;
+
+    const value = typeof info.value === 'number' ? info.value.toFixed(3) : '–';
+    const pctVal = typeof info.percentile === 'number' ? info.percentile.toFixed(1) : null;
+    const pctLabel = pctVal ? `${pctVal}% percentile` : 'Percentile unavailable';
+    const badgeClass = pctVal === null ? '' : (info.percentile >= 75 ? 'cons-high' : (info.percentile >= 50 ? 'cons-medium' : 'cons-low'));
+
+    card.innerHTML = `<span class="label">${info.label || ''}</span><span class="value">${value}</span><span class="percentile ${badgeClass}">${pctLabel}</span>`;
+    card.addEventListener('click', () => showBoxplotForMetric(metricKey));
+    card.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        showBoxplotForMetric(metricKey);
+      }
+    });
+    container.appendChild(card);
+  });
+  highlightMetricSelection();
+}
+
+function renderPpiSection(pair, gene1, gene2) {
+  const info = pair?.ppi_network || {};
+  const shared = Array.isArray(info.shared) ? info.shared : [];
+  const uniqueA = Array.isArray(info.unique_gene1) ? info.unique_gene1 : [];
+  const uniqueB = Array.isArray(info.unique_gene2) ? info.unique_gene2 : [];
+  const geneAName = gene1.symbol || gene1.uniprot || 'Protein A';
+  const geneBName = gene2.symbol || gene2.uniprot || 'Protein B';
+  const toggle = document.getElementById('toggleNonShared');
+  const nonSharedWrap = document.getElementById('nonSharedLists');
+  const labelA = document.getElementById('ppiLabelA');
+  const labelB = document.getElementById('ppiLabelB');
+  if (labelA) labelA.textContent = geneAName;
+  if (labelB) labelB.textContent = geneBName;
+
+  populatePpiList('sharedPpiList', shared, MAX_SHARED_LIST, 'No shared interactors found', 'sharedPpiNote');
+  populatePpiList('uniquePpiA', uniqueA, MAX_UNIQUE_LIST, `No unique partners for ${geneAName}`, 'uniquePpiANote');
+  populatePpiList('uniquePpiB', uniqueB, MAX_UNIQUE_LIST, `No unique partners for ${geneBName}`, 'uniquePpiBNote');
+
+  const hasUnique = uniqueA.length || uniqueB.length;
+  if (toggle) {
+    toggle.disabled = !hasUnique;
+    if (!toggle.dataset.bound) {
+      toggle.addEventListener('change', () => {
+        showUniquePpis = !!toggle.checked;
+        if (nonSharedWrap) nonSharedWrap.style.display = (showUniquePpis && hasUnique) ? '' : 'none';
+        drawPpiGraph(PPI_GRAPH_DATA, showUniquePpis);
+      }, { passive: true });
+      toggle.dataset.bound = '1';
+    }
+    showUniquePpis = hasUnique ? true : false;
+    toggle.checked = showUniquePpis;
+  }
+  if (nonSharedWrap) {
+    nonSharedWrap.style.display = (hasUnique && showUniquePpis) ? '' : 'none';
+  }
+
+  if (!shared.length && !hasUnique) {
+    const svg = document.getElementById('ppiNetwork');
+    if (svg) svg.innerHTML = '';
+    const note = document.getElementById('ppiGraphNote');
+    if (note) note.textContent = 'PPI network unavailable for this pair.';
+    PPI_GRAPH_DATA = null;
+    return;
+  }
+
+  PPI_GRAPH_DATA = {
+    gene1: geneAName,
+    gene2: geneBName,
+    shared,
+    unique1: uniqueA,
+    unique2: uniqueB
+  };
+  drawPpiGraph(PPI_GRAPH_DATA, showUniquePpis);
+}
+
+function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const note = noteId ? document.getElementById(noteId) : null;
+  if (!partners || !partners.length) {
+    el.innerHTML = `<span class="ppi-chip empty">${emptyMsg}</span>`;
+    if (note) note.textContent = '';
+    return;
+  }
+  const shown = partners.slice(0, limit);
+  el.innerHTML = shown.map((p) => {
+    const label = escapeHtml(getPartnerLabel(p));
+    const tooltip = escapeHtml(getPartnerTooltip(p));
+    const attr = tooltip ? ` title="${tooltip}"` : '';
+    return `<span class="ppi-chip"${attr}>${label}</span>`;
+  }).join('');
+  if (note) {
+    const hidden = partners.length - shown.length;
+    note.textContent = hidden > 0 ? `+${hidden} more` : '';
+  }
+}
+
+function getPartnerLabel(entry) {
+  if (!entry) return 'NA';
+  if (typeof entry === 'string') return entry;
+  return entry.display || entry.symbol || entry.name || entry.id || 'NA';
+}
+
+function getPartnerShortLabel(entry) {
+  if (!entry) return 'NA';
+  if (typeof entry === 'string') return entry;
+  return entry.symbol || entry.display || entry.id || 'NA';
+}
+
+function getPartnerTooltip(entry) {
+  if (!entry) return '';
+  if (typeof entry === 'string') return entry;
+  const bits = [];
+  if (entry.symbol) bits.push(entry.symbol);
+  if (entry.id) bits.push(`Entrez ${entry.id}`);
+  return bits.join(' • ');
+}
+
+function escapeHtml(value) {
+  if (value == null) return '';
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function drawPpiGraph(data, showUnique = true) {
+  const svg = document.getElementById('ppiNetwork');
+  const note = document.getElementById('ppiGraphNote');
+  if (!svg) return;
+  svg.innerHTML = '';
+  if (!data) {
+    if (note) note.textContent = 'PPI network unavailable for this pair.';
+    return;
+  }
+  const width = 420;
+  const height = 240;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  const centerY = height / 2;
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  const nodes = [];
+  const lines = [];
+
+  const gene1 = { key: 'gene1', label: data.gene1, x: 110, y: centerY, r: 22, className: 'gene-node', labelDy: 34 };
+  const gene2 = { key: 'gene2', label: data.gene2, x: width - 110, y: centerY, r: 22, className: 'gene-node', labelDy: 34 };
+  nodes.push(gene1, gene2);
+
+  const sharedAll = Array.isArray(data.shared) ? data.shared : [];
+  const shared = sharedAll.slice(0, MAX_SHARED_GRAPH);
+  const sharedCount = shared.length;
+  shared.forEach((partner, idx) => {
+    const frac = sharedCount === 1 ? 0.5 : idx / (sharedCount - 1);
+    const y = 50 + frac * (height - 100);
+    const node = { key: `shared-${idx}`, label: getPartnerShortLabel(partner), x: width / 2, y, r: 14, className: 'shared-node', labelDy: 30 };
+    nodes.push(node);
+    lines.push({ from: gene1, to: node, className: 'shared-link' });
+    lines.push({ from: gene2, to: node, className: 'shared-link' });
+  });
+
+  const unique1All = Array.isArray(data.unique1) ? data.unique1 : [];
+  const unique2All = Array.isArray(data.unique2) ? data.unique2 : [];
+
+  if (showUnique && unique1All.length) {
+    unique1All.slice(0, MAX_UNIQUE_GRAPH).forEach((partner, idx) => {
+      const y = 60 + idx * 38;
+      const node = { key: `uniqA-${idx}`, label: getPartnerShortLabel(partner), x: 40, y, r: 11, className: 'unique-node', labelDx: -20, labelAlign: 'end', labelDy: 4 };
+      nodes.push(node);
+      lines.push({ from: gene1, to: node, className: 'non-shared' });
+    });
+  }
+  if (showUnique && unique2All.length) {
+    unique2All.slice(0, MAX_UNIQUE_GRAPH).forEach((partner, idx) => {
+      const y = 60 + idx * 38;
+      const node = { key: `uniqB-${idx}`, label: getPartnerShortLabel(partner), x: width - 40, y, r: 11, className: 'unique-node', labelDx: 20, labelAlign: 'start', labelDy: 4 };
+      nodes.push(node);
+      lines.push({ from: gene2, to: node, className: 'non-shared' });
+    });
+  }
+
+  lines.forEach((ln) => {
+    const el = document.createElementNS(svgNS, 'line');
+    el.setAttribute('x1', ln.from.x);
+    el.setAttribute('y1', ln.from.y);
+    el.setAttribute('x2', ln.to.x);
+    el.setAttribute('y2', ln.to.y);
+    if (ln.className) el.setAttribute('class', ln.className);
+    svg.appendChild(el);
+  });
+
+  nodes.forEach((node) => {
+    const group = document.createElementNS(svgNS, 'g');
+    group.setAttribute('class', `ppi-node ${node.className || ''}`.trim());
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('cx', node.x);
+    circle.setAttribute('cy', node.y);
+    circle.setAttribute('r', node.r);
+    group.appendChild(circle);
+
+    const label = document.createElementNS(svgNS, 'text');
+    label.setAttribute('x', node.x + (node.labelDx || 0));
+    const labelY = node.labelDy != null ? node.y + node.labelDy : node.y + node.r + 14;
+    label.setAttribute('y', labelY);
+    label.setAttribute('text-anchor', node.labelAlign || 'middle');
+    label.textContent = node.label;
+    group.appendChild(label);
+
+    svg.appendChild(group);
+  });
+
+  if (note) {
+    const notes = [];
+    if (sharedAll.length > shared.length) {
+      notes.push(`+${sharedAll.length - shared.length} shared partners hidden`);
+    }
+    if (showUnique) {
+      if (unique1All.length > Math.min(unique1All.length, MAX_UNIQUE_GRAPH)) {
+        notes.push(`+${unique1All.length - Math.min(unique1All.length, MAX_UNIQUE_GRAPH)} ${data.gene1} uniques hidden`);
+      }
+      if (unique2All.length > Math.min(unique2All.length, MAX_UNIQUE_GRAPH)) {
+        notes.push(`+${unique2All.length - Math.min(unique2All.length, MAX_UNIQUE_GRAPH)} ${data.gene2} uniques hidden`);
+      }
+    } else if (unique1All.length || unique2All.length) {
+      notes.push('Unique partners hidden (toggle to show).');
+    }
+    note.textContent = notes.join(' • ') || 'Shared nodes connect both paralogs; toggle to include unique-only partners.';
+  }
+}
+
+function highlightMetricSelection() {
+  const cards = document.querySelectorAll('#conservationList .metric');
+  cards.forEach((card) => {
+    const isActive = card.dataset.metric === activeMetricKey;
+    card.classList.toggle('active', isActive);
+    card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function resetMetricSelection() {
+  activeMetricKey = null;
+  if (boxplotChart) {
+    boxplotChart.destroy();
+    boxplotChart = null;
+  }
+  const container = document.getElementById('boxplotContainer');
+  if (container) {
+    container.innerHTML = `<div class="boxplot-hint">${DEFAULT_BOXPLOT_HINT}</div>`;
+  }
+  const details = document.getElementById('metricDetails');
+  if (details) {
+    details.style.display = 'none';
+  }
+  const title = document.getElementById('boxplotTitle');
+  if (title) title.textContent = 'Select a Metric';
+  const valEl = document.getElementById('detail-value');
+  if (valEl) valEl.textContent = '–';
+  const pctEl = document.getElementById('detail-percentile');
+  if (pctEl) pctEl.textContent = '–';
+  const interpEl = document.getElementById('detail-interp');
+  if (interpEl) interpEl.innerHTML = '–';
+  const dirEl = document.getElementById('detail-direction');
+  if (dirEl) dirEl.textContent = '–';
+  const fill = document.getElementById('percentile-fill');
+  if (fill) fill.style.width = '0%';
+  highlightMetricSelection();
+}
+
+function showBoxplotForMetric(metricKey) {
+  const conservation = SUMMARY.conservation || {};
+  const boxplots = SUMMARY.boxplots || {};
+  
+  const metricInfo = conservation[metricKey];
+  const boxplotData = boxplots[metricKey];
+  
+  if (!metricInfo || !boxplotData) {
+    document.getElementById('boxplotContainer').innerHTML = '<div class="boxplot-hint">Data not available for this metric</div>';
+    return;
+  }
+  
+  activeMetricKey = metricKey;
+  highlightMetricSelection();
+  
+  document.getElementById('boxplotTitle').textContent = metricInfo.label || metricKey;
+  document.getElementById('metricDetails').style.display = 'block';
+  document.getElementById('detail-value').textContent = typeof metricInfo.value === 'number' ? metricInfo.value.toFixed(4) : '–';
+  const pctVal = typeof metricInfo.percentile === 'number' ? metricInfo.percentile : null;
+  document.getElementById('detail-percentile').textContent = pctVal != null ? `${pctVal.toFixed(1)}%` : '–';
+  document.getElementById('percentile-fill').style.width = pctVal != null ? `${pctVal}%` : '0%';
+  const dirText = metricInfo.direction_hint || (metricInfo.higher_is_more_conserved ? 'Higher values = more conserved' : 'Lower values = more conserved');
+  const directionEl = document.getElementById('detail-direction');
+  if (directionEl) directionEl.textContent = dirText;
+  
+  let interp = '';
+  if (metricInfo.percentile >= 75) interp = '<span class="cons-high">Highly conserved</span> (top 25%)';
+  else if (metricInfo.percentile >= 50) interp = '<span class="cons-medium">Moderately conserved</span>';
+  else if (metricInfo.percentile >= 25) interp = '<span class="cons-medium">Less conserved than average</span>';
+  else interp = '<span class="cons-low">Highly divergent</span> (bottom 25%)';
+  document.getElementById('detail-interp').innerHTML = interp;
+  
+  drawBoxplot(metricInfo, boxplotData);
+}
+
+function drawBoxplot(metricInfo, boxplotData) {
+  const container = document.getElementById('boxplotContainer');
+  container.innerHTML = '<canvas id="boxplotCanvas" style="width:100%;height:180px;"></canvas>';
+  
+  const canvas = document.getElementById('boxplotCanvas');
+  if (!canvas || typeof Chart === 'undefined') {
+    container.innerHTML = '<div class="boxplot-hint">Interactive chart requires Chart.js. Metric percentiles are still listed below.</div>';
+    boxplotChart = null;
+    return;
+  }
+  const ctx = canvas.getContext('2d');
+  const {q1, median, q3, whisker_low, whisker_high, pair_value} = boxplotData;
+  
+  if (boxplotChart) boxplotChart.destroy();
+  
+  boxplotChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Distribution'],
+      datasets: [
+        { label: 'Lower', data: [q1 - whisker_low], backgroundColor: 'rgba(200,200,200,0.3)', barPercentage: 0.5 },
+        { label: 'Q1-Med', data: [median - q1], backgroundColor: 'rgba(102, 126, 234, 0.4)', barPercentage: 0.5 },
+        { label: 'Med-Q3', data: [q3 - median], backgroundColor: 'rgba(118, 75, 162, 0.4)', barPercentage: 0.5 },
+        { label: 'Upper', data: [whisker_high - q3], backgroundColor: 'rgba(200,200,200,0.3)', barPercentage: 0.5 },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { stacked: true, min: whisker_low - (whisker_high - whisker_low) * 0.1, max: whisker_high + (whisker_high - whisker_low) * 0.1, title: { display: true, text: metricInfo.label } },
+        y: { stacked: true, display: false }
+      },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    },
+    plugins: [{
+      id: 'pairMarker',
+      afterDraw: (chart) => {
+        if (pair_value == null) return;
+        const ctx = chart.ctx;
+        const xAxis = chart.scales.x;
+        const yAxis = chart.scales.y;
+        const x = xAxis.getPixelForValue(pair_value);
+        const y = yAxis.getPixelForValue(0);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef5350';
+        ctx.fill();
+        ctx.strokeStyle = '#c62828';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('This pair', x, y - 16);
+        ctx.font = '10px sans-serif';
+        ctx.fillText(pair_value.toFixed(3), x, y + 22);
+        ctx.restore();
+        
+        const medX = xAxis.getPixelForValue(median);
+        ctx.save();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(medX, y - 18);
+        ctx.lineTo(medX, y + 18);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }]
+  });
+}
+
+/* ----------------- Disable unwanted external calls ----------------- *//* ----------------- Disable unwanted external calls ----------------- */
+(function(){
+  const blockHosts = ['molstarvolseg.ncbr.muni.cz'];
+  const _fetch = window.fetch ? window.fetch.bind(window) : null;
+  if (_fetch) {
+    window.fetch = (input, init) => {
+      try {
+        const url = (typeof input === 'string') ? input : (input && input.url);
+        if (url && blockHosts.some(h => url.includes(h))) {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+      } catch(e) {}
+      return _fetch(input, init);
+    };
+  }
+})();
+
+/* ----------------- Mol* wiring (main viewer) ----------------- */
+let viewer = null, plugin = null, structureReady = false;
+const chainIdA = 'A', chainIdB = 'B';
+
+async function initMolstar(){
+  if (viewer) return;
+  const opts = {
+    layoutIsExpanded:false,
+    layoutShowControls:false,  // Hide Structure Tools panel by default
+    layoutShowSequence:false,
+    layoutShowLog:false,
+    layoutShowLeftPanel:false,
+    viewportShowExpand:true,   // Allow user to expand/access controls if needed
+    volumeStreamingServer: ''
+  };
+  const v = await molstar.Viewer.create('viewer', opts);
+  viewer = v;
+  plugin = v.plugin;
+  window.viewer = viewer;
+  window.molstar = molstar;
+  window.plugin = plugin;
+}
+
+async function loadPDBfromBase64(b64, resetCamera = true){
+  await initMolstar();
+  try { await plugin.clear(); } catch(e) {}
+
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const blob = new Blob([bytes], {type:"chemical/x-pdb"});
+  const url = URL.createObjectURL(blob);
+
+  try {
+    await viewer.loadStructureFromUrl(url, 'pdb');
+    structureReady = true;
+  } catch(e) {
+    console.error('Failed to load structure:', e);
+    structureReady = false;
+  }
+
+  if (resetCamera) {
+    try { await viewer.resetCamera(); } catch(e){ plugin.canvas3d?.requestCameraReset(); }
+  }
+  URL.revokeObjectURL(url);
+}
+
+/* Set chain visibility in Molstar - uses component filtering approach */
+async function setMolstarChainVisibility(showA, showB) {
+  if (!plugin || !structureReady) return;
+
+  console.log('setMolstarChainVisibility called: showA=', showA, 'showB=', showB);
+
+  // If both chains should be visible, nothing to do
+  if (showA && showB) {
+    return;
+  }
+
+  try {
+    const hierarchy = plugin.managers.structure.hierarchy.current;
+    if (!hierarchy?.structures?.length) {
+      console.log('No structures in hierarchy');
+      return;
+    }
+
+    const struct = hierarchy.structures[0];
+    const components = struct.components || [];
+    console.log('Found', components.length, 'components');
+
+    // Map unit IDs to chain IDs for the main structure
+    const structData = struct.cell?.obj?.data;
+    if (!structData?.units) {
+      console.log('No units in structure data');
+      return;
+    }
+
+    const unitIdToChain = new Map();
+    for (const unit of structData.units) {
+      try {
+        const model = unit.model;
+        if (!model?.atomicHierarchy) continue;
+        const elements = unit.elements;
+        if (!elements?.length) continue;
+        const atomIdx = elements[0];
+        const chainSegs = model.atomicHierarchy.chainAtomSegments;
+        if (chainSegs?.index) {
+          const chainIdx = chainSegs.index[atomIdx];
+          const chainId = model.atomicHierarchy.chains.auth_asym_id.value(chainIdx);
+          unitIdToChain.set(unit.id, chainId);
+          console.log('Unit', unit.id, '-> chain', chainId);
+        }
+      } catch(e) {}
+    }
+
+    // For each component, determine which chain(s) it contains
+    for (const comp of components) {
+      const compData = comp.cell?.obj?.data;
+      if (!compData?.units) continue;
+
+      let compChains = new Set();
+      for (const unit of compData.units) {
+        const chainId = unitIdToChain.get(unit.id);
+        if (chainId) compChains.add(chainId);
+      }
+
+      console.log('Component chains:', Array.from(compChains));
+
+      // Determine visibility
+      let shouldShow = true;
+      if (compChains.has('A') && !compChains.has('B')) {
+        shouldShow = showA;
+      } else if (compChains.has('B') && !compChains.has('A')) {
+        shouldShow = showB;
+      }
+
+      // Update all representations in this component
+      const reps = comp.representations || [];
+      for (const repr of reps) {
+        if (!repr.cell?.transform?.ref) continue;
+        try {
+          const ref = repr.cell.transform.ref;
+          const currentState = plugin.state.data.cells.get(ref)?.state;
+          const newHidden = !shouldShow;
+          if (currentState?.isHidden !== newHidden) {
+            console.log('Setting ref', ref, 'hidden=', newHidden);
+            await plugin.state.data.updateCellState(ref, { isHidden: newHidden });
+          }
+        } catch(e) {
+          console.warn('Error updating cell state:', e);
+        }
+      }
+    }
+
+    console.log('Chain visibility applied: A=', showA, 'B=', showB);
+  } catch(e) {
+    console.warn('Could not set chain visibility:', e);
+  }
+}
+
+/* ----------------- Selection + tracks + tables ----------------- */
+
+const selection = new Map();
+const trackRefs = {};
+const domByUidA = {};
+const domByUidB = {};
+
+function selectionKey(chain, uid) {
+  return `${chain}:${uid}`;
+}
+
+function getAllSelections() {
+  return Array.from(selection.values());
+}
+
+function sanitizeRects(arr, alnLen){
+  if (!Array.isArray(arr)) return [];
+  const out=[];
+  for (const r of arr){
+    let s = Number(r.start ?? r.x ?? r.begin ?? r.from ?? 1);
+    let e = Number(r.end   ?? r.to ?? r.stop  ?? r.finish ?? s);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+    s = Math.max(1, Math.min(alnLen, Math.floor(s)));
+    e = Math.max(1, Math.min(alnLen, Math.ceil(e)));
+    if (e < s) { const t = s; s = e; e = t; }
+    if (e < s || e - s < 0) continue;
+    const base = { x:s, start:s, begin:s };
+    const color = r.color || '#999999';
+    const opacity = ('opacity' in r) ? r.opacity : 1.0;
+    const id = r.id;
+    const label = r.label || r.name || r.type;
+    out.push({ ...base, end:e, to:e, color, opacity, id, label });
+  }
+  return out;
+}
+
+function renderTrackSelections() {
+  const sel = getAllSelections();
+  const hasSel = sel.length > 0;
+
+  const selIdsA = new Set(sel.filter(s => s.chain === chainIdA).map(s => s.id));
+  const selIdsB = new Set(sel.filter(s => s.chain === chainIdB).map(s => s.id));
+  const colorById = {};
+  sel.forEach(s => { colorById[s.id] = s.color; });
+
+  Object.entries(trackRefs).forEach(([name, track]) => {
+    if (!track || !track._originalData) return;
+    const isA = name.endsWith('A');
+    const localSel = isA ? selIdsA : selIdsB;
+
+    const newData = track._originalData.map(item => {
+      const id = item.id;
+      const isSelected = id && localSel.has(id);
+      const baseColor = item.color || '#999999';
+      return {
+        ...item,
+        color: isSelected ? (colorById[id] || baseColor) : baseColor,
+        opacity: hasSel ? (isSelected ? 1.0 : 0.25) : 1.0
+      };
+    });
+    track.data = newData;
+  });
+}
+
+function renderTableSelections() {
+  const sel = getAllSelections();
+  const selKeys = new Set(sel.map(s => selectionKey(s.chain, s.id)));
+
+  document.querySelectorAll('table#domA tbody tr, table#domB tbody tr').forEach(tr => {
+    const uid = tr.getAttribute('data-uid');
+    const chain = tr.getAttribute('data-chain');
+    const key = selectionKey(chain, uid);
+    const checked = selKeys.has(key);
+    const cb = tr.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = checked;
+    tr.classList.toggle('selected', checked);
+  });
+}
+
+let viewerLocked = true; // Default to locked
+let pendingHighlightLoci = null;
+
+function setViewerLocked(locked) {
+  viewerLocked = locked;
+  const btn = document.getElementById('lockViewer');
+  if (btn) {
+    btn.textContent = locked ? 'Unlock Hover' : 'Lock Hover';
+    btn.style.background = locked ? '#ffeb3b' : '#fff';
+  }
+  if (!locked) pendingHighlightLoci = null;
+}
+
+function toggleViewerLock() {
+  setViewerLocked(!viewerLocked);
+}
+
+// Chain visibility state
+const chainVisible = { A: true, B: true };
+let druggabilityFilter = 'medium+';
+
+function getVisibleChains() {
+  const chains = [];
+  if (chainVisible.A) chains.push('A');
+  if (chainVisible.B) chains.push('B');
+  return chains;
+}
+
+async function applyChainVisibility() {
+  if (!plugin) return;
+
+  // For color modes that use special PDB variants, we need to use the appropriate PDB
+  // For uniform mode, we can use chain-specific PDBs for better performance
+
+  let pdb64;
+
+  // If we're in a special color mode, always use that PDB variant (contains both chains with color data)
+  if (currentColorMode === 'plddt' && window.PDB64_PLDDT) {
+    pdb64 = window.PDB64_PLDDT;
+  } else if (currentColorMode === 'am' && window.PDB64_AM_BY_MODE && amMode) {
+    pdb64 = window.PDB64_AM_BY_MODE[amMode];
+  } else if (currentColorMode === 'aligned' && window.PDB64_ALIGNED) {
+    pdb64 = window.PDB64_ALIGNED;
+  } else if (currentColorMode === 'domains' && window.PDB64_DOMAINS) {
+    pdb64 = window.PDB64_DOMAINS;
+  } else {
+    // For uniform mode, use chain-specific PDBs
+    if (chainVisible.A && chainVisible.B) {
+      pdb64 = PDB64_FULL;
+    } else if (chainVisible.A) {
+      pdb64 = window.PDB64_A || PDB64_FULL;
+    } else if (chainVisible.B) {
+      pdb64 = window.PDB64_B || PDB64_FULL;
+    } else {
+      // Both hidden - show full anyway (will be empty view)
+      pdb64 = PDB64_FULL;
+    }
+  }
+
+  console.log('Applying chain visibility:', chainVisible, 'colorMode:', currentColorMode);
+
+  // Reload with camera preservation
+  await reloadViewerWith(pdb64, true);
+
+  // Apply chain visibility via Molstar for color-mode PDBs (which contain both chains)
+  if (currentColorMode && currentColorMode !== 'uniform') {
+    await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
+    const theme = themeForColorMode(currentColorMode);
+    await applyColorTheme(theme);
+  }
+
+  // Restore selections
+  await renderSelections();
+}
+
+/* Apply Molstar highlighting for MAIN VIEWER - DUAL COLOR: green for A (select), pink for B (highlight) */
+async function applyMolstarSelection() {
+  try {
+    if (!plugin || !structureReady) return;
+    
+    // Clear previous selections and highlights
+    try {
+      plugin.managers.interactivity.lociSelects.deselectAll();
+    } catch(e) {}
+    try {
+      plugin.managers.interactivity.lociHighlights.clearHighlights();
+    } catch(e) {}
+
+    const selections = getAllSelections();
+    if (selections.length === 0) {
+      pendingHighlightLoci = null;
+      return;
+    }
+
+    const hierarchy = plugin.managers.structure.hierarchy.current;
+    if (!hierarchy?.structures?.length) return;
+
+    const structure = hierarchy.structures[0];
+    const structureData = structure.cell?.obj?.data;
+    if (!structureData) return;
+
+    const units = structureData.units || [];
+    if (!units.length) return;
+
+    console.log(`Main viewer: Structure has ${units.length} units (polymers)`);
+
+    // Each unit represents a separate polymer
+    // Unit 0 = Polymer 1 = Chain A
+    // Unit 1 = Polymer 2 = Chain B
+    // CRITICAL: Each unit has its own elements array, and indices in the loci must be 
+    // indices INTO unit.elements, not global atom indices!
+    
+    const chainInfo = {}; // chainId -> { unit, unitIndex, ... }
+    
+    for (let unitIdx = 0; unitIdx < units.length; unitIdx++) {
+      const unit = units[unitIdx];
+      try {
+        const model = unit.model;
+        if (!model) continue;
+        
+        const chains = model.atomicHierarchy?.chains;
+        const chainAtomSegments = model.atomicHierarchy?.chainAtomSegments;
+        const residueAtomSegments = model.atomicHierarchy?.residueAtomSegments;
+        
+        if (!chains || !chainAtomSegments || !residueAtomSegments) continue;
+        
+        // Get the elements (atom indices) that this unit contains
+        const unitElements = unit.elements;
+        if (!unitElements || unitElements.length === 0) continue;
+        
+        // Find which chain the first atom of this unit belongs to
+        const firstAtomIdx = unitElements[0];
+        const chainOffsets = chainAtomSegments.offsets;
+        
+        let unitChainId = null;
+        for (let ci = 0; ci < chainOffsets.length - 1; ci++) {
+          if (firstAtomIdx >= chainOffsets[ci] && firstAtomIdx < chainOffsets[ci + 1]) {
+            unitChainId = chains.label_asym_id.value(ci);
+            break;
+          }
+        }
+        
+        if (!unitChainId) {
+          console.warn(`Unit ${unitIdx}: could not determine chain ID`);
+          continue;
+        }
+        
+        // Build a mapping from protein residue number (1-based) to local atom indices
+        const resOffsets = residueAtomSegments.offsets;
+        const unitResidueToLocalAtoms = new Map();
+        
+        // Determine the first residue in the chain (to compute 1-based protein residue)
+        let minGlobalResIdx = Infinity;
+        
+        // First pass: find all global residue indices in this unit
+        for (let localIdx = 0; localIdx < unitElements.length; localIdx++) {
+          const globalAtomIdx = unitElements[localIdx];
+          for (let ri = 0; ri < resOffsets.length - 1; ri++) {
+            if (globalAtomIdx >= resOffsets[ri] && globalAtomIdx < resOffsets[ri + 1]) {
+              if (ri < minGlobalResIdx) minGlobalResIdx = ri;
+              break;
+            }
+          }
+        }
+        
+        // Second pass: for each atom, map to protein residue and collect local indices
+        for (let localIdx = 0; localIdx < unitElements.length; localIdx++) {
+          const globalAtomIdx = unitElements[localIdx];
+          for (let ri = 0; ri < resOffsets.length - 1; ri++) {
+            if (globalAtomIdx >= resOffsets[ri] && globalAtomIdx < resOffsets[ri + 1]) {
+              const proteinRes = ri - minGlobalResIdx + 1;
+              if (!unitResidueToLocalAtoms.has(proteinRes)) {
+                unitResidueToLocalAtoms.set(proteinRes, []);
+              }
+              unitResidueToLocalAtoms.get(proteinRes).push(localIdx);
+              break;
+            }
+          }
+        }
+        
+        const residueCount = unitResidueToLocalAtoms.size;
+        console.log(`Unit ${unitIdx}: chain ${unitChainId}, ${unitElements.length} atoms, ${residueCount} residues`);
+        
+        chainInfo[unitChainId] = {
+          unit: unit,
+          unitIndex: unitIdx,
+          residueCount: residueCount,
+          unitResidueToLocalAtoms: unitResidueToLocalAtoms
+        };
+        
+      } catch(e) {
+        console.warn(`Error analyzing unit ${unitIdx}:`, e);
+      }
+    }
+
+    // Fallback if detection failed
+    if (Object.keys(chainInfo).length === 0) {
+      console.warn('Chain detection failed, using simple unit index fallback');
+      for (let unitIdx = 0; unitIdx < Math.min(2, units.length); unitIdx++) {
+        const chainId = unitIdx === 0 ? 'A' : 'B';
+        const unit = units[unitIdx];
+        const unitElements = unit.elements;
+        if (!unitElements) continue;
+        
+        const unitResidueToLocalAtoms = new Map();
+        const atomsPerResidue = 8;
+        let proteinRes = 1;
+        for (let i = 0; i < unitElements.length; i += atomsPerResidue) {
+          const localAtoms = [];
+          for (let j = i; j < Math.min(i + atomsPerResidue, unitElements.length); j++) {
+            localAtoms.push(j);
+          }
+          unitResidueToLocalAtoms.set(proteinRes, localAtoms);
+          proteinRes++;
+        }
+        
+        chainInfo[chainId] = {
+          unit: unit,
+          unitIndex: unitIdx,
+          residueCount: unitResidueToLocalAtoms.size,
+          unitResidueToLocalAtoms: unitResidueToLocalAtoms
+        };
+      }
+    }
+
+    // Separate selections by chain for dual-color highlighting
+    const elementsChainA = [];
+    const elementsChainB = [];
+    
+    for (const sel of selections) {
+      try {
+        const targetChain = sel.chain; // 'A' or 'B'
+        const info = chainInfo[targetChain];
+        
+        if (!info) {
+          console.warn(`No chain info found for chain ${targetChain}`);
+          continue;
+        }
+
+        const { unit, unitIndex, unitResidueToLocalAtoms } = info;
+        
+        const startProteinRes = sel.start; // 1-based
+        const endProteinRes = sel.end;     // 1-based
+        
+        console.log(`Selection "${sel.name}" chain ${targetChain}: protein res ${startProteinRes}-${endProteinRes}`);
+        
+        const localAtomIndices = [];
+        
+        for (let proteinRes = startProteinRes; proteinRes <= endProteinRes; proteinRes++) {
+          const localAtoms = unitResidueToLocalAtoms.get(proteinRes);
+          if (localAtoms) {
+            localAtomIndices.push(...localAtoms);
+          }
+        }
+
+        if (localAtomIndices.length > 0) {
+          console.log(`  -> ${localAtomIndices.length} LOCAL atoms selected for unit ${unitIndex} (chain ${targetChain})`);
+          
+          localAtomIndices.sort((a, b) => a - b);
+          
+          if (targetChain === 'A') {
+            elementsChainA.push({ unit, indices: localAtomIndices });
+          } else {
+            elementsChainB.push({ unit, indices: localAtomIndices });
+          }
+        } else {
+          console.warn(`  -> No atoms found for selection`);
+        }
+      } catch (e) {
+        console.warn(`Failed to process selection ${sel.name}:`, e);
+      }
+    }
+    
+    // Apply chain A selections using lociSelects (GREEN color)
+    if (elementsChainA.length > 0) {
+      const lociA = {
+        kind: 'element-loci',
+        structure: structureData,
+        elements: elementsChainA
+      };
+      try {
+        plugin.managers.interactivity.lociSelects.select({ loci: lociA });
+        console.log(`Applied SELECT (green) for chain A with ${elementsChainA.length} element groups`);
+      } catch (e) {
+        console.warn('Failed to apply chain A selection:', e);
+      }
+    }
+    
+    // Apply chain B selections using lociHighlights (PINK color)
+    if (elementsChainB.length > 0) {
+      const lociB = {
+        kind: 'element-loci',
+        structure: structureData,
+        elements: elementsChainB
+      };
+      
+      pendingHighlightLoci = lociB;
+      
+      try {
+        plugin.managers.interactivity.lociHighlights.highlight({ loci: lociB });
+        console.log(`Applied HIGHLIGHT (pink) for chain B with ${elementsChainB.length} element groups`);
+      } catch (e) {
+        console.warn('Failed to apply chain B highlight:', e);
+      }
+    } else {
+      pendingHighlightLoci = null;
+    }
+  } catch (e) {
+    console.error('applyMolstarSelection failed:', e);
+  }
+}
+
+/* Re-apply the chain B highlight (called when hover would normally clear it) */
+function reapplyChainBHighlight() {
+  if (pendingHighlightLoci && viewerLocked) {
+    try {
+      plugin.managers.interactivity.lociHighlights.highlight({ loci: pendingHighlightLoci });
+    } catch(e) {}
+  }
+}
+
+/* Setup hover interception to maintain highlights when locked */
+let hoverInterceptionSetup = false;
+let hoverReapplyInterval = null;
+
+function setupHoverInterception() {
+  if (hoverInterceptionSetup) {
+    console.log('Hover interception already setup, skipping');
+    return;
+  }
+
+  if (!plugin?.canvas3d?.interaction?.hover) {
+    console.warn('Cannot setup hover interception - interaction.hover not available');
+    return;
+  }
+
+  try {
+    // Subscribe to hover events
+    plugin.canvas3d.interaction.hover.subscribe((e) => {
+      if (viewerLocked && pendingHighlightLoci) {
+        // Immediately reapply highlight
+        reapplyChainBHighlight();
+      }
+    });
+
+    // Also set up continuous reapplication when locked
+    // This ensures highlights persist even during continuous mouse movement
+    if (!hoverReapplyInterval) {
+      hoverReapplyInterval = setInterval(() => {
+        if (viewerLocked && pendingHighlightLoci) {
+          reapplyChainBHighlight();
+        }
+      }, 50); // Reapply every 50ms when locked
+    }
+
+    hoverInterceptionSetup = true;
+    console.log('Hover interception setup complete with continuous reapplication');
+  } catch(e) {
+    console.warn('Failed to setup hover interception:', e);
+  }
+}
+
+async function initializeHighlightColors() {
+  try {
+    if (plugin?.canvas3d?.setProps) {
+      await plugin.canvas3d.setProps({
+        marking: {
+          selectColor: { r: 0.26, g: 0.63, b: 0.28 },
+          highlightColor: { r: 0.91, g: 0.12, b: 0.39 }
+        }
+      });
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+window.toggleViewerLock = toggleViewerLock;
+window.setViewerLocked = setViewerLocked;
+
+/* =============================================================================
+   PDBe VIEWER - v6 with simplified chain selection
+   ============================================================================= */
+
+let pdbeViewer = null;
+let pdbePlugin = null;
+let pdbeStructureReady = false;
+let currentPdbeEntry = null;
+let currentPdbeIndex = -1;
+
+async function initPdbeMolstar() {
+  if (pdbeViewer) return;
+  const container = document.getElementById('pdbeViewer');
+  if (!container) {
+    console.error('PDBe viewer container not found');
+    return;
+  }
+  
+  try {
+    const v = await molstar.Viewer.create('pdbeViewer', {
+      layoutIsExpanded: false,
+      layoutShowControls: false,  // Hide Structure Tools panel by default
+      layoutShowSequence: false,
+      layoutShowLog: false,
+      layoutShowLeftPanel: false,
+      viewportShowExpand: true,   // Allow user to expand if needed
+      volumeStreamingServer: ''
+    });
+    pdbeViewer = v;
+    pdbePlugin = v.plugin;
+    
+    try {
+      await pdbePlugin.canvas3d.setProps({
+        marking: {
+          selectColor: { r: 0.26, g: 0.63, b: 0.28 },
+          highlightColor: { r: 0.91, g: 0.12, b: 0.39 }
+        }
+      });
+    } catch(e) {
+      console.warn('Could not set PDBe highlight colors:', e);
+    }
+    
+    console.log('PDBe Molstar viewer initialized');
+  } catch(e) {
+    console.error('Failed to initialize PDBe viewer:', e);
+  }
+}
+
+async function applyGreyColoring() {
+  if (!pdbePlugin || !pdbeStructureReady) return;
+  
+  try {
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || structures.length === 0) return;
+    
+    for (const struct of structures) {
+      const components = struct.components || [];
+      for (const comp of components) {
+        if (comp.representations) {
+          for (const repr of comp.representations) {
+            try {
+              const update = pdbePlugin.state.data.build().to(repr.cell)
+                .update(old => {
+                  return {
+                    ...old,
+                    colorTheme: {
+                      name: 'uniform',
+                      params: { value: 0xaaaaaa }
+                    }
+                  };
+                });
+              await update.commit();
+            } catch(e) {}
+          }
+        }
+      }
+    }
+    console.log('Applied grey coloring to structure');
+  } catch(e) {
+    console.warn('Could not apply grey coloring:', e);
+  }
+}
+
+async function loadPdbeStructureFromBase64(b64, format = 'pdb') {
+  await initPdbeMolstar();
+  if (!pdbeViewer || !pdbePlugin) {
+    console.error('PDBe viewer not available');
+    return false;
+  }
+
+  try { await pdbePlugin.clear(); } catch (e) {}
+
+  if (!b64 || b64.length < 10) {
+    console.warn('No valid base64 data provided');
+    pdbeStructureReady = false;
+    return false;
+  }
+
+  try {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const mimeType = format === 'mmcif' || format === 'cif' ? 'chemical/x-mmcif' : 'chemical/x-pdb';
+    const blob = new Blob([bytes], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const molstarFormat = (format === 'mmcif' || format === 'cif') ? 'mmcif' : 'pdb';
+    
+    await pdbeViewer.loadStructureFromUrl(url, molstarFormat);
+    pdbeStructureReady = true;
+    
+    URL.revokeObjectURL(url);
+    
+    try { 
+      await pdbeViewer.resetCamera(); 
+    } catch(e) { 
+      pdbePlugin.canvas3d?.requestCameraReset(); 
+    }
+    
+    setTimeout(() => applyGreyColoring(), 500);
+    
+    console.log('PDBe structure loaded successfully');
+    return true;
+  } catch (e) {
+    console.error('Failed to load PDBe structure:', e);
+    pdbeStructureReady = false;
+    return false;
+  }
+}
+
+async function fetchAndLoadPdbeStructure(pdbId) {
+  await initPdbeMolstar();
+  if (!pdbeViewer || !pdbePlugin || !pdbId) return false;
+
+  try { await pdbePlugin.clear(); } catch(e) {}
+
+  const pid = pdbId.toLowerCase();
+  
+  const sources = [
+    { url: `https://files.rcsb.org/download/${pid}.pdb`, format: 'pdb' },
+    { url: `https://www.ebi.ac.uk/pdbe/entry-files/download/pdb${pid}.ent`, format: 'pdb' },
+    { url: `https://files.rcsb.org/download/${pid}.cif`, format: 'mmcif' },
+  ];
+
+  for (const src of sources) {
+    try {
+      console.log(`Trying to fetch from: ${src.url}`);
+      await pdbeViewer.loadStructureFromUrl(src.url, src.format);
+      pdbeStructureReady = true;
+      console.log(`Successfully loaded ${pdbId} from ${src.url}`);
+      
+      try { await pdbeViewer.resetCamera(); } catch(e) {}
+      setTimeout(() => applyGreyColoring(), 500);
+      
+      return true;
+    } catch(e) {
+      console.warn(`Failed to load from ${src.url}:`, e.message);
+    }
+  }
+  
+  console.error(`Could not load structure ${pdbId} from any source`);
+  pdbeStructureReady = false;
+  return false;
+}
+
+function getTargetChainIds(entry) {
+  if (!entry) return new Set();
+  
+  const chains = entry.chains || entry.chain_id || entry.chainId || '';
+  const targetChains = new Set();
+  
+  if (Array.isArray(chains)) {
+    chains.forEach(c => {
+      if (c && typeof c === 'string') {
+        targetChains.add(c.trim());
+      }
+    });
+  } else if (typeof chains === 'string') {
+    chains.split(/[,\s]+/).forEach(c => {
+      const trimmed = c.trim();
+      if (trimmed) targetChains.add(trimmed);
+    });
+  }
+  
+  console.log('Target chain IDs from PDBe entry:', Array.from(targetChains));
+  return targetChains;
+}
+
+/**
+ * Highlight chains by auth_asym_id - simplified version that trusts PDBe data
+ * Iterates all units and checks each one's chain assignment
+ */
+async function highlightProteinChains(entry) {
+  if (!pdbePlugin || !pdbeStructureReady || !entry) {
+    console.warn('PDBe viewer not ready for highlighting');
+    return;
+  }
+
+  const targetChains = getTargetChainIds(entry);
+  if (targetChains.size === 0) {
+    console.warn('No target chains specified');
+    updatePdbeLegend('No chains specified for highlighting.');
+    return;
+  }
+
+  try {
+    try {
+      pdbePlugin.managers.interactivity.lociSelects.deselectAll();
+      pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
+    } catch(e) {}
+
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || structures.length === 0) {
+      console.warn('No structures loaded');
+      return;
+    }
+
+    const struct = structures[0];
+    const structureData = struct.cell?.obj?.data;
+    if (!structureData) {
+      console.warn('No structure data');
+      return;
+    }
+
+    // Log structure info for debugging
+    console.log('Structure units:', structureData.units?.length);
+    
+    const units = structureData.units || [];
+    const matchingElements = [];
+    const matchedChains = new Set();
+    const allChainsFound = new Set();
+
+    for (let unitIdx = 0; unitIdx < units.length; unitIdx++) {
+      const unit = units[unitIdx];
+      try {
+        const model = unit.model;
+        if (!model) continue;
+
+        const chains = model.atomicHierarchy?.chains;
+        const chainAtomSegments = model.atomicHierarchy?.chainAtomSegments;
+        
+        if (!chains || !chainAtomSegments) continue;
+
+        const unitElements = unit.elements;
+        if (!unitElements || !unitElements.length) continue;
+
+        // Get auth_asym_id for this unit by checking its first atom
+        const firstAtomIdx = unitElements[0];
+        const chainOffsets = chainAtomSegments.offsets;
+        
+        let unitAuthChainId = null;
+        
+        for (let ci = 0; ci < chainOffsets.length - 1; ci++) {
+          if (firstAtomIdx >= chainOffsets[ci] && firstAtomIdx < chainOffsets[ci + 1]) {
+            unitAuthChainId = chains.auth_asym_id?.value(ci);
+            allChainsFound.add(unitAuthChainId);
+            break;
+          }
+        }
+        
+        if (!unitAuthChainId) continue;
+        
+        // Check if this unit's chain matches our targets
+        if (targetChains.has(unitAuthChainId)) {
+          console.log(`Unit ${unitIdx}: chain ${unitAuthChainId} matches target`);
+          matchedChains.add(unitAuthChainId);
+          
+          // Add all atoms in this unit
+          const indices = [];
+          for (let i = 0; i < unitElements.length; i++) {
+            indices.push(i);
+          }
+          matchingElements.push({ unit, indices });
+        }
+      } catch(e) {
+        console.warn(`Error analyzing unit ${unitIdx}:`, e);
+      }
+    }
+
+    console.log('All chains found in structure:', Array.from(allChainsFound));
+    console.log('Matched chains:', Array.from(matchedChains));
+
+    if (matchingElements.length > 0) {
+      const loci = {
+        kind: 'element-loci',
+        structure: structureData,
+        elements: matchingElements
+      };
+
+      pdbePlugin.managers.interactivity.lociSelects.select({ loci });
+      
+      console.log(`Highlighted ${matchingElements.length} units for chains: ${Array.from(matchedChains).join(', ')}`);
+      updatePdbeLegend(`<strong>Highlighted:</strong> Chain(s) <strong>${Array.from(matchedChains).join(', ')}</strong> shown in <span style="color:#43a047;font-weight:bold">green</span>.`);
+    } else {
+      console.warn('No matching chains found. Available chains:', Array.from(allChainsFound));
+      updatePdbeLegend(`<strong>Note:</strong> Could not find chains ${Array.from(targetChains).join(', ')}. Available: ${Array.from(allChainsFound).join(', ')}`);
+    }
+
+  } catch(e) {
+    console.error('Error highlighting protein chains:', e);
+  }
+}
+
+/**
+ * Highlight ligands - finds non-polymer residues (HETATM records)
+ * Uses Mol* selection queries for more reliable detection
+ */
+async function highlightLigands() {
+  if (!pdbePlugin || !pdbeStructureReady) {
+    console.warn('PDBe viewer not ready for highlighting');
+    return;
+  }
+
+  try {
+    // Clear existing selections/highlights
+    try {
+      pdbePlugin.managers.interactivity.lociSelects.deselectAll();
+      pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
+    } catch(e) {}
+
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || structures.length === 0) {
+      console.warn('No structures loaded');
+      return;
+    }
+
+    const struct = structures[0];
+    const structureData = struct.cell?.obj?.data;
+    if (!structureData) {
+      console.warn('No structure data');
+      return;
+    }
+
+    // Standard amino acids and common non-ligands to exclude
+    const excludeResidues = new Set([
+      'ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
+      'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
+      'MSE','SEC','PYL',  // Modified amino acids
+      'A','C','G','U','T','DA','DC','DG','DT','DU',  // Nucleotides
+      'HOH','WAT','H2O','DOD','SOL'  // Water
+    ]);
+
+    const units = structureData.units || [];
+    const matchingElements = [];
+    const ligandNames = new Set();
+
+    for (let unitIdx = 0; unitIdx < units.length; unitIdx++) {
+      const unit = units[unitIdx];
+      try {
+        const model = unit.model;
+        if (!model) continue;
+
+        // Access residue data
+        const residueNames = model.atomicHierarchy?.residues?.label_comp_id;
+        const atomSegments = model.atomicHierarchy?.residueAtomSegments;
+        
+        if (!residueNames || !atomSegments) continue;
+
+        const unitElements = unit.elements;
+        if (!unitElements || unitElements.length === 0) continue;
+
+        const ligandAtomIndices = [];
+        const resOffsets = atomSegments.offsets;
+
+        // Check each atom in the unit
+        for (let i = 0; i < unitElements.length; i++) {
+          const atomIdx = unitElements[i];
+          
+          // Find which residue this atom belongs to
+          for (let ri = 0; ri < resOffsets.length - 1; ri++) {
+            if (atomIdx >= resOffsets[ri] && atomIdx < resOffsets[ri + 1]) {
+              const resName = residueNames.value(ri);
+              const resNameUpper = resName ? resName.toUpperCase() : '';
+              
+              // Check if this is a ligand (not standard AA, nucleotide, or water)
+              if (resNameUpper && !excludeResidues.has(resNameUpper)) {
+                ligandAtomIndices.push(i);
+                ligandNames.add(resNameUpper);
+              }
+              break;
+            }
+          }
+        }
+
+        if (ligandAtomIndices.length > 0) {
+          matchingElements.push({ unit, indices: ligandAtomIndices });
+        }
+
+      } catch(e) {
+        console.warn(`Error analyzing unit ${unitIdx} for ligands:`, e);
+      }
+    }
+
+    console.log('Ligand detection result:', {
+      unitsChecked: units.length,
+      matchingElements: matchingElements.length,
+      ligandNames: Array.from(ligandNames)
+    });
+
+    if (matchingElements.length > 0 && ligandNames.size > 0) {
+      const loci = {
+        kind: 'element-loci',
+        structure: structureData,
+        elements: matchingElements
+      };
+
+      // Use select instead of highlight for more visible coloring
+      pdbePlugin.managers.interactivity.lociSelects.select({ loci });
+      
+      const ligandList = Array.from(ligandNames).join(', ');
+      console.log(`Highlighted ligands: ${ligandList}`);
+      updatePdbeLegend(`<strong>Highlighted:</strong> Ligands (<strong>${ligandList}</strong>) shown in <span style="color:#43a047;font-weight:bold">green</span>.`);
+    } else {
+      console.warn('No ligands found in structure');
+      updatePdbeLegend(`<strong>Note:</strong> No ligands found in this structure.`);
+    }
+
+  } catch(e) {
+    console.error('Error highlighting ligands:', e);
+  }
+}
+
+async function clearPdbeHighlights() {
+  if (!pdbePlugin) return;
+  
+  try {
+    pdbePlugin.managers.interactivity.lociSelects.deselectAll();
+    pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
+    
+    updatePdbeLegend(`Complex shown in <strong>grey</strong>. Click buttons to highlight protein of interest (<span style="color:#43a047">green</span>) or ligands (<span style="color:#e91e63">pink</span>).`);
+  } catch(e) {
+    console.warn('Error clearing highlights:', e);
+  }
+}
+
+function updatePdbeLegend(html) {
+  const legend = document.getElementById('pdbeLegend');
+  if (legend) legend.innerHTML = html;
+}
+
+async function syncCameraOrientationFromMainViewer() {
+  if (!plugin || !pdbePlugin || !structureReady || !pdbeStructureReady) {
+    console.warn('Both viewers must be ready to sync camera');
+    return;
+  }
+  
+  try {
+    const mainCamera = plugin.canvas3d?.camera;
+    const pdbeCamera = pdbePlugin.canvas3d?.camera;
+    
+    if (!mainCamera || !pdbeCamera) {
+      console.warn('Camera not available');
+      return;
+    }
+    
+    const mainSnapshot = mainCamera.getSnapshot();
+    const pdbeSnapshot = pdbeCamera.getSnapshot();
+    
+    // Calculate main camera's view direction (normalized)
+    const mainDir = [
+      mainSnapshot.target[0] - mainSnapshot.position[0],
+      mainSnapshot.target[1] - mainSnapshot.position[1],
+      mainSnapshot.target[2] - mainSnapshot.position[2]
+    ];
+    const mainDist = Math.sqrt(mainDir[0]**2 + mainDir[1]**2 + mainDir[2]**2);
+    if (mainDist > 0) {
+      mainDir[0] /= mainDist;
+      mainDir[1] /= mainDist;
+      mainDir[2] /= mainDist;
+    }
+    
+    // Calculate current PDBe camera distance from target
+    const pdbeDir = [
+      pdbeSnapshot.target[0] - pdbeSnapshot.position[0],
+      pdbeSnapshot.target[1] - pdbeSnapshot.position[1],
+      pdbeSnapshot.target[2] - pdbeSnapshot.position[2]
+    ];
+    const pdbeDist = Math.sqrt(pdbeDir[0]**2 + pdbeDir[1]**2 + pdbeDir[2]**2);
+    
+    // Apply main camera's direction to PDBe camera, keeping PDBe's distance and target
+    const newState = {
+      ...pdbeSnapshot,
+      up: mainSnapshot.up,
+      position: [
+        pdbeSnapshot.target[0] - mainDir[0] * pdbeDist,
+        pdbeSnapshot.target[1] - mainDir[1] * pdbeDist,
+        pdbeSnapshot.target[2] - mainDir[2] * pdbeDist
+      ]
+    };
+    
+    await pdbeCamera.setState(newState, 300);
+    
+    console.log('Camera orientation synced from main viewer');
+  } catch(e) {
+    console.warn('Could not sync camera orientation:', e);
+  }
+}
+
+function updatePdbeInfoBox(entry) {
+  if (!entry) {
+    document.getElementById('pdbePdbId').textContent = '-';
+    document.getElementById('pdbeSourceAcc').textContent = '-';
+    document.getElementById('pdbeChains').textContent = '-';
+    document.getElementById('pdbeCoverage').textContent = '-';
+    document.getElementById('pdbeResolution').textContent = '-';
+    document.getElementById('pdbeLigands').textContent = '-';
+    return;
+  }
+
+  const pdbId = (entry.pdb_id || entry.pdbId || '').toUpperCase();
+  const sourceAcc = entry.source_acc || entry.sourceAcc || entry.uniprot_acc || '';
+  const chains = entry.chains || entry.chain_id || entry.chainId || '';
+  const coverage = entry.coverage;
+  const resolution = entry.resolution;
+  const ligandSummary = entry.ligandSummary || entry.ligand_summary || '';
+
+  document.getElementById('pdbePdbId').textContent = pdbId || '-';
+  document.getElementById('pdbeSourceAcc').textContent = sourceAcc || '-';
+  document.getElementById('pdbeChains').textContent = 
+    Array.isArray(chains) ? chains.join(', ') : (chains || '-');
+  document.getElementById('pdbeCoverage').textContent = 
+    (typeof coverage === 'number') ? (coverage * 100).toFixed(1) + '%' : '-';
+  document.getElementById('pdbeResolution').textContent = 
+    (typeof resolution === 'number') ? resolution.toFixed(2) + ' Å' : '-';
+  document.getElementById('pdbeLigands').textContent = ligandSummary || 'None reported';
+}
+
+async function loadPdbeByIndex(idx) {
+  console.log('loadPdbeByIndex called with:', idx, 'PDBe_COMPLEXES length:', PDBe_COMPLEXES.length);
+  if (typeof idx === 'string') idx = parseInt(idx, 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= PDBe_COMPLEXES.length) {
+    console.warn('Invalid PDBe index:', idx);
+    return;
+  }
+
+  const entry = PDBe_COMPLEXES[idx];
+  console.log('Loading PDBe entry:', entry);
+  if (!entry) return;
+
+  currentPdbeEntry = entry;
+  currentPdbeIndex = idx;
+  
+  updatePdbeInfoBox(entry);
+  updatePdbeLegend(`Loading structure...`);
+
+  const b64 = entry.coord_b64 || entry.coordB64 || entry.pdb_b64 || entry.pdbB64 || '';
+  const format = entry.coord_format || entry.coordFormat || 'pdb';
+  const pdbId = (entry.pdb_id || entry.pdbId || '').toLowerCase();
+
+  let loaded = false;
+  
+  if (b64 && b64.length > 100) {
+    console.log(`Loading PDBe structure ${pdbId} from base64 (format: ${format})`);
+    loaded = await loadPdbeStructureFromBase64(b64, format);
+  }
+  
+  if (!loaded && pdbId) {
+    console.log(`Fetching PDBe structure ${pdbId} from remote`);
+    loaded = await fetchAndLoadPdbeStructure(pdbId);
+  }
+
+  if (loaded) {
+    updatePdbeLegend(`Complex shown in <strong>grey</strong>. Click buttons to highlight protein of interest (<span style="color:#43a047">green</span>) or ligands (<span style="color:#e91e63">pink</span>).`);
+  } else {
+    console.error('Failed to load structure for entry:', entry);
+    updatePdbeLegend(`<strong>Error:</strong> Failed to load structure.`);
+  }
+}
+
+function setupPdbeControls() {
+  const structSelect = document.getElementById('pdbeStructSelect');
+  const highlightProteinBtn = document.getElementById('pdbeHighlightProtein');
+  const highlightLigandsBtn = document.getElementById('pdbeHighlightLigands');
+  const clearBtn = document.getElementById('pdbeClearHighlight');
+  const syncBtn = document.getElementById('pdbeSyncCamera');
+  const centerBtn = document.getElementById('pdbeCenter');
+
+  if (!structSelect) return;
+
+  structSelect.innerHTML = '';
+
+  if (!PDBe_COMPLEXES || PDBe_COMPLEXES.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No experimental structures available';
+    structSelect.appendChild(opt);
+    structSelect.disabled = true;
+    if (highlightProteinBtn) highlightProteinBtn.disabled = true;
+    if (highlightLigandsBtn) highlightLigandsBtn.disabled = true;
+    updatePdbeInfoBox(null);
+    return;
+  }
+
+  structSelect.disabled = false;
+  if (highlightProteinBtn) highlightProteinBtn.disabled = false;
+  if (highlightLigandsBtn) highlightLigandsBtn.disabled = false;
+
+  PDBe_COMPLEXES.forEach((entry, idx) => {
+    const pdbId = (entry.pdb_id || entry.pdbId || '').toUpperCase();
+    const sourceAcc = entry.source_acc || entry.sourceAcc || '';
+    const chains = entry.chains || entry.chain_id || '';
+    const resolution = entry.resolution;
+    const ligandSummary = entry.ligandSummary || entry.ligand_summary || '';
+
+    let label = pdbId;
+    if (sourceAcc) label += ` [${sourceAcc}]`;
+    if (chains) {
+      const chainStr = Array.isArray(chains) ? chains.join(',') : chains;
+      label += ` ch:${chainStr}`;
+    }
+    if (typeof resolution === 'number') {
+      label += ` ${resolution.toFixed(1)}Å`;
+    }
+    if (ligandSummary) {
+      const shortLig = ligandSummary.length > 15 ? ligandSummary.slice(0, 15) + '…' : ligandSummary;
+      label += ` (${shortLig})`;
+    }
+
+    const opt = document.createElement('option');
+    opt.value = String(idx);
+    opt.textContent = label;
+    structSelect.appendChild(opt);
+  });
+
+  structSelect.addEventListener('change', async (e) => {
+    await loadPdbeByIndex(e.target.value);
+  }, { passive: true });
+
+  if (highlightProteinBtn) {
+    highlightProteinBtn.addEventListener('click', async () => {
+      if (currentPdbeEntry) {
+        await highlightProteinChains(currentPdbeEntry);
+      }
+    }, { passive: true });
+  }
+
+  if (highlightLigandsBtn) {
+    highlightLigandsBtn.addEventListener('click', async () => {
+      await highlightLigands();
+    }, { passive: true });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      await clearPdbeHighlights();
+    }, { passive: true });
+  }
+
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      await syncCameraOrientationFromMainViewer();
+    }, { passive: true });
+  }
+
+  if (centerBtn) {
+    centerBtn.addEventListener('click', () => {
+      if (pdbeViewer && pdbeStructureReady) {
+        try {
+          pdbeViewer.resetCamera();
+        } catch(e) {
+          pdbePlugin?.canvas3d?.requestCameraReset();
+        }
+      }
+    }, { passive: true });
+  }
+
+  if (structSelect.options.length > 0) {
+    structSelect.selectedIndex = 0;
+    // Load first structure after a small delay to ensure viewer is ready
+    setTimeout(async () => {
+      await loadPdbeByIndex(0);
+    }, 500);
+  }
+}
+
+async function renderSelections() {
+  renderTrackSelections();
+  renderTableSelections();
+  await applyMolstarSelection();
+}
+
+function toggleFeature(dom, chain) {
+  if (!dom || !dom.uid) return;
+  const key = selectionKey(chain, dom.uid);
+  if (selection.has(key)) {
+    selection.delete(key);
+  } else {
+    const color = (dom.type === 'Cavity') ? '#ff7d45' : '#ffdb13';
+    selection.set(key, {
+      id: dom.uid,
+      chain,
+      start: parseInt(dom.start, 10),
+      end: parseInt(dom.end, 10),
+      color,
+      name: dom.label || dom.name || dom.type || 'region'
+    });
+  }
+  renderSelections();
+}
+
+function applyAmMode(mode){
+  const modes = AM_MODES;
+  if (!modes.includes(mode)) mode = modes[0] || 'raw';
+  amMode = mode;
+
+  const alnLen = Math.max(1, (DATA.qaln || '').length);
+
+  if (amTrackA) {
+    const rectsA = (DATA.amAlignedARectsByMode && DATA.amAlignedARectsByMode[mode]) || [];
+    amTrackA.data = sanitizeRects(rectsA, alnLen);
+  }
+  if (amTrackB) {
+    const rectsB = (DATA.amAlignedBRectsByMode && DATA.amAlignedBRectsByMode[mode]) || [];
+    amTrackB.data = sanitizeRects(rectsB, alnLen);
+  }
+
+  if (damTrack) {
+    const dr = (DATA.damAlignedRectsByMode && DATA.damAlignedRectsByMode[mode]) || [];
+    damTrack.data = sanitizeRects(dr, alnLen);
+  }
+
+  const matAByMode = DATA.amMatrixA_rectsByMode || {};
+  const matBByMode = DATA.amMatrixB_rectsByMode || {};
+  const matAForMode = matAByMode[mode] || {};
+  const matBForMode = matBByMode[mode] || {};
+
+  amMatrixTracksA.forEach(({track, aa}) => {
+    const rects = matAForMode[aa] || [];
+    track.data = sanitizeRects(rects, alnLen);
+  });
+  amMatrixTracksB.forEach(({track, aa}) => {
+    const rects = matBForMode[aa] || [];
+    track.data = sanitizeRects(rects, alnLen);
+  });
+}
+
+function addRow(tbl, label, el, h){
+  const tr=document.createElement('tr');
+  const td1=document.createElement('td'); td1.className='rowlbl'; td1.textContent=label;
+  const td2=document.createElement('td'); td2.append(el);
+  if (h) el.setAttribute('height', String(h));
+  tr.append(td1,td2); tbl.append(tr);
+  return { row: tr, labelCell: td1, trackCell: td2 };
+}
+
+function buildSeq(){
+  const mgr = document.getElementById('mgr'); mgr.innerHTML='';
+  const tbl = document.createElement('table'); tbl.className='rtab'; mgr.append(tbl);
+
+  const alnLen = Math.max(1, (DATA.qaln||'').length);
+
+  amMatrixTracksA = [];
+  amMatrixTracksB = [];
+
+  const nav = document.createElement('nightingale-navigation');
+  addRow(tbl, '', nav, 40);
+
+  const seqA = document.createElement('nightingale-sequence');
+  addRow(tbl, DATA.g1+' ('+DATA.a1+') aligned', seqA, 28);
+
+  const domA = document.createElement('nightingale-track');
+  addRow(tbl, 'Domains '+DATA.g1, domA, 16); trackRefs['domA'] = domA;
+
+  const disorderA = document.createElement('nightingale-track');
+  addRow(tbl, 'Disordered '+DATA.g1, disorderA, 16); trackRefs['disorderA'] = disorderA;
+
+  const tedA = document.createElement('nightingale-track');
+  addRow(tbl, 'TED '+DATA.g1, tedA, 16); trackRefs['tedA'] = tedA;
+
+  const cavA = document.createElement('nightingale-track');
+  addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
+
+  const amA = document.createElement('nightingale-track');
+  const amARow = addRow(tbl, 'AlphaMissense '+DATA.g1, amA, 18);
+  amARow.row.classList.add('am-main-row');
+  amARow.labelCell.classList.add('am-main-label');
+  amTrackA = amA;
+
+  const amMatrixRowsA = [];
+  const toggleA = document.createElement('button');
+  toggleA.textContent = '▼';
+  toggleA.className = 'am-matrix-toggle';
+  amARow.labelCell.appendChild(toggleA);
+
+  AA_ORDER.forEach(aa => {
+    const trk = document.createElement('nightingale-track');
+    const rowObj = addRow(tbl, aa, trk, 8);
+    rowObj.row.style.display = 'none';
+    amMatrixRowsA.push(rowObj.row);
+    amMatrixTracksA.push({ track: trk, aa });
+  });
+
+  const parentA = amARow.row.parentElement;
+  amMatrixRowsA.forEach(r => {
+    parentA.insertBefore(r, amARow.row);
+  });
+
+  toggleA.addEventListener('click', () => {
+    const hidden = amMatrixRowsA.length && amMatrixRowsA[0].style.display === 'none';
+    amMatrixRowsA.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    toggleA.textContent = hidden ? '▲' : '▼';
+  }, { passive:true });
+
+  const dam = document.createElement('nightingale-track');
+  const damRow = addRow(tbl, 'ΔAM', dam, 18);
+  damRow.row.classList.add('am-main-row');
+  damRow.labelCell.classList.add('am-main-label');
+  damTrack = dam;
+
+  const amB = document.createElement('nightingale-track');
+  const amBRow = addRow(tbl, 'AlphaMissense '+DATA.g2, amB, 18);
+  amBRow.row.classList.add('am-main-row');
+  amBRow.labelCell.classList.add('am-main-label');
+  amTrackB = amB;
+
+  const amMatrixRowsB = [];
+  const toggleB = document.createElement('button');
+  toggleB.textContent = '▼';
+  toggleB.className = 'am-matrix-toggle';
+  amBRow.labelCell.appendChild(toggleB);
+
+  AA_ORDER.forEach(aa => {
+    const trk = document.createElement('nightingale-track');
+    const rowObj = addRow(tbl, aa, trk, 8);
+    rowObj.row.style.display = 'none';
+    amMatrixRowsB.push(rowObj.row);
+    amMatrixTracksB.push({ track: trk, aa });
+  });
+
+  toggleB.addEventListener('click', () => {
+    const hidden = amMatrixRowsB.length && amMatrixRowsB[0].style.display === 'none';
+    amMatrixRowsB.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    toggleB.textContent = hidden ? '▲' : '▼';
+  }, { passive:true });
+
+  const seqB = document.createElement('nightingale-sequence');
+  addRow(tbl, DATA.g2+' ('+DATA.a2+') aligned', seqB, 28);
+
+  const domB = document.createElement('nightingale-track');
+  addRow(tbl, 'Domains '+DATA.g2, domB, 16); trackRefs['domB'] = domB;
+
+  const disorderB = document.createElement('nightingale-track');
+  addRow(tbl, 'Disordered '+DATA.g2, disorderB, 16); trackRefs['disorderB'] = disorderB;
+
+  const tedB = document.createElement('nightingale-track');
+  addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
+
+  const cavB = document.createElement('nightingale-track');
+  addRow(tbl, 'Cavities '+DATA.g2, cavB, 16); trackRefs['cavB'] = cavB;
+
+  requestAnimationFrame(()=>{
+    const allTracks = [
+      nav, seqA,
+      domA, disorderA, tedA, cavA,
+      amA, dam, amB,
+      seqB,
+      domB, disorderB, tedB, cavB
+    ];
+    amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
+    amMatrixTracksB.forEach(obj => allTracks.push(obj.track));
+
+    allTracks.forEach(el => {
+      if (!el) return;
+      el.length = alnLen;
+      el.displaystart = 1;
+      el.displayend = alnLen;
+    });
+
+    seqA.data = DATA.qaln || '';
+    seqB.data = DATA.taln || '';
+
+    amA.setAttribute('shape','rectangle');
+    amB.setAttribute('shape','rectangle');
+    dam.setAttribute('shape','rectangle');
+
+    [domA, disorderA, tedA, cavA, domB, disorderB, tedB, cavB].forEach(track => {
+      track.setAttribute('shape','roundRectangle');
+      track.setAttribute('show-label','');
+    });
+
+    domA.data       = sanitizeRects(DATA.domA_alnRects||[], alnLen);          domA._originalData = [...domA.data];
+    disorderA.data  = sanitizeRects(DATA.disorderA_alnRects||[], alnLen);     disorderA._originalData = [...disorderA.data];
+    tedA.data       = sanitizeRects(DATA.tedA_alnRects||[], alnLen);          tedA._originalData = [...tedA.data];
+    cavA.data       = sanitizeRects(DATA.cavA_alnRects||[], alnLen);          cavA._originalData = [...cavA.data];
+
+    domB.data       = sanitizeRects(DATA.domB_alnRects||[], alnLen);          domB._originalData = [...domB.data];
+    disorderB.data  = sanitizeRects(DATA.disorderB_alnRects||[], alnLen);     disorderB._originalData = [...disorderB.data];
+    tedB.data       = sanitizeRects(DATA.tedB_alnRects||[], alnLen);          tedB._originalData = [...tedB.data];
+    cavB.data       = sanitizeRects(DATA.cavB_alnRects||[], alnLen);          cavB._originalData = [...cavB.data];
+
+    applyAmMode(amMode);
+    applyCavityFilter(); // Apply default druggability filter (medium+)
+  });
+
+  function attachDomainClick(track, chain) {
+    track.addEventListener('click', (ev)=>{
+      const feat = ev?.detail?.feature;
+      if (!feat || !feat.id) return;
+      const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
+      const dom = domMap[feat.id];
+      if (!dom) return;
+      toggleFeature(dom, chain);
+    }, {passive:true});
+  }
+
+  attachDomainClick(domA, chainIdA);
+  attachDomainClick(disorderA, chainIdA);
+  attachDomainClick(tedA, chainIdA);
+  attachDomainClick(cavA, chainIdA);
+  attachDomainClick(domB, chainIdB);
+  attachDomainClick(disorderB, chainIdB);
+  attachDomainClick(tedB, chainIdB);
+  attachDomainClick(cavB, chainIdB);
+}
+
+function setupPdbeCollapse(){
+  const btn = document.getElementById('pdbeCollapseBtn');
+  const body = document.getElementById('pdbeCardBody');
+  const card = document.getElementById('pdbeCard');
+  if (!btn || !body) return;
+  btn.addEventListener('click', () => {
+    const collapsed = body.classList.toggle('collapsed');
+    btn.setAttribute('aria-expanded', (!collapsed).toString());
+    btn.textContent = collapsed ? 'Expand section' : 'Collapse section';
+    if (card) card.classList.toggle('is-collapsed', collapsed);
+  }, {passive:true});
+}
+
+function shouldShowDomain(d) {
+  // Apply druggability filter only to cavities
+  if (d.type !== 'Cavity' && d.raw_type !== 'Cavity') return true;
+
+  const dg = (d.druggability || '').toLowerCase();
+
+  if (druggabilityFilter === 'all') return true;
+  if (druggabilityFilter === 'high') return dg === 'high';
+  if (druggabilityFilter === 'medium+') return dg === 'high' || dg === 'medium';
+
+  return true;
+}
+
+function shouldShowCavityRect(rect) {
+  // Filter cavity rectangles based on druggability
+  if (!rect.druggability) return true; // No druggability info, show it
+
+  const dg = (rect.druggability || '').toLowerCase();
+
+  if (druggabilityFilter === 'all') return true;
+  if (druggabilityFilter === 'high') return dg === 'high';
+  if (druggabilityFilter === 'medium+') return dg === 'high' || dg === 'medium';
+
+  return true;
+}
+
+function applyCavityFilter() {
+  // Apply druggability filter to Nightingale cavity tracks
+  const cavA = trackRefs['cavA'];
+  const cavB = trackRefs['cavB'];
+
+  if (cavA && cavA._originalData) {
+    cavA.data = cavA._originalData.filter(shouldShowCavityRect);
+  }
+
+  if (cavB && cavB._originalData) {
+    cavB.data = cavB._originalData.filter(shouldShowCavityRect);
+  }
+
+  console.log('Applied cavity filter:', druggabilityFilter);
+}
+
+/**
+ * Compute simple global sequence alignment (Needleman-Wunsch)
+ * Used as fallback when pre-computed alignment is not available
+ */
+function computeSimpleAlignment(seq1, seq2) {
+  const GAP = -2;
+  const MATCH = 2;
+  const MISMATCH = -1;
+
+  const m = seq1.length;
+  const n = seq2.length;
+
+  // Initialize score matrix
+  const score = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) score[i][0] = i * GAP;
+  for (let j = 0; j <= n; j++) score[0][j] = j * GAP;
+
+  // Fill score matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const match = score[i-1][j-1] + (seq1[i-1] === seq2[j-1] ? MATCH : MISMATCH);
+      const del = score[i-1][j] + GAP;
+      const ins = score[i][j-1] + GAP;
+      score[i][j] = Math.max(match, del, ins);
+    }
+  }
+
+  // Traceback
+  let qaln = '', taln = '';
+  let i = m, j = n;
+  const aligned_cols = [];
+  let col = 0;
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && score[i][j] === score[i-1][j-1] + (seq1[i-1] === seq2[j-1] ? MATCH : MISMATCH)) {
+      qaln = seq1[i-1] + qaln;
+      taln = seq2[j-1] + taln;
+      aligned_cols.unshift([col, i-1, j-1]);
+      i--; j--;
+    } else if (i > 0 && score[i][j] === score[i-1][j] + GAP) {
+      qaln = seq1[i-1] + qaln;
+      taln = '-' + taln;
+      aligned_cols.unshift([col, i-1, null]);
+      i--;
+    } else {
+      qaln = '-' + qaln;
+      taln = seq2[j-1] + taln;
+      aligned_cols.unshift([col, null, j-1]);
+      j--;
+    }
+    col++;
+  }
+
+  // Reindex columns
+  aligned_cols.forEach((c, idx) => c[0] = idx);
+
+  // Calculate identity
+  let matches = 0;
+  for (let k = 0; k < qaln.length; k++) {
+    if (qaln[k] !== '-' && taln[k] !== '-' && qaln[k] === taln[k]) matches++;
+  }
+  const identity = matches / Math.min(m, n);
+
+  return { qaln, taln, aligned_cols, identity };
+}
+
+async function switchAlignmentMethod(method) {
+  if (!DATA || !DATA.PAIR) return;
+
+  const btn = document.getElementById('alignmentMethod');
+  if (btn) btn.disabled = true;
+
+  try {
+    if (method === 'sequence') {
+      console.log('Switching to sequence alignment...');
+
+      // Use pre-computed sequence alignment from report data, or compute client-side
+      let seqData = DATA.seqAlignment;
+      if (!seqData && DATA.seq1 && DATA.seq2) {
+        // Compute simple sequence alignment client-side
+        seqData = computeSimpleAlignment(DATA.seq1, DATA.seq2);
+      }
+      if (!seqData) {
+        throw new Error('Sequence alignment not available');
+      }
+      console.log(`Sequence alignment: ${seqData.aligned_cols.length} columns, identity=${(seqData.identity * 100).toFixed(1)}%`);
+
+      // Store original structural alignment
+      if (!window.STRUCTURAL_ALIGNMENT) {
+        window.STRUCTURAL_ALIGNMENT = {
+          qaln: DATA.qaln,
+          taln: DATA.taln,
+          qposByCol: DATA.qposByCol,
+          tposByCol: DATA.tposByCol,
+          aligned_cols: [], // would need to reconstruct if needed
+        };
+      }
+
+      // Update DATA with sequence alignment
+      DATA.qaln = seqData.qaln;
+      DATA.taln = seqData.taln;
+
+      // Build new position maps
+      const qposByCol = {};
+      const tposByCol = {};
+      for (const [col, qpos, tpos] of seqData.aligned_cols) {
+        if (qpos !== null) qposByCol[col] = qpos;
+        if (tpos !== null) tposByCol[col] = tpos;
+      }
+      DATA.qposByCol = qposByCol;
+      DATA.tposByCol = tposByCol;
+
+      // Reload all tracks with new alignment
+      await reloadTracksWithAlignment();
+
+      console.log('Switched to sequence alignment');
+
+    } else if (method === 'structural') {
+      console.log('Switching to structural alignment...');
+
+      if (window.STRUCTURAL_ALIGNMENT) {
+        // Restore structural alignment
+        DATA.qaln = window.STRUCTURAL_ALIGNMENT.qaln;
+        DATA.taln = window.STRUCTURAL_ALIGNMENT.taln;
+        DATA.qposByCol = window.STRUCTURAL_ALIGNMENT.qposByCol;
+        DATA.tposByCol = window.STRUCTURAL_ALIGNMENT.tposByCol;
+
+        // Reload all tracks
+        await reloadTracksWithAlignment();
+
+        console.log('Switched back to structural alignment');
+      } else {
+        // Already on structural, just reload
+        window.location.reload();
+      }
+    }
+
+  } catch (e) {
+    console.error('Failed to switch alignment:', e);
+    alert(`Failed to switch alignment: ${e.message}`);
+    if (btn) btn.value = method === 'sequence' ? 'structural' : 'sequence';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function reloadTracksWithAlignment() {
+  // Reload just the Nightingale section with new alignment
+  const seqwrap = document.getElementById('seqwrap');
+  if (!seqwrap) return;
+
+  // Show loading overlay on the section
+  const loadingDiv = document.createElement('div');
+  loadingDiv.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);z-index:10000;font-size:18px;color:#333;font-weight:600;';
+  loadingDiv.innerHTML = '<div>Recalculating tracks with new alignment...<div style="font-size:14px;margin-top:8px;font-weight:normal;color:#666;">This may take a moment</div></div>';
+  document.body.appendChild(loadingDiv);
+
+  try {
+    // Recalculate all alignment-based rectangles
+    await recalculateAlignmentTracks();
+
+    // Clear and rebuild Nightingale manager
+    seqwrap.innerHTML = '<nightingale-manager id="mgr" class="mgr"></nightingale-manager>';
+
+    // Small delay to let DOM update
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Rebuild the Nightingale tracks
+    buildSeq();
+
+    console.log('Tracks reloaded with new alignment');
+  } catch (e) {
+    console.error('Failed to reload tracks:', e);
+    throw e;
+  } finally {
+    if (loadingDiv.parentNode) {
+      loadingDiv.parentNode.removeChild(loadingDiv);
+    }
+  }
+}
+
+async function recalculateAlignmentTracks() {
+  // Recalculate all alignment-based tracks with new position mapping
+  const alnLen = DATA.qaln ? DATA.qaln.length : 0;
+
+  console.log(`Recalculating tracks for alignment length: ${alnLen}`);
+
+  // Build position-to-column maps from qaln/taln
+  let qpos = 0;
+  let tpos = 0;
+  const qposToCol = {};
+  const tposToCol = {};
+
+  for (let col = 0; col < alnLen; col++) {
+    const qaa = DATA.qaln[col];
+    const taa = DATA.taln[col];
+
+    if (qaa !== '-') {
+      qpos++;
+      qposToCol[qpos] = col + 1; // 1-indexed columns
+    }
+
+    if (taa !== '-') {
+      tpos++;
+      tposToCol[tpos] = col + 1;
+    }
+  }
+
+  console.log(`Position maps built: qpos=${qpos}, tpos=${tpos}`);
+
+  // Helper to remap domains/features to alignment columns
+  function remapFeaturesToAlignment(features, posToCol, defaultColor) {
+    const rects = [];
+
+    for (const feat of features) {
+      const start = feat.start || 0;
+      const end = feat.end || 0;
+
+      // Find all columns that overlap this feature
+      const cols = [];
+      for (let pos = start; pos <= end; pos++) {
+        if (posToCol[pos]) {
+          cols.push(posToCol[pos]);
+        }
+      }
+
+      if (cols.length > 0) {
+        // Create contiguous segments
+        cols.sort((a, b) => a - b);
+        let segStart = cols[0];
+        let prev = cols[0];
+
+        for (let i = 1; i <= cols.length; i++) {
+          const curr = i < cols.length ? cols[i] : null;
+
+          if (curr === null || curr !== prev + 1) {
+            // End of segment
+            rects.push({
+              start: segStart,
+              end: prev,
+              color: feat.color || defaultColor,
+              label: feat.label || '',
+              id: feat.uid || `${start}-${end}`,
+              druggability: feat.druggability
+            });
+
+            if (curr !== null) {
+              segStart = curr;
+            }
+          }
+
+          if (curr !== null) {
+            prev = curr;
+          }
+        }
+      }
+    }
+
+    return rects;
+  }
+
+  // Recalculate domain/disorder/cavity rectangles
+  if (DATA.domainsA) {
+    const doms = DATA.domainsA.filter(d => d.type !== 'CAV' && d.type !== 'Cavity');
+    const cavs = DATA.domainsA.filter(d => d.type === 'CAV' || d.type === 'Cavity');
+
+    DATA.domA_alnRects = remapFeaturesToAlignment(doms, qposToCol, '#2ca02c');
+    DATA.cavA_alnRects = remapFeaturesToAlignment(cavs, qposToCol, '#ff7d45');
+  }
+
+  if (DATA.domainsB) {
+    const doms = DATA.domainsB.filter(d => d.type !== 'CAV' && d.type !== 'Cavity');
+    const cavs = DATA.domainsB.filter(d => d.type === 'CAV' || d.type === 'Cavity');
+
+    DATA.domB_alnRects = remapFeaturesToAlignment(doms, tposToCol, '#2ca02c');
+    DATA.cavB_alnRects = remapFeaturesToAlignment(cavs, tposToCol, '#ff7d45');
+  }
+
+  // Recalculate AM tracks if we have bfactors data
+  if (DATA.bfactorsA && DATA.bfactorsB && DATA.amModes) {
+    console.log('Recalculating AM tracks...');
+
+    // Helper to remap per-residue scores to alignment axis
+    function remapScoresToAlignment(scores, posToCol, alnLen) {
+      const alignedScores = new Array(alnLen).fill(null);
+      for (let pos = 1; pos <= scores.length; pos++) {
+        const col = posToCol[pos];
+        if (col !== undefined && col >= 1 && col <= alnLen) {
+          alignedScores[col - 1] = scores[pos - 1];
+        }
+      }
+      return alignedScores;
+    }
+
+    // Remap bfactors to alignment axis
+    const amA_aligned = remapScoresToAlignment(DATA.bfactorsA, qposToCol, alnLen);
+    const amB_aligned = remapScoresToAlignment(DATA.bfactorsB, tposToCol, alnLen);
+
+    // Helper to create rect segments from score array
+    function scoreArrayToRects(scoreArr, colorFn) {
+      const rects = [];
+      let curColor = null;
+      let segStart = null;
+
+      for (let i = 0; i < scoreArr.length; i++) {
+        const score = scoreArr[i];
+        const col = i + 1;
+
+        let color = null;
+        if (score !== null && score !== undefined) {
+          color = colorFn(score);
+        }
+
+        if (color === null) {
+          // Close current segment if any
+          if (curColor !== null && segStart !== null) {
+            rects.push({start: segStart, end: col - 1, color: curColor});
+          }
+          curColor = null;
+          segStart = null;
+        } else if (curColor === null) {
+          // Start new segment
+          curColor = color;
+          segStart = col;
+        } else if (color !== curColor) {
+          // Color changed - close current, start new
+          rects.push({start: segStart, end: col - 1, color: curColor});
+          curColor = color;
+          segStart = col;
+        }
+      }
+
+      // Close final segment
+      if (curColor !== null && segStart !== null) {
+        rects.push({start: segStart, end: alnLen, color: curColor});
+      }
+
+      return rects;
+    }
+
+    // AM color bands (same as Python)
+    function bandColorAM(v) {
+      if (v === null || v === undefined) return null;
+      if (v < 0.2) return '#dddddd';  // Benign - grey
+      if (v < 0.4) return '#bbbbbb';  // Low
+      if (v < 0.7) return '#ff7d45';  // Medium - orange
+      return '#d62728';                // High - red
+    }
+
+    // Delta-AM color
+    function damColor(v) {
+      if (v === null || v === undefined) return null;
+      if (v <= 0.10) return '#dddddd';
+      if (v <= 0.30) return '#bbbbbb';
+      if (v <= 0.50) return '#ffdb13';  // Yellow
+      if (v <= 0.70) return '#ff7d45';  // Orange
+      return '#d62728';                 // Red
+    }
+
+    // Normalize scores based on mode
+    function makeNormalizer(values, mode) {
+      const validVals = values.filter(v => typeof v === 'number' && !isNaN(v));
+      if (validVals.length === 0 || mode === 'raw') {
+        return v => (typeof v === 'number' && !isNaN(v)) ? v : null;
+      }
+
+      if (mode === 'minmax') {
+        const min = Math.min(...validVals);
+        const max = Math.max(...validVals);
+        if (max <= min) return v => 0.5;
+        return v => (typeof v === 'number' && !isNaN(v)) ? (v - min) / (max - min) : null;
+      }
+
+      if (mode === 'percentile') {
+        const sorted = [...validVals].sort((a, b) => a - b);
+        return v => {
+          if (typeof v !== 'number' || isNaN(v)) return null;
+          let idx = 0;
+          while (idx < sorted.length && sorted[idx] <= v) idx++;
+          return sorted.length > 1 ? idx / sorted.length : 0.5;
+        };
+      }
+
+      if (mode === 'zscore') {
+        const mean = validVals.reduce((a, b) => a + b, 0) / validVals.length;
+        const variance = validVals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / validVals.length;
+        const stddev = Math.sqrt(variance) || 1e-8;
+        return v => {
+          if (typeof v !== 'number' || isNaN(v)) return null;
+          const z = (v - mean) / stddev;
+          return 1.0 / (1.0 + Math.exp(-z));  // Sigmoid
+        };
+      }
+
+      return v => (typeof v === 'number' && !isNaN(v)) ? v : null;
+    }
+
+    // Recalculate for each mode
+    DATA.amAlignedARectsByMode = {};
+    DATA.amAlignedBRectsByMode = {};
+    DATA.damAlignedRectsByMode = {};
+
+    for (const mode of DATA.amModes) {
+      const normA = makeNormalizer(DATA.bfactorsA, mode);
+      const normB = makeNormalizer(DATA.bfactorsB, mode);
+
+      // Normalize aligned scores
+      const normAmA = amA_aligned.map(v => normA(v));
+      const normAmB = amB_aligned.map(v => normB(v));
+
+      // Generate rectangles
+      DATA.amAlignedARectsByMode[mode] = scoreArrayToRects(normAmA, bandColorAM);
+      DATA.amAlignedBRectsByMode[mode] = scoreArrayToRects(normAmB, bandColorAM);
+
+      // Delta-AM (only where both aligned)
+      const damArr = new Array(alnLen).fill(null);
+      for (let i = 0; i < alnLen; i++) {
+        const vA = normAmA[i];
+        const vB = normAmB[i];
+        if (typeof vA === 'number' && typeof vB === 'number' && !isNaN(vA) && !isNaN(vB)) {
+          damArr[i] = Math.abs(vA - vB);
+        }
+      }
+      DATA.damAlignedRectsByMode[mode] = scoreArrayToRects(damArr, damColor);
+    }
+
+    console.log('AM tracks recalculated for new alignment');
+  } else {
+    console.warn('AM tracks not recalculated - bfactors data not available');
+  }
+
+  console.log('Recalculated alignment tracks');
+}
+
+function fillDomainTables(){
+  const tA = document.querySelector('#domA tbody'); tA.innerHTML='';
+  const tB = document.querySelector('#domB tbody'); tB.innerHTML='';
+
+  const addRowDom = (tb, d, chain) => {
+    const tr=document.createElement('tr');
+    tr.className='clickable';
+    tr.setAttribute('data-uid', d.uid || '');
+    tr.setAttribute('data-chain', chain);
+
+    const tdSel = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.addEventListener('change', (ev)=>{
+      ev.stopPropagation();
+      toggleFeature(d, chain);
+    }, {passive:true});
+    tdSel.append(cb);
+
+    const tdName = document.createElement('td');
+    tdName.textContent = d.label || d.name || d.type || '';
+
+    const tdRange = document.createElement('td');
+    tdRange.textContent = `${d.start}-${d.end}`;
+
+    const tdCav = document.createElement('td');
+    if (d.type === 'Cavity' || d.raw_type === 'Cavity') {
+      const ds = d.drug_score || d.drugscore || '';
+      const dg = d.druggability || '';
+      tdCav.textContent = (ds || dg) ? `${ds || ''} ${dg || ''}`.trim() : '';
+    } else {
+      tdCav.textContent = '';
+    }
+
+    tr.append(tdSel, tdName, tdRange, tdCav);
+    tr.addEventListener('click', ()=>{
+      toggleFeature(d, chain);
+    }, {passive:true});
+    tb.append(tr);
+  };
+
+  (DATA.domainsA||[]).filter(shouldShowDomain).forEach(d=>addRowDom(tA,d,chainIdA));
+  (DATA.domainsB||[]).filter(shouldShowDomain).forEach(d=>addRowDom(tB,d,chainIdB));
+
+  renderTableSelections();
+}
+
+async function fillDomPairs(){
+  const tb = document.querySelector('#domPairs tbody'); tb.innerHTML='';
+  if (!Array.isArray(DATA.domPairs) || !DATA.domPairs.length){
+    tb.innerHTML = '<tr><td colspan="5" class="small">No domain sub-alignments computed.</td></tr>';
+    return;
+  }
+  DATA.domPairs.forEach((r)=>{
+    const tr=document.createElement('tr'); tr.className='clickable';
+    tr.innerHTML = `<td>${r.Aname} ${r.Arng}</td><td>${r.Bname} ${r.Brng}</td><td>${r.fident!=null?r.fident.toFixed(1)+'%':'–'}</td><td>${r.tm!=null?r.tm.toFixed(3):'–'}</td><td>${r.damPct!=null?r.damPct.toFixed(1)+'%':'–'}</td>`;
+    tr.addEventListener('click', async ()=>{
+      await reloadViewerWith(r.pdb64);
+      document.getElementById('tmScore').textContent = (r.tm!=null ? r.tm.toFixed(3) : '–');
+      const title = `Domain: ${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
+      document.getElementById('contextTitle').textContent = title;
+
+      selection.clear();
+      const domA = (DATA.domainsA||[]).find(d => (d.label===r.Aname) || (`${d.start}-${d.end}`===r.Arng));
+      const domB = (DATA.domainsB||[]).find(d => (d.label===r.Bname) || (`${d.start}-${d.end}`===r.Brng));
+      if (domA) selection.set(selectionKey(chainIdA, domA.uid), {
+        id: domA.uid, chain: chainIdA,
+        start: parseInt(domA.start,10), end: parseInt(domA.end,10),
+        color: '#ffdb13', name: domA.label||domA.name
+      });
+      if (domB) selection.set(selectionKey(chainIdB, domB.uid), {
+        id: domB.uid, chain: chainIdB,
+        start: parseInt(domB.start,10), end: parseInt(domB.end,10),
+        color: '#ff7d45', name: domB.label||domB.name
+      });
+      await renderSelections();
+    }, {passive:true});
+    tb.append(tr);
+  });
+}
+
+let currentColorMode = 'uniform';
+
+async function applyColorTheme(theme){
+  if (!plugin || !structureReady) return;
+  const hierarchy = plugin.managers.structure.hierarchy.current;
+  if (!hierarchy || !hierarchy.structures || !hierarchy.structures.length) return;
+
+  const update = plugin.state.data.build();
+  for (const struct of hierarchy.structures) {
+    const components = struct.components || [];
+    for (const comp of components) {
+      const reps = comp.representations || [];
+      for (const repr of reps) {
+        update.to(repr.cell).update(old => ({
+          ...old,
+          colorTheme: theme
+        }));
+      }
+    }
+  }
+  await update.commit();
+}
+
+function themeForColorMode(mode){
+  const m = (mode || 'uniform').toLowerCase();
+  if (m === 'plddt') {
+    // pLDDT coloring using Molstar's official thresholds and colors
+    // Server encodes B-factors as bin indices (0-3):
+    //   0 = ≤50: Very Low confidence
+    //   1 = 51-70: Low confidence
+    //   2 = 71-90: Confident
+    //   3 = >90: Very High confidence
+    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are applied
+    // in REVERSE order: high B-factor → first color, low B-factor → last color
+    // So we reverse the color array: [blue, cyan, yellow, orange]
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 3],
+        list: { kind: 'set', colors: [0x0053d6, 0x65cbf3, 0xffdb13, 0xff7d45] }
+      }
+    };
+  }
+  if (m === 'am') {
+    // AlphaMissense coloring - B-factors are AM scores in 0-1 range
+    // grey (benign) -> orange -> red (pathogenic)
+    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
+    // Colors listed from high→low B-factor: red, orange, grey, light grey
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 1],
+        list: { kind: 'set', colors: [0xd62728, 0xff7d45, 0xbbbbbb, 0xdddddd] }
+      }
+    };
+  }
+  if (m === 'dam') {
+    // Delta AM coloring - B-factors are delta values in 0-1 range
+    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 1],
+        list: { kind: 'set', colors: [0xd62728, 0xff7d45, 0xbbbbbb, 0xdddddd] }
+      }
+    };
+  }
+  if (m === 'aligned') {
+    // Aligned vs unaligned: B-factor 1.0 = aligned (green), 0.0 = unaligned (grey)
+    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
+    // High B-factor (1.0, aligned) → first color, Low (0.0, unaligned) → last color
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 1],
+        list: { kind: 'set', colors: [0x43a047, 0xcccccc] }
+      }
+    };
+  }
+  if (m === 'domains') {
+    // Domain coloring: B-factor 0.0 = no domain (grey), 1.0 = domain (green)
+    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
+    // High B-factor (1.0, domain) → first color, Low (0.0, no domain) → last color
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 1],
+        list: { kind: 'set', colors: [0x2ca02c, 0xcccccc] }
+      }
+    };
+  }
+  return {
+    name: 'uniform',
+    params: { value: 0xcccccc }
+  };
+}
+
+async function colorBy(mode){
+  currentColorMode = mode;
+  console.log('Applying color mode:', mode);
+
+  try {
+    // Modes that require loading a specific PDB variant with modified B-factors
+    const modesPdbMap = {
+      'am': () => window.PDB64_AM_BY_MODE && amMode ? window.PDB64_AM_BY_MODE[amMode] : null,
+      'plddt': () => window.PDB64_PLDDT || PDB64_FULL,
+      'aligned': () => window.PDB64_ALIGNED,
+      'domains': () => window.PDB64_DOMAINS,
+    };
+
+    if (mode in modesPdbMap) {
+      const pdb = modesPdbMap[mode]();
+      console.log(`${mode} mode requested, PDB available:`, !!pdb);
+
+      if (pdb) {
+        // Debug: check B-factors in the PDB being loaded
+        try {
+          const pdbText = atob(pdb);
+          const lines = pdbText.split('\n').filter(l => l.startsWith('ATOM'));
+          const bfactors = lines.slice(0, 20).map(l => parseFloat(l.substring(60, 66).trim()));
+          console.log(`${mode} PDB first 20 B-factors:`, bfactors);
+          if (mode === 'plddt') {
+            // Count bins for pLDDT (bin indices 0-3)
+            const allBf = lines.map(l => parseFloat(l.substring(60, 66).trim()));
+            const bins = {0: 0, 1: 0, 2: 0, 3: 0};
+            allBf.forEach(bf => {
+              const bin = Math.round(bf);
+              if (bin >= 0 && bin <= 3) bins[bin]++;
+            });
+            console.log('pLDDT bin distribution:', bins, '(0=orange ≤50, 1=yellow 51-70, 2=cyan 71-90, 3=blue >90)');
+          }
+        } catch(e) { console.warn('Could not parse PDB for debug:', e); }
+
+        console.log(`Loading ${mode}-colored PDB`);
+        await reloadViewerWith(pdb);
+
+        // Wait for structure to be fully loaded
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Apply theme after reload
+        const theme = themeForColorMode(mode);
+        console.log(`Applying ${mode} theme:`, theme);
+        await applyColorTheme(theme);
+
+        // Restore selections
+        await renderSelections();
+        return;
+      } else {
+        console.warn(`No PDB variant available for mode: ${mode}`);
+      }
+    }
+
+    // For uniform mode or if specific PDB not available, just apply theme
+    if (!plugin || !structureReady) {
+      console.log('Viewer not ready for coloring');
+      return;
+    }
+
+    const theme = themeForColorMode(mode);
+    console.log('Applying theme:', theme.name);
+    await applyColorTheme(theme);
+    console.log('Color theme applied:', mode);
+  } catch(e) {
+    console.error('Error applying color theme:', e);
+  }
+}
+
+async function reloadViewerWith(b64, preserveCamera = false){
+  // Save camera state if we want to preserve it
+  let cameraSnapshot = null;
+  if (preserveCamera && plugin && plugin.canvas3d?.camera) {
+    try {
+      cameraSnapshot = plugin.canvas3d.camera.getSnapshot();
+    } catch(e) { console.warn('Could not save camera state:', e); }
+  }
+
+  // If viewer already exists, just load new structure (smoother, no flash)
+  if (viewer && plugin) {
+    try {
+      await plugin.clear();
+    } catch(e) {}
+
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], {type:"chemical/x-pdb"});
+    const url = URL.createObjectURL(blob);
+
+    try {
+      await viewer.loadStructureFromUrl(url, 'pdb');
+      structureReady = true;
+    } catch(e) {
+      console.error('Failed to load structure:', e);
+      structureReady = false;
+    }
+
+    URL.revokeObjectURL(url);
+
+    // Restore camera state if we saved it
+    if (cameraSnapshot && plugin.canvas3d?.camera) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        plugin.canvas3d.camera.setState(cameraSnapshot, 0);
+      } catch(e) { console.warn('Could not restore camera state:', e); }
+    }
+  } else {
+    // First load - initialize Molstar
+    const host = document.getElementById('viewer');
+    host.innerHTML = '';
+    viewer = null; plugin = null; structureReady = false;
+    await initMolstar();
+    await loadPDBfromBase64(b64);
+  }
+}
+
+async function main(){
+  console.log('Initializing report viewer...');
+  console.log('PDBe complexes count:', PDBe_COMPLEXES.length);
+  initSummarySection();
+  
+  (DATA.domainsA||[]).forEach(d => { if (d.uid) domByUidA[d.uid] = d; });
+  (DATA.domainsB||[]).forEach(d => { if (d.uid) domByUidB[d.uid] = d; });
+
+  document.getElementById('tmScore').textContent = (DATA.tm!=null ? DATA.tm.toFixed(3) : '–');
+  document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
+  await reloadViewerWith(PDB64_FULL);
+
+  buildSeq();
+  fillDomainTables();
+  await fillDomPairs();
+
+  setupPdbeCollapse();
+  setupPdbeControls();
+
+  document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
+  document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); }}, {passive:true});
+  document.getElementById('lockViewer').addEventListener('click', ()=>{ toggleViewerLock(); }, {passive:true});
+
+  // Set initial lock state (delayed to ensure DOM is ready)
+  setTimeout(() => {
+    setViewerLocked(true);
+  }, 100);
+  document.getElementById('backFull').addEventListener('click', async ()=>{
+    selection.clear();
+    pendingHighlightLoci = null;
+    await reloadViewerWith(PDB64_FULL);
+    document.getElementById('tmScore').textContent = (DATA.tm!=null ? DATA.tm.toFixed(3) : '–');
+    document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
+    Object.values(trackRefs).forEach(track => {
+      if (track && track._originalData) track.data = [...track._originalData];
+    });
+    await initializeHighlightColors();
+    setupHoverInterception();
+    await renderSelections();
+  }, {passive:true});
+
+  // Chain visibility toggles
+  const showChainA = document.getElementById('showChainA');
+  const showChainB = document.getElementById('showChainB');
+  const chainALabel = document.getElementById('chainALabel');
+  const chainBLabel = document.getElementById('chainBLabel');
+
+  if (chainALabel) chainALabel.textContent = DATA.g1;
+  if (chainBLabel) chainBLabel.textContent = DATA.g2;
+
+  // Track if we're currently processing a chain toggle to prevent double-triggers
+  let chainToggleInProgress = false;
+
+  if (showChainA) {
+    showChainA.addEventListener('change', async (e) => {
+      if (chainToggleInProgress) return;
+      chainToggleInProgress = true;
+
+      chainVisible.A = e.target.checked;
+      console.log('Chain A toggled:', chainVisible.A, 'Chain B state:', chainVisible.B);
+
+      // Only reset if trying to hide both chains
+      if (!chainVisible.A && !chainVisible.B) {
+        console.log('Both hidden - resetting to show both');
+        chainVisible.A = true;
+        chainVisible.B = true;
+        showChainA.checked = true;
+        if (showChainB) showChainB.checked = true;
+      }
+
+      await applyChainVisibility();
+      chainToggleInProgress = false;
+    }, {passive: true});
+  }
+
+  if (showChainB) {
+    showChainB.addEventListener('change', async (e) => {
+      if (chainToggleInProgress) return;
+      chainToggleInProgress = true;
+
+      chainVisible.B = e.target.checked;
+      console.log('Chain B toggled:', chainVisible.B, 'Chain A state:', chainVisible.A);
+
+      // Only reset if trying to hide both chains
+      if (!chainVisible.A && !chainVisible.B) {
+        console.log('Both hidden - resetting to show both');
+        chainVisible.A = true;
+        chainVisible.B = true;
+        if (showChainA) showChainA.checked = true;
+        showChainB.checked = true;
+      }
+
+      await applyChainVisibility();
+      chainToggleInProgress = false;
+    }, {passive: true});
+  }
+
+  // Druggability filter
+  const drugFilter = document.getElementById('druggabilityFilter');
+  if (drugFilter) {
+    drugFilter.value = 'medium+'; // Default
+    drugFilter.addEventListener('change', (e) => {
+      druggabilityFilter = e.target.value;
+      fillDomainTables(); // Refresh tables with new filter
+      applyCavityFilter(); // Also filter Nightingale cavity tracks
+    }, {passive: true});
+  }
+
+  const amModeSel = document.getElementById('amMode');
+  if (amModeSel && Array.isArray(AM_MODES) && AM_MODES.length) {
+    amModeSel.innerHTML = '';
+    AM_MODES.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      if (m === 'raw') opt.textContent = 'Raw';
+      else if (m === 'percentile') opt.textContent = 'Percentile (per protein)';
+      else if (m === 'minmax') opt.textContent = 'Min-max (per protein)';
+      else if (m === 'zscore') opt.textContent = 'Z-score (logistic)';
+      else opt.textContent = m;
+      amModeSel.appendChild(opt);
+    });
+    amModeSel.value = amMode;
+    amModeSel.addEventListener('change', (e)=>{
+      applyAmMode(e.target.value);
+    }, {passive:true});
+  }
+
+  // Alignment method toggle
+  const alignMethodSel = document.getElementById('alignmentMethod');
+  if (alignMethodSel) {
+    alignMethodSel.addEventListener('change', async (e) => {
+      const method = e.target.value;
+      await switchAlignmentMethod(method);
+    }, {passive: true});
+  }
+
+  setTimeout(async () => {
+    await initializeHighlightColors();
+    setupHoverInterception();
+  }, 1500);
+  
+  console.log('Report viewer initialized');
+}
+

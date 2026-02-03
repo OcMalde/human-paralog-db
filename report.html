@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Paralog Pair Report</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="https://unpkg.com/molstar@3.43.0/build/viewer/molstar.css"/>
+<style>
+  :root{ --bg:#fafafa; --pane:#fff; --muted:#888; --soft:#f3f3f3; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+
+  /* Top navigation bar */
+  .top-nav{position:sticky;top:0;z-index:1000;padding:10px 20px;background:#21244d;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .top-nav h1{margin:0;font-size:16px;font-weight:600}
+  .top-nav .search-box{display:flex;gap:8px;flex:1;min-width:200px;max-width:350px}
+  .top-nav .search-box input{flex:1;border:none;border-radius:6px;padding:6px 10px;font-size:13px}
+  .top-nav .search-box button{background:#4f46e5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .top-nav .search-box button:hover{background:#4338ca}
+
+  header{padding:18px 24px;background:#fff9f0;border-bottom:1px solid #efe2c3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  header .title-main{margin:0;font-size:24px;font-weight:700;color:#2f2514}
+  header .title-sub{margin-top:4px;font-size:13px;color:#7a6842;letter-spacing:0.08em;text-transform:uppercase}
+  #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto}
+  .card{background:var(--pane);border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
+  .card h2{font-size:15px;margin:0;padding:10px 12px;border-bottom:1px solid #eee}
+  .card .body{padding:12px}
+  .card .card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eee;gap:12px;flex-wrap:wrap}
+  .card.collapsible h2{margin:0;padding:0;border-bottom:none;font-size:15px}
+  .collapse-toggle{background:#f5f1e6;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:999px;font-size:11px;padding:4px 12px;cursor:pointer}
+  .collapse-toggle:hover{background:#ebe2cf}
+  .card.collapsible .body.collapsed{display:none}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  select,button{font-size:13px;padding:6px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer}
+  button:hover{background:#f0f0f0}
+  .note{font-size:12px;color:#555}
+  #viewer{height:520px; position:relative; z-index:0; overflow:hidden; border-radius:8px; border:1px solid #e6e6e6;}
+  #viewer .msp-plugin{position:absolute; inset:0;}
+  .legend-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;border:1px solid #888}
+  .green{background:#43a047}
+  .orange{background:#fb8c00}
+
+  #seqwrap{padding:4px 2px}
+  .mgr{width:100%}
+  .rtab{width:100%;border-collapse:collapse}
+  .rtab td{vertical-align:middle;padding:2px 6px}
+  .rtab td:first-child{width:150px}
+  .rowlbl{
+    white-space:nowrap;
+    font-size:12px;
+    color:#444;
+    background:#f6fafe;
+    border-right:1px solid #eef;
+    padding:4px 6px;
+    min-width:140px;
+  }
+
+  .am-main-row{
+    border-top:2px solid #c3ceff;
+    border-bottom:2px solid #c3ceff;
+  }
+  .am-main-label{
+    font-weight:600;
+    background:#e9f0ff;
+  }
+
+  table{width:100%;border-collapse:collapse}
+  th,td{font-size:13px;border-top:1px solid #eee;padding:6px 8px;text-align:left}
+  th{background:var(--soft)}
+  .clickable{cursor:pointer}
+  .clickable:hover{background:#f0f8ff}
+  .small{font-size:12px;color:#666}
+  .selected{background-color:#fff8e1!important}
+
+  .am-matrix-toggle{
+    font-size:11px;
+    padding:0 6px;
+    margin-left:4px;
+    border-radius:6px;
+  }
+
+/* ========== SUMMARY SECTION STYLES ========== */
+.summary-section{background:#ffffff;border:1px solid #ebe4d7;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(51,41,16,0.06);color:#1f1b16;margin-bottom:16px}
+.summary-section h2{color:#1f1b16;border-bottom:1px solid #f2ece0;padding-bottom:12px;margin-bottom:18px;font-size:18px}
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.summary-grid{grid-template-columns:1fr}}
+.protein-card{background:#fdf9f1;border-radius:12px;padding:16px;border:1px solid #f2ead8}
+.protein-card h3{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:10px;color:#2c210e}
+.protein-card .gene-symbol{font-size:21px;font-weight:700}
+.essential-badge{background:#c62828;color:#fff;font-size:11px;padding:3px 8px;border-radius:999px;font-weight:600}
+.not-essential-badge{background:#ede4cf;color:#6d5830;font-size:11px;padding:3px 8px;border-radius:999px}
+.protein-links{display:flex;gap:10px;margin:10px 0}
+.protein-links a{color:#735c29;text-decoration:none;background:#fff;border:1px solid #f0e4c8;padding:4px 12px;border-radius:999px;font-size:12px;transition:background 0.15s}
+.protein-links a:hover{background:#f5ecdb}
+.chr-info{font-size:12px;color:#6b5c40;margin-top:6px}
+.pair-meta{background:#fff;border:1px dashed #e4dac4;border-radius:12px;padding:14px;margin-top:18px}
+.pair-meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.meta-item{text-align:center}
+.meta-item .value{font-size:20px;font-weight:700;color:#2f2614}
+.meta-item .label{font-size:11px;color:#7d6d4f;text-transform:uppercase;letter-spacing:0.05em}
+ .ppi-highlights{margin-top:22px;background:#fffdfa;border-radius:12px;padding:16px;border:1px solid #f4ead4}
+ .ppi-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+ .ppi-header h3{margin:0;font-size:15px;color:#3a2f1b}
+ .ppi-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#776550}
+ .ppi-toggle input{margin:0}
+ .ppi-lists{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
+ @media(max-width:900px){.ppi-lists{grid-template-columns:1fr}}
+ .ppi-label{font-size:11px;font-weight:700;color:#5d4c2f;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px}
+ .ppi-chip-list{display:flex;flex-wrap:wrap;gap:6px}
+ .ppi-chip{padding:4px 12px;border-radius:999px;background:#fff3d8;border:1px solid #f0d6ac;font-size:12px;font-weight:600;color:#5a3300}
+ .ppi-chip.empty{background:#f8f0e1;border-style:dashed;color:#9c8561}
+ .ppi-note{font-size:11px;color:#8d7a57;margin-top:4px}
+ .ppi-graph-wrapper{margin-top:18px;padding:12px;border:1px dashed #efd8af;border-radius:12px;background:#fffdf5}
+ #ppiNetwork{width:100%;height:230px;display:block}
+ #ppiNetwork text{font-size:11px;fill:#3a3225}
+ #ppiNetwork .gene-node circle{fill:#5c4433;stroke:#f9f6ef;stroke-width:2}
+ #ppiNetwork .shared-node circle{fill:#e1c499;stroke:#b68b4c}
+ #ppiNetwork .unique-node circle{fill:#fff;stroke:#c69e61;stroke-width:1.5;stroke-dasharray:3 2}
+ #ppiNetwork line{stroke:#d1c2aa;stroke-width:1.8}
+ #ppiNetwork .non-shared{stroke-dasharray:4 3;opacity:0.7}
+ .ppi-graph-note{font-size:11px;color:#8b7a60;margin-top:8px}
+.conservation-viz{margin-top:22px;background:#fff;border-radius:12px;padding:16px;border:1px solid #f1ecdf;color:#2a2620}
+.conservation-viz h3{margin:0 0 12px;font-size:16px;color:#2a2620}
+.radar-boxplot-container{display:grid;grid-template-columns:340px 1fr;gap:18px;min-height:280px}
+@media(max-width:800px){.radar-boxplot-container{grid-template-columns:1fr}}
+.radar-plot{width:100%;height:280px;position:relative;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #f0e7d3;border-radius:10px}
+.radar-plot canvas{width:100%;height:100%}
+.radar-plot svg{width:100%;height:100%}
+.radar-fallback-note{font-size:11px;color:#7a6f55;text-align:center;margin-top:6px}
+#radarChart{width:340px;height:280px}
+.boxplot-panel{background:#f9f6ef;border-radius:10px;padding:15px;border:1px solid #ece4d2;display:flex;flex-direction:column}
+.boxplot-panel h4{margin:0;font-size:14px;color:#5c4d30}
+.boxplot-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.reset-metric-btn{background:#f5f1e6;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;transition:background 0.15s}
+.reset-metric-btn:hover{background:#ede4cf}
+#boxplotContainer{flex:1;min-height:180px}
+.boxplot-hint{font-size:12px;color:#7a6f55;text-align:center;padding:18px}
+.metric-details{margin-top:10px;padding:12px;background:#fff;border-radius:8px;font-size:13px;border:1px solid #f0e7d3}
+.metric-details .stat-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #efe5cf}
+.metric-details .stat-row:last-child{border-bottom:none}
+.percentile-bar{height:8px;background:#f0f0f0;border-radius:4px;margin-top:6px;overflow:hidden}
+.percentile-fill{height:100%;background:linear-gradient(90deg,#c39b63,#806845);border-radius:4px;transition:width 0.3s ease}
+.cons-high{color:#2e7d32}.cons-medium{color:#ef6c00}.cons-low{color:#c62828}
+.conservation-list{margin-top:16px;border-top:1px dashed #e5dcc8;padding-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.conservation-list .metric{background:#fdfaf4;border:1px solid #f1e6d2;border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
+.conservation-list .label{display:block;font-weight:600;color:#352a18;margin-bottom:4px}
+.conservation-list .value{font-size:18px;font-weight:700;color:#2f2614}
+.conservation-list .percentile{display:block;font-size:12px;margin-top:4px}
+.conservation-list .metric.active{border-color:#d3a552;box-shadow:0 0 0 2px rgba(211,165,82,0.18)}
+.conservation-list .metric:focus-visible{outline:2px solid #d3a552}
+/* PDBe viewer */
+  #pdbeViewer{
+    height:420px;
+    position:relative;
+    z-index:0;
+    overflow:hidden;
+    border-radius:8px;
+    border:1px solid #e6e6e6;
+    margin-top:8px;
+    background:#1a1a1a;
+  }
+  #pdbeViewer .msp-plugin{
+    position:absolute;
+    inset:0;
+  }
+  
+  .pdbe-controls{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  
+  .pdbe-info-box{
+    background:#f8f9fa;
+    border:1px solid #e0e0e0;
+    border-radius:6px;
+    padding:8px 12px;
+    margin-top:8px;
+    font-size:12px;
+  }
+  
+  .pdbe-info-box .label{
+    font-weight:600;
+    color:#333;
+  }
+  
+  .pdbe-ligand-list{
+    margin-top:4px;
+    color:#555;
+  }
+  
+  .display-legend{
+    font-size:11px;
+    margin-top:4px;
+    padding:6px 10px;
+    background:#f0f7ff;
+    border-radius:4px;
+    border-left:3px solid #4a90d9;
+  }
+  
+  .btn-active{
+    background:#e3f2fd !important;
+    border-color:#1976d2 !important;
+  }
+
+  .loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;font-size:18px;color:#333}
+
+  /* Family Navigation */
+  .family-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}
+  .family-pair-card{background:#fdfbf7;border:2px solid #e8dfc7;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;position:relative}
+  .family-pair-card:hover{border-color:#d3a552;box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .family-pair-card.current{background:linear-gradient(135deg,#fff9e6,#fef5d9);border-color:#c39b63;border-width:3px;box-shadow:0 4px 12px rgba(211,165,82,0.2)}
+  .family-pair-card.current::before{content:"Current";position:absolute;top:6px;right:6px;background:#c39b63;color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase}
+  .family-pair-card.no-report{opacity:0.5;cursor:not-allowed;border-style:dashed}
+  .family-pair-card.no-report:hover{transform:none;box-shadow:none}
+  .family-pair-title{font-weight:700;font-size:14px;color:#352a18;margin-bottom:6px}
+  .family-pair-genes{font-size:12px;color:#666;margin-bottom:8px}
+  .family-pair-stats{display:flex;gap:10px;font-size:11px}
+  .family-pair-stat{display:flex;flex-direction:column}
+  .family-pair-stat-label{color:#888;font-size:10px;text-transform:uppercase}
+  .family-pair-stat-value{font-weight:600;color:#2f2614}
+  .family-pair-stat-value.high{color:#2e7d32}
+  .family-pair-stat-value.medium{color:#ef6c00}
+  .family-pair-stat-value.low{color:#c62828}
+</style>
+</head>
+<body>
+<div class="top-nav">
+  <h1>Paralog Explorer</h1>
+  <div class="search-box">
+    <input id="pairSearch" type="text" placeholder="Search pair (e.g. DOCK1_DOCK5)" list="pairSearchOptions" autocomplete="off"/>
+    <datalist id="pairSearchOptions"></datalist>
+    <button id="searchBtn">Load</button>
+  </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">Loading pair data...</div>
+
+<header>
+  <div class="title-main" id="titleMain">Loading...</div>
+  <div class="title-sub" id="titleSub">Paralog pair report</div>
+</header>
+
+<div id="wrap">
+  <!-- Family Navigation -->
+  <section class="card" id="familyNav" style="display:none;">
+    <div class="card-header">
+      <h2>Paralog Family</h2>
+      <span class="small" id="familySubtitle">Other paralog pairs involving these genes</span>
+    </div>
+    <div class="body">
+      <div id="familyPairs" class="family-grid"></div>
+      <div style="margin-top:20px;">
+        <h3 style="font-size:14px;margin-bottom:10px;color:#352a18;">Family Network</h3>
+        <canvas id="familyNetworkCanvas" width="800" height="400" style="border:1px solid #e8dfc7;border-radius:6px;background:#fdfbf7;cursor:move;"></canvas>
+        <div style="margin-top:8px;font-size:11px;color:#666;">
+          <span style="display:inline-block;margin-right:15px;">
+            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#c39b63;vertical-align:middle;"></span> Current pair
+          </span>
+          <span style="display:inline-block;margin-right:15px;">
+            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#2e7d32;vertical-align:middle;"></span> Closest pair
+          </span>
+          <span style="display:inline-block;">
+            <span style="display:inline-block;width:20px;height:2px;background:#666;vertical-align:middle;"></span> Paralog pair (thicker = higher TM-score)
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Summary section -->
+  <section class="card summary-section">
+    <h2>Pair Summary – Quick Overview</h2>
+    <div class="summary-grid">
+      <div class="protein-card">
+        <h3><span class="gene-symbol" id="gene1Symbol">–</span><span id="sum-essential1" class="not-essential-badge">Not Essential</span></h3>
+        <div class="protein-links">
+          <a id="link1Up" href="#" target="_blank">UniProt</a>
+          <a id="link1Pdbe" href="#" target="_blank">PDBe-KB</a>
+        </div>
+        <div class="chr-info"><strong>UniProt:</strong> <span id="acc1Display">–</span><br><span id="chr-loc1">Loading chromosome info...</span></div>
+      </div>
+      <div class="protein-card">
+        <h3><span class="gene-symbol" id="gene2Symbol">–</span><span id="sum-essential2" class="not-essential-badge">Not Essential</span></h3>
+        <div class="protein-links">
+          <a id="link2Up" href="#" target="_blank">UniProt</a>
+          <a id="link2Pdbe" href="#" target="_blank">PDBe-KB</a>
+        </div>
+        <div class="chr-info"><strong>UniProt:</strong> <span id="acc2Display">–</span><br><span id="chr-loc2">Loading chromosome info...</span></div>
+      </div>
+    </div>
+    <div class="pair-meta">
+      <div class="pair-meta-grid">
+        <div class="meta-item"><div class="value" id="sum-wgd">–</div><div class="label">WGD Origin</div></div>
+        <div class="meta-item"><div class="value" id="sum-family-size">–</div><div class="label">Family Size</div></div>
+        <div class="meta-item"><div class="value" id="sum-closest">–</div><div class="label">Closest Pair</div></div>
+        <div class="meta-item"><div class="value" id="sum-same-chr">–</div><div class="label">Same Chr</div></div>
+        <div class="meta-item"><div class="value" id="sum-interact">–</div><div class="label">Interact (BioPlex)</div></div>
+        <div class="meta-item"><div class="value" id="sum-shared-ppi">–</div><div class="label">Shared PPIs</div></div>
+      </div>
+    </div>
+    <div class="ppi-highlights">
+      <div class="ppi-header">
+        <div>
+          <h3>Shared Protein Partners</h3>
+          <p class="small">Based on BioPlex interactors captured for this paralog pair.</p>
+        </div>
+        <label class="ppi-toggle">
+          <input type="checkbox" id="toggleNonShared" checked/>
+          <span>Show unique-only partners</span>
+        </label>
+      </div>
+      <div class="ppi-lists">
+        <div>
+          <div class="ppi-label">Shared PPIs</div>
+          <div id="sharedPpiList" class="ppi-chip-list"><span class="ppi-chip empty">No data available</span></div>
+          <div id="sharedPpiNote" class="ppi-note"></div>
+        </div>
+        <div id="nonSharedLists" class="ppi-nonshared">
+          <div>
+            <div class="ppi-label"><span id="ppiLabelA">Gene A</span> unique partners</div>
+            <div id="uniquePpiA" class="ppi-chip-list"><span class="ppi-chip empty">No data</span></div>
+            <div id="uniquePpiANote" class="ppi-note"></div>
+          </div>
+          <div>
+            <div class="ppi-label"><span id="ppiLabelB">Gene B</span> unique partners</div>
+            <div id="uniquePpiB" class="ppi-chip-list"><span class="ppi-chip empty">No data</span></div>
+            <div id="uniquePpiBNote" class="ppi-note"></div>
+          </div>
+        </div>
+      </div>
+      <div class="ppi-graph-wrapper">
+        <svg id="ppiNetwork" role="img" aria-label="Mini PPI network" viewBox="0 0 420 240"></svg>
+        <div class="ppi-graph-note" id="ppiGraphNote"></div>
+      </div>
+    </div>
+    <div class="conservation-viz">
+      <h3>Conservation Compared to ~100k Human Paralog Pairs</h3>
+      <p class="small" style="color:#666;margin-bottom:15px;">Click on any metric point in the radar chart to see the detailed distribution.</p>
+      <div class="radar-boxplot-container">
+        <div class="radar-plot" id="radarChartWrapper">
+          <canvas id="radarChart"></canvas>
+        </div>
+        <div class="boxplot-panel">
+          <div class="boxplot-header">
+            <h4 id="boxplotTitle">Select a Metric</h4>
+            <button type="button" class="reset-metric-btn" id="resetMetricView">Back to overview</button>
+          </div>
+          <div id="boxplotContainer"><div class="boxplot-hint">Click a radar point or any metric card to compare this pair with the cohort</div></div>
+          <div class="metric-details" id="metricDetails" style="display:none;">
+            <div class="stat-row"><span>This pair's value:</span><strong id="detail-value">–</strong></div>
+            <div class="stat-row"><span>Percentile:</span><strong id="detail-percentile">–</strong></div>
+            <div class="stat-row"><span>Interpretation:</span><span id="detail-interp">–</span></div>
+            <div class="stat-row"><span>Metric direction:</span><span id="detail-direction">–</span></div>
+            <div class="percentile-bar"><div class="percentile-fill" id="percentile-fill" style="width:50%"></div></div>
+          </div>
+        </div>
+      </div>
+      <div id="conservationList" class="conservation-list"></div>
+    </div>
+  </section>
+
+  <!-- Structure card -->
+  <section class="card">
+    <h2>
+      <span id="contextTitle">Full Alignment</span>
+      <span class="small" style="margin-left:10px">
+        <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
+        <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
+      </span>
+    </h2>
+    <div class="body">
+      <div class="row">
+        <label>Color by:
+          <select id="colorBy">
+            <option value="uniform">Uniform</option>
+            <option value="plddt">pLDDT (confidence)</option>
+            <option value="am">AlphaMissense (bins)</option>
+            <option value="aligned">Aligned vs Gap</option>
+            <option value="dam">Δ AlphaMissense (aligned)</option>
+            <option value="domains">Domains</option>
+          </select>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainA" checked> Show <span id="chainALabel">Chain A</span>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainB" checked> Show <span id="chainBLabel">Chain B</span>
+        </label>
+        <button id="center">Center</button>
+        <button id="backFull">Back to full</button>
+        <button id="lockViewer" title="Lock hover to keep chain B highlights visible">Lock Hover</button>
+        <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+      </div>
+      <div id="viewer"></div>
+    </div>
+  </section>
+
+  <!-- PDBe complexes card -->
+  <section class="card collapsible" id="pdbeCard">
+    <div class="card-header">
+      <h2>Experimental Structures &amp; Complexes (PDBe-KB)</h2>
+      <button class="collapse-toggle" id="pdbeCollapseBtn" aria-expanded="true" aria-controls="pdbeCardBody">Collapse section</button>
+    </div>
+    <div class="body" id="pdbeCardBody">
+      <div class="pdbe-controls">
+        <label>Structure:
+          <select id="pdbeStructSelect">
+            <option value="">Loading...</option>
+          </select>
+        </label>
+        <button id="pdbeHighlightProtein">Highlight Protein</button>
+        <button id="pdbeHighlightLigands">Highlight Ligands</button>
+        <button id="pdbeClearHighlight">Clear</button>
+        <button id="pdbeSyncCamera" title="Sync orientation with main viewer">Sync Orientation</button>
+        <button id="pdbeCenter">Center</button>
+      </div>
+      <div class="display-legend" id="pdbeLegend">
+        Complex shown in <strong>grey</strong>. Click buttons to highlight protein of interest (<span style="color:#43a047">green</span>) or ligands (<span style="color:#e91e63">pink</span>).
+      </div>
+      <div id="pdbeViewer"></div>
+      <div class="pdbe-info-box" id="pdbeInfoBox">
+        <div><span class="label">PDB ID:</span> <span id="pdbePdbId">-</span></div>
+        <div><span class="label">Source UniProt:</span> <span id="pdbeSourceAcc">-</span></div>
+        <div><span class="label">Chains of interest:</span> <span id="pdbeChains">-</span></div>
+        <div><span class="label">Coverage:</span> <span id="pdbeCoverage">-</span></div>
+        <div><span class="label">Resolution:</span> <span id="pdbeResolution">-</span></div>
+        <div class="pdbe-ligand-list"><span class="label">Ligands:</span> <span id="pdbeLigands">-</span></div>
+      </div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Alignment-axis sequences, domains &amp; secondary structure</h2>
+    <div class="body">
+      <div class="row" id="amModeRow">
+        <label>Druggability filter:
+          <select id="druggabilityFilter">
+            <option value="all">All</option>
+            <option value="medium+">Medium+ (default)</option>
+            <option value="high">High only</option>
+          </select>
+        </label>
+        <label>AM scale:
+          <select id="amMode"></select>
+        </label>
+        <label>Alignment method:
+          <select id="alignmentMethod">
+            <option value="structural">Structural (Foldseek)</option>
+            <option value="sequence">Sequence (Needleman-Wunsch)</option>
+          </select>
+        </label>
+        <span class="small">Normalize AlphaMissense per protein for comparison.</span>
+      </div>
+      <div id="seqwrap">
+        <nightingale-manager id="mgr" class="mgr"></nightingale-manager>
+      </div>
+    </div>
+  </section>
+
+  <!-- Domain tables -->
+  <section class="card">
+    <h2>Domains (filtered)</h2>
+    <div class="body" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
+      <div>
+        <table id="domA">
+          <thead>
+            <tr>
+              <th>Sel</th>
+              <th id="domAHeader">Gene A domain</th>
+              <th>range</th>
+              <th>cavity / drug</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div>
+        <table id="domB">
+          <thead>
+            <tr>
+              <th>Sel</th>
+              <th id="domBHeader">Gene B domain</th>
+              <th>range</th>
+              <th>cavity / drug</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Domain × Domain sub-alignments -->
+  <section class="card">
+    <h2>Domain × Domain sub-alignments (Foldseek)</h2>
+    <div class="body">
+      <table id="domPairs"><thead><tr><th id="dxdHA">Gene A domain</th><th id="dxdHB">Gene B domain</th><th>fident</th><th>TM</th><th>ΔAM%</th></tr></thead><tbody></tbody></table>
+      <div class="small">Click a row to load the sub-alignment into the viewer. Use "Back to full" to restore.</div>
+    </div>
+  </section>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- Molstar -->
+<script src="https://unpkg.com/molstar@3.43.0/build/viewer/molstar.js"></script>
+
+<!-- Nightingale via importmap -->
+<script type="importmap">
+{"imports":{"@nightingale-elements/":"https://cdn.jsdelivr.net/npm/@nightingale-elements/"}}
+</script>
+<script type="module">
+import "@nightingale-elements/nightingale-manager@latest";
+import "@nightingale-elements/nightingale-navigation@latest";
+import "@nightingale-elements/nightingale-sequence@latest";
+import "@nightingale-elements/nightingale-track@latest";
+window.nightingaleReady = true;
+</script>
+
+<!-- Main application script -->
+<script src="/static/js/app.js"></script>
+</body>
+</html>

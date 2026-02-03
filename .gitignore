@@ -1,0 +1,18 @@
+# Database (regenerated from scripts)
+data/pairs.db
+
+# Cache
+data/cache/
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.log
