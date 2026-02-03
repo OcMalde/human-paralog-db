@@ -1367,17 +1367,19 @@ async function applyChainVisibility() {
 
   let pdb64;
 
-  // If we're in a special color mode, always use that PDB variant (contains both chains with color data)
+  // If we're in a special color mode, try to use that PDB variant (contains both chains with color data)
   if (currentColorMode === 'plddt' && window.PDB64_PLDDT) {
     pdb64 = window.PDB64_PLDDT;
-  } else if (currentColorMode === 'am' && window.PDB64_AM_BY_MODE && amMode) {
+  } else if (currentColorMode === 'am' && window.PDB64_AM_BY_MODE && window.PDB64_AM_BY_MODE[amMode]) {
     pdb64 = window.PDB64_AM_BY_MODE[amMode];
   } else if (currentColorMode === 'aligned' && window.PDB64_ALIGNED) {
     pdb64 = window.PDB64_ALIGNED;
   } else if (currentColorMode === 'domains' && window.PDB64_DOMAINS) {
     pdb64 = window.PDB64_DOMAINS;
-  } else {
-    // For uniform mode, use chain-specific PDBs
+  }
+
+  // Fallback: if no special variant available (or uniform mode), use chain-specific PDBs
+  if (!pdb64) {
     if (chainVisible.A && chainVisible.B) {
       pdb64 = PDB64_FULL;
     } else if (chainVisible.A) {
@@ -3342,7 +3344,11 @@ async function colorBy(mode){
         await renderSelections();
         return;
       } else {
-        console.warn(`No PDB variant available for mode: ${mode}`);
+        console.warn(`No PDB variant available for mode: ${mode}, falling back to uniform`);
+        // Reset to uniform since the requested mode isn't available
+        currentColorMode = 'uniform';
+        const select = document.getElementById('colorBy');
+        if (select) select.value = 'uniform';
       }
     }
 

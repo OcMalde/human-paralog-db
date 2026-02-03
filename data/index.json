@@ -57,10 +57,10 @@
     "id": "STAG1_STAG2",
     "geneA": "STAG1",
     "geneB": "STAG2",
-    "accA": "Q68DW7",
+    "accA": "Q8WVM7",
     "accB": "Q8N3U4",
-    "tm": null,
-    "fident": null
+    "tm": 0.841,
+    "fident": 0.695
   },
   {
     "id": "UBB_UBC",

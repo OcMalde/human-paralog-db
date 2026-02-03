@@ -41,6 +41,7 @@ from lib.domain_parsing import (
     parse_ted_domains, parse_ebi_domains, parse_cavities,
     rects_on_alignment, get_annotation_from_db, load_cavities_for_acc
 )
+from lib.seq_align import needleman_wunsch, compute_identity, alignment_to_columns
 
 # Foldseek binary
 FOLDSEEK = os.environ.get("FOLDSEEK", "foldseek")
@@ -287,6 +288,61 @@ def get_pdb_text_for_acc(conn: sqlite3.Connection, acc: str) -> Optional[str]:
     return None
 
 
+# Standard amino acid 3-letter to 1-letter mapping
+AA3TO1 = {
+    'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
+    'GLN': 'Q', 'GLU': 'E', 'GLY': 'G', 'HIS': 'H', 'ILE': 'I',
+    'LEU': 'L', 'LYS': 'K', 'MET': 'M', 'PHE': 'F', 'PRO': 'P',
+    'SER': 'S', 'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V',
+}
+
+
+def extract_sequence_from_pdb(pdb_text: str) -> str:
+    """Extract amino acid sequence from PDB text."""
+    if not pdb_text:
+        return ""
+
+    residues = {}
+    for line in pdb_text.splitlines():
+        if line.startswith("ATOM") and line[12:16].strip() == "CA":
+            res_name = line[17:20].strip()
+            res_num = int(line[22:26].strip())
+            if res_name in AA3TO1 and res_num not in residues:
+                residues[res_num] = AA3TO1[res_name]
+
+    if not residues:
+        return ""
+
+    # Build sequence from sorted residue numbers
+    seq = []
+    for i in range(min(residues.keys()), max(residues.keys()) + 1):
+        seq.append(residues.get(i, 'X'))
+
+    return ''.join(seq)
+
+
+def compute_sequence_alignment(seq1: str, seq2: str) -> Optional[Dict[str, Any]]:
+    """Compute sequence alignment and return data for client."""
+    if not seq1 or not seq2:
+        return None
+
+    try:
+        aln1, aln2, score = needleman_wunsch(seq1, seq2)
+        identity = compute_identity(aln1, aln2)
+        aligned_cols = alignment_to_columns(aln1, aln2)
+
+        return {
+            'qaln': aln1,
+            'taln': aln2,
+            'aligned_cols': aligned_cols,
+            'identity': identity,
+            'score': score,
+        }
+    except Exception as e:
+        log(f"  WARNING: Sequence alignment failed: {e}")
+        return None
+
+
 def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Generate complete DATA_OBJ and SUMMARY for a pair."""
     
@@ -412,7 +468,19 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     else:
         domPairs = []
         log(f"  Skipping domain×domain (no PDB or no domains)")
-    
+
+    # Extract full sequences from PDB and compute sequence alignment
+    seq1 = extract_sequence_from_pdb(pdb_a_text) if pdb_a_text else ""
+    seq2 = extract_sequence_from_pdb(pdb_b_text) if pdb_b_text else ""
+    log(f"  Sequences: {gene_a}={len(seq1)} aa, {gene_b}={len(seq2)} aa")
+
+    seq_alignment = None
+    if seq1 and seq2:
+        log(f"  Computing sequence alignment...")
+        seq_alignment = compute_sequence_alignment(seq1, seq2)
+        if seq_alignment:
+            log(f"  Sequence alignment: {len(seq_alignment['qaln'])} cols, identity={seq_alignment['identity']*100:.1f}%")
+
     # Build DATA_OBJ
     DATA_OBJ = {
         "PAIR": pair_id,
@@ -440,6 +508,9 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         "bfactorsB": bfB,
         "domPairs": domPairs,
         "pdbeComplexes": pdbe_complexes,
+        "seq1": seq1,
+        "seq2": seq2,
+        "seqAlignment": seq_alignment,
         **am_rects,  # Unpack all AM rect data
     }
     
