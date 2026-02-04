@@ -359,11 +359,12 @@ function handleConstellationClick(e) {
   const state = constellationState;
   const geneInfo = state.geneData[clickedGene];
 
-  const isCenter = clickedGene === state.centerGene;
+  // Check if clicked gene is currently selected (for unselect logic)
+  const isCenterAndSelected = clickedGene === state.centerGene && state.selectedGenes.includes(clickedGene);
   const isPairPartner = state.selectedGenes.length === 2 && state.selectedGenes[1] === clickedGene;
 
-  // CASE 1: Clicking the center gene - unselect it
-  if (isCenter) {
+  // CASE 1: Clicking a SELECTED center gene - unselect it
+  if (isCenterAndSelected) {
     if (state.selectedGenes.length === 2) {
       // Had pair partner - partner becomes new center, constellation rebuilds
       const oldPartner = state.selectedGenes[1];
@@ -392,7 +393,7 @@ function handleConstellationClick(e) {
     return;
   }
 
-  // No selection at all - make this the new center
+  // No selection at all - make this the new center and rebuild constellation
   if (state.selectedGenes.length === 0) {
     state.centerGene = clickedGene;
     state.selectedGenes = [clickedGene];
@@ -674,8 +675,12 @@ function renderFamilyConstellation() {
     if (!pos) return;
 
     const geneInfo = state.geneData[gene];
-    const isCenter = gene === state.centerGene;
-    const isSelected = state.selectedGenes.includes(gene);
+    const isPositionalCenter = gene === state.centerGene;
+    const isInSelection = state.selectedGenes.includes(gene);
+    // Visual "center" only if both positional center AND in selection
+    const isSelectedCenter = isPositionalCenter && isInSelection;
+    // Partner is the second gene in selection (not the center)
+    const isSelectedPartner = state.selectedGenes.length === 2 && state.selectedGenes[1] === gene;
     const isHovered = gene === state.hoveredGene;
     const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
     const isClosestToCenter = gene === closestToCenter;
@@ -684,24 +689,24 @@ function renderFamilyConstellation() {
     // Determine colors and sizes - scheme for light background
     let fillColor, strokeColor, radius, labelColor;
 
-    if (isCenter) {
-      // Center gene - warm amber/orange
+    if (isSelectedCenter) {
+      // Selected center gene - warm amber/orange
       fillColor = '#d97706';
       strokeColor = '#92400e';
       radius = 14;
       labelColor = '#92400e';
+    } else if (isSelectedPartner) {
+      // Selected partner gene - purple
+      fillColor = '#7c3aed';
+      strokeColor = '#5b21b6';
+      radius = 12;
+      labelColor = '#5b21b6';
     } else if (isCurrentPair) {
-      // Current pair genes - teal
+      // Current pair genes (from URL) - teal
       fillColor = '#0d9488';
       strokeColor = '#115e59';
       radius = 11;
       labelColor = '#115e59';
-    } else if (isSelected) {
-      // Selected genes - purple
-      fillColor = '#7c3aed';
-      strokeColor = '#5b21b6';
-      radius = 11;
-      labelColor = '#5b21b6';
     } else if (hasData) {
       // Genes with data - slate blue
       fillColor = isHovered ? '#475569' : '#64748b';
@@ -716,16 +721,16 @@ function renderFamilyConstellation() {
       labelColor = '#9ca3af';
     }
 
-    // Draw node glow for important genes
-    if (isCenter || isCurrentPair || isSelected) {
+    // Draw node glow for selected/important genes
+    if (isSelectedCenter || isSelectedPartner || isCurrentPair) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 6, 0, 2 * Math.PI);
       ctx.fillStyle = fillColor + '30';
       ctx.fill();
     }
 
-    // Draw extra ring for closest to center
-    if (isClosestToCenter && !isCenter) {
+    // Draw extra ring for closest to center (but not if it's AT center)
+    if (isClosestToCenter && !isPositionalCenter) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 4, 0, 2 * Math.PI);
       ctx.strokeStyle = '#888';
@@ -744,7 +749,7 @@ function renderFamilyConstellation() {
 
     // Draw label
     ctx.fillStyle = labelColor;
-    ctx.font = isCenter || isCurrentPair ? 'bold 11px sans-serif' : '10px sans-serif';
+    ctx.font = (isSelectedCenter || isSelectedPartner || isCurrentPair) ? 'bold 11px sans-serif' : '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -752,8 +757,8 @@ function renderFamilyConstellation() {
     const labelY = pos.y + radius + 12;
     ctx.fillText(gene, pos.x, labelY);
 
-    // Show identity on hover
-    if (isHovered && !isCenter && state.centerGene) {
+    // Show identity on hover (not for gene at center position)
+    if (isHovered && !isPositionalCenter && state.centerGene) {
       const identity = state.geneData[state.centerGene]?.identities[gene];
       if (identity !== undefined) {
         ctx.fillStyle = '#d97706';
