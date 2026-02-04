@@ -107,6 +107,18 @@ async function loadDataAndInit() {
     }
 }
 
+// ========== FAMILY CONSTELLATION VIEW ==========
+// State for the constellation
+let constellationState = {
+  centerGene: null,           // Gene at center of constellation
+  selectedGenes: [],          // Currently selected genes (max 2)
+  hoveredGene: null,          // Gene being hovered
+  allGenes: [],               // All genes in the family
+  geneData: {},               // Gene -> { pairs, identities, hasData }
+  pairData: {},               // pairId -> pair metadata
+  closestPair: null,          // The pair with highest identity
+};
+
 // Family navigation
 async function loadFamilyData() {
   if (!DATA || (!DATA.g1 && !DATA.g2)) {
@@ -115,10 +127,7 @@ async function loadFamilyData() {
   }
 
   const familyNav = document.getElementById('familyNav');
-  const familyPairs = document.getElementById('familyPairs');
-  const familySubtitle = document.getElementById('familySubtitle');
-
-  if (!familyNav || !familyPairs) {
+  if (!familyNav) {
     console.log('Family: DOM elements not found');
     return;
   }
@@ -137,233 +146,481 @@ async function loadFamilyData() {
       }
     }
 
-    // Get pair IDs for both genes from the index
-    const pairsForGene1 = FAMILY_INDEX[DATA.g1] || [];
-    const pairsForGene2 = FAMILY_INDEX[DATA.g2] || [];
-
-    console.log(`Family sizes: ${DATA.g1}=${pairsForGene1.length}, ${DATA.g2}=${pairsForGene2.length}`);
-
-    // Merge and deduplicate pair IDs
-    const allPairIds = [...new Set([...pairsForGene1, ...pairsForGene2])];
-    console.log(`Total unique pairs in family: ${allPairIds.length}`);
-
-    // Load index.json to get pair metadata
+    // Load index.json to get all pair metadata
     const indexResp = await fetch(`${DATA_BASE}/index.json`);
     const allPairsIndex = indexResp.ok ? await indexResp.json() : [];
     const pairMap = new Map(allPairsIndex.map(p => [p.id, p]));
 
-    // Build pair objects with metadata
-    const uniquePairs = allPairIds.map(id => {
-      const meta = pairMap.get(id) || {};
-      return {
-        pair_id: id,
-        gene_a: meta.geneA || id.split('_')[0],
-        gene_b: meta.geneB || id.split('_')[1],
-        fident: meta.fident,
-        tm_score: meta.tm,
-        has_report: true  // All exported pairs have reports
+    // Build complete family data structure
+    // Get all genes that share pairs with g1 or g2
+    const familyGenes = new Set([DATA.g1, DATA.g2]);
+    const allPairIds = new Set();
+
+    // Get pairs for g1
+    (FAMILY_INDEX[DATA.g1] || []).forEach(pairId => {
+      allPairIds.add(pairId);
+      const meta = pairMap.get(pairId);
+      if (meta) {
+        familyGenes.add(meta.geneA);
+        familyGenes.add(meta.geneB);
+      }
+    });
+
+    // Get pairs for g2
+    (FAMILY_INDEX[DATA.g2] || []).forEach(pairId => {
+      allPairIds.add(pairId);
+      const meta = pairMap.get(pairId);
+      if (meta) {
+        familyGenes.add(meta.geneA);
+        familyGenes.add(meta.geneB);
+      }
+    });
+
+    // Build gene data with identities to other genes
+    const geneData = {};
+    familyGenes.forEach(gene => {
+      geneData[gene] = {
+        gene: gene,
+        pairs: [],        // Pairs this gene is part of
+        identities: {},   // gene -> identity score
+        hasData: false    // Has at least one pair with data
       };
     });
 
-    // Sort by sequence identity (highest first)
-    uniquePairs.sort((a, b) => (b.fident || 0) - (a.fident || 0));
+    // Process all pairs to build identity matrix
+    const pairData = {};
+    let closestPair = null;
+    let maxIdent = -1;
 
-    if (uniquePairs.length >= 1) {
-      familyNav.style.display = 'block';
-      familySubtitle.textContent = `${uniquePairs.length} paralog pairs involving ${DATA.g1} or ${DATA.g2}`;
+    allPairIds.forEach(pairId => {
+      const meta = pairMap.get(pairId);
+      if (!meta) return;
 
-      // Render pair cards
-      familyPairs.innerHTML = '';
-      for (const pair of uniquePairs) {
-        const card = document.createElement('div');
-        card.className = 'family-pair-card';
+      const pair = {
+        pair_id: pairId,
+        gene_a: meta.geneA,
+        gene_b: meta.geneB,
+        fident: meta.fident,
+        tm_score: meta.tm,
+        has_report: true
+      };
+      pairData[pairId] = pair;
 
-        if (pair.pair_id === DATA.PAIR) {
-          card.classList.add('current');
-        }
-
-        if (!pair.has_report) {
-          card.classList.add('no-report');
-        }
-
-        // Determine identity class
-        let identClass = 'low';
-        if (pair.fident && pair.fident > 0.5) identClass = 'high';
-        else if (pair.fident && pair.fident > 0.3) identClass = 'medium';
-
-        card.innerHTML = `
-          <div class="family-pair-title">${pair.pair_id}</div>
-          <div class="family-pair-genes">${pair.gene_a} ↔ ${pair.gene_b}</div>
-          <div class="family-pair-stats">
-            <div class="family-pair-stat">
-              <span class="family-pair-stat-label">Identity</span>
-              <span class="family-pair-stat-value ${identClass}">${pair.fident ? (pair.fident * 100).toFixed(1) + '%' : '—'}</span>
-            </div>
-            <div class="family-pair-stat">
-              <span class="family-pair-stat-label">TM-score</span>
-              <span class="family-pair-stat-value">${pair.tm_score ? pair.tm_score.toFixed(3) : '—'}</span>
-            </div>
-          </div>
-        `;
-
-        if (pair.has_report && pair.pair_id !== DATA.PAIR) {
-          card.style.cursor = 'pointer';
-          card.addEventListener('click', () => {
-            window.location.href = `/?pair=${pair.pair_id}`;
-          });
-        }
-
-        familyPairs.appendChild(card);
+      // Update gene data
+      if (geneData[pair.gene_a]) {
+        geneData[pair.gene_a].pairs.push(pairId);
+        geneData[pair.gene_a].identities[pair.gene_b] = pair.fident || 0;
+        geneData[pair.gene_a].hasData = true;
+      }
+      if (geneData[pair.gene_b]) {
+        geneData[pair.gene_b].pairs.push(pairId);
+        geneData[pair.gene_b].identities[pair.gene_a] = pair.fident || 0;
+        geneData[pair.gene_b].hasData = true;
       }
 
-      // Render family network visualization
-      renderFamilyNetwork(uniquePairs);
+      // Track closest pair
+      if (pair.fident && pair.fident > maxIdent) {
+        maxIdent = pair.fident;
+        closestPair = pair;
+      }
+    });
+
+    // Update constellation state
+    constellationState = {
+      centerGene: DATA.g1,  // Start with g1 as center
+      selectedGenes: [DATA.g1, DATA.g2],
+      hoveredGene: null,
+      allGenes: Array.from(familyGenes),
+      geneData: geneData,
+      pairData: pairData,
+      closestPair: closestPair
+    };
+
+    console.log(`Family constellation: ${familyGenes.size} genes, ${allPairIds.size} pairs`);
+
+    // Show the family section
+    familyNav.style.display = 'block';
+    const familySubtitle = document.getElementById('familySubtitle');
+    if (familySubtitle) {
+      familySubtitle.textContent = `${familyGenes.size} genes in family · ${allPairIds.size} paralog pairs`;
     }
+
+    // Initialize constellation canvas
+    initFamilyConstellation();
 
   } catch (e) {
     console.error('Failed to load family data:', e);
   }
 }
 
-function renderFamilyNetwork(pairs) {
+function initFamilyConstellation() {
+  const canvas = document.getElementById('familyNetworkCanvas');
+  if (!canvas) return;
+
+  // Make canvas responsive
+  const container = canvas.parentElement;
+  canvas.width = Math.min(container.offsetWidth - 20, 900);
+  canvas.height = 500;
+
+  // Add event listeners
+  canvas.removeEventListener('mousemove', handleConstellationMouseMove);
+  canvas.removeEventListener('click', handleConstellationClick);
+  canvas.addEventListener('mousemove', handleConstellationMouseMove);
+  canvas.addEventListener('click', handleConstellationClick);
+
+  // Initial render
+  renderFamilyConstellation();
+}
+
+function handleConstellationMouseMove(e) {
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const hoveredGene = findGeneAtPosition(x, y);
+  if (hoveredGene !== constellationState.hoveredGene) {
+    constellationState.hoveredGene = hoveredGene;
+    canvas.style.cursor = hoveredGene ? 'pointer' : 'default';
+    renderFamilyConstellation();
+  }
+}
+
+function handleConstellationClick(e) {
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  const clickedGene = findGeneAtPosition(x, y);
+  if (!clickedGene) return;
+
+  const state = constellationState;
+  const geneInfo = state.geneData[clickedGene];
+
+  // If clicking the center gene, deselect it
+  if (clickedGene === state.centerGene) {
+    state.selectedGenes = [];
+    renderFamilyConstellation();
+    return;
+  }
+
+  // If center gene is selected (default state), clicking another gene navigates to that pair
+  if (state.selectedGenes.includes(state.centerGene) && state.selectedGenes.length <= 2) {
+    // Find pair between center and clicked gene
+    const pairId = findPairBetweenGenes(state.centerGene, clickedGene);
+    if (pairId && state.pairData[pairId]) {
+      // Navigate to this pair
+      window.location.href = `report.html?pair=${pairId}`;
+      return;
+    }
+  }
+
+  // If no center selected, we're in "select two genes" mode
+  if (state.selectedGenes.length === 0) {
+    // First selection - make this the new center
+    state.centerGene = clickedGene;
+    state.selectedGenes = [clickedGene];
+    renderFamilyConstellation();
+    return;
+  }
+
+  if (state.selectedGenes.length === 1 && !state.selectedGenes.includes(clickedGene)) {
+    // Second selection - find pair and navigate
+    const pairId = findPairBetweenGenes(state.selectedGenes[0], clickedGene);
+    if (pairId && state.pairData[pairId]) {
+      window.location.href = `report.html?pair=${pairId}`;
+    } else {
+      // No pair exists, just show both selected
+      state.selectedGenes.push(clickedGene);
+      renderFamilyConstellation();
+    }
+    return;
+  }
+
+  // Reset selection and select new gene as center
+  state.centerGene = clickedGene;
+  state.selectedGenes = [clickedGene];
+  renderFamilyConstellation();
+}
+
+function findPairBetweenGenes(gene1, gene2) {
+  const pairId1 = `${gene1}_${gene2}`;
+  const pairId2 = `${gene2}_${gene1}`;
+  if (constellationState.pairData[pairId1]) return pairId1;
+  if (constellationState.pairData[pairId2]) return pairId2;
+  return null;
+}
+
+function findGeneAtPosition(x, y) {
+  const positions = calculateGenePositions();
+  const hitRadius = 20;
+
+  for (const [gene, pos] of Object.entries(positions)) {
+    const dx = x - pos.x;
+    const dy = y - pos.y;
+    if (dx * dx + dy * dy < hitRadius * hitRadius) {
+      return gene;
+    }
+  }
+  return null;
+}
+
+function calculateGenePositions() {
+  const canvas = document.getElementById('familyNetworkCanvas');
+  if (!canvas) return {};
+
+  const state = constellationState;
+  const width = canvas.width;
+  const height = canvas.height;
+  const cx = width / 2;
+  const cy = height / 2;
+  const maxRadius = Math.min(width, height) * 0.42;
+
+  const positions = {};
+  const centerGene = state.centerGene;
+
+  // Center gene position
+  if (centerGene) {
+    positions[centerGene] = { x: cx, y: cy };
+  }
+
+  // Get other genes and their identities to center
+  const otherGenes = state.allGenes.filter(g => g !== centerGene);
+  const geneIdentities = [];
+
+  otherGenes.forEach(gene => {
+    const identity = state.geneData[centerGene]?.identities[gene] || 0;
+    geneIdentities.push({ gene, identity });
+  });
+
+  // Sort by identity (highest first) for consistent ordering
+  geneIdentities.sort((a, b) => b.identity - a.identity);
+
+  // Position genes in orbits based on identity
+  // Identity 1.0 = center, 0.0 = outer edge
+  // Orbits at 0.2, 0.4, 0.6, 0.8 thresholds
+  const orbits = [
+    { threshold: 0.8, genes: [] },
+    { threshold: 0.6, genes: [] },
+    { threshold: 0.4, genes: [] },
+    { threshold: 0.2, genes: [] },
+    { threshold: 0.0, genes: [] },
+  ];
+
+  geneIdentities.forEach(({ gene, identity }) => {
+    for (const orbit of orbits) {
+      if (identity >= orbit.threshold) {
+        orbit.genes.push({ gene, identity });
+        break;
+      }
+    }
+  });
+
+  // Position genes in each orbit
+  orbits.forEach((orbit, orbitIdx) => {
+    const orbitRadius = maxRadius * (1 - orbit.threshold);
+    const genes = orbit.genes;
+
+    genes.forEach((item, i) => {
+      // Distribute evenly around the orbit with some jitter based on identity
+      const baseAngle = (i / Math.max(genes.length, 1)) * 2 * Math.PI - Math.PI / 2;
+      // Add small offset based on exact identity for variety
+      const identOffset = (item.identity - orbit.threshold) * 0.5;
+      const angle = baseAngle + identOffset;
+
+      // Slight radius variation based on exact identity
+      const radiusVariation = (item.identity - orbit.threshold) * maxRadius * 0.15;
+      const r = orbitRadius - radiusVariation;
+
+      positions[item.gene] = {
+        x: cx + r * Math.cos(angle),
+        y: cy + r * Math.sin(angle)
+      };
+    });
+  });
+
+  return positions;
+}
+
+function renderFamilyConstellation() {
   const canvas = document.getElementById('familyNetworkCanvas');
   if (!canvas) return;
 
   const ctx = canvas.getContext('2d');
   const width = canvas.width;
   const height = canvas.height;
-
-  // Extract unique genes (nodes)
-  const geneSet = new Set();
-  pairs.forEach(p => {
-    geneSet.add(p.gene_a);
-    geneSet.add(p.gene_b);
-  });
-  const genes = Array.from(geneSet);
-
-  // Find closest pair (highest TM-score)
-  let closestPair = null;
-  let maxTM = -1;
-  pairs.forEach(p => {
-    if (p.tm_score && p.tm_score > maxTM) {
-      maxTM = p.tm_score;
-      closestPair = p;
-    }
-  });
-
-  // Simple circular layout
   const cx = width / 2;
   const cy = height / 2;
-  const radius = Math.min(width, height) * 0.35;
+  const maxRadius = Math.min(width, height) * 0.42;
 
-  const nodes = {};
-  genes.forEach((gene, i) => {
-    const angle = (i / genes.length) * 2 * Math.PI - Math.PI / 2;
-    nodes[gene] = {
-      x: cx + radius * Math.cos(angle),
-      y: cy + radius * Math.sin(angle),
-      gene: gene
-    };
-  });
+  const state = constellationState;
+  const positions = calculateGenePositions();
 
   // Clear canvas
   ctx.clearRect(0, 0, width, height);
 
-  // Draw edges (pairs)
-  ctx.lineCap = 'round';
-  pairs.forEach(p => {
-    const n1 = nodes[p.gene_a];
-    const n2 = nodes[p.gene_b];
-    if (!n1 || !n2) return;
-
-    const isCurrent = p.pair_id === DATA.PAIR;
-    const isClosest = closestPair && p.pair_id === closestPair.pair_id;
-
-    // Line thickness based on TM-score
-    const lineWidth = p.tm_score ? 1 + (p.tm_score * 4) : 1;
-
+  // Draw orbit circles (identity thresholds)
+  const thresholds = [0.2, 0.4, 0.6, 0.8];
+  ctx.setLineDash([4, 4]);
+  thresholds.forEach(threshold => {
+    const radius = maxRadius * (1 - threshold);
     ctx.beginPath();
-    ctx.moveTo(n1.x, n1.y);
-    ctx.lineTo(n2.x, n2.y);
+    ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#e0d8c8';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    if (isCurrent) {
-      ctx.strokeStyle = '#c39b63';
-      ctx.lineWidth = lineWidth + 2;
-    } else if (isClosest) {
-      ctx.strokeStyle = '#2e7d32';
-      ctx.lineWidth = lineWidth + 1;
+    // Label the orbit
+    ctx.fillStyle = '#b0a090';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 5, cy - 3);
+  });
+  ctx.setLineDash([]);
+
+  // Draw center marker
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+  ctx.fillStyle = '#d0c8b8';
+  ctx.fill();
+
+  // Draw closest pair edge
+  if (state.closestPair) {
+    const p1 = positions[state.closestPair.gene_a];
+    const p2 = positions[state.closestPair.gene_b];
+    if (p1 && p2) {
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.strokeStyle = '#4f46e5';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  // Draw genes (nodes)
+  state.allGenes.forEach(gene => {
+    const pos = positions[gene];
+    if (!pos) return;
+
+    const geneInfo = state.geneData[gene];
+    const isCenter = gene === state.centerGene;
+    const isSelected = state.selectedGenes.includes(gene);
+    const isHovered = gene === state.hoveredGene;
+    const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
+    const hasData = geneInfo?.hasData;
+
+    // Determine colors and sizes
+    let fillColor, strokeColor, radius, labelColor;
+
+    if (isCenter) {
+      fillColor = '#4f46e5';
+      strokeColor = '#312e81';
+      radius = 14;
+      labelColor = '#1e1b4b';
+    } else if (isCurrentPair) {
+      fillColor = '#c39b63';
+      strokeColor = '#8b6914';
+      radius = 12;
+      labelColor = '#352a18';
+    } else if (isSelected) {
+      fillColor = '#10b981';
+      strokeColor = '#047857';
+      radius = 11;
+      labelColor = '#064e3b';
+    } else if (hasData) {
+      fillColor = isHovered ? '#6366f1' : '#64748b';
+      strokeColor = isHovered ? '#4338ca' : '#475569';
+      radius = isHovered ? 10 : 8;
+      labelColor = '#334155';
     } else {
-      ctx.strokeStyle = '#999';
-      ctx.lineWidth = lineWidth;
+      // No data - greyed out
+      fillColor = '#d1d5db';
+      strokeColor = '#9ca3af';
+      radius = 7;
+      labelColor = '#9ca3af';
     }
 
-    ctx.stroke();
-  });
+    // Draw node glow for important genes
+    if (isCenter || isCurrentPair || isSelected) {
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 4, 0, 2 * Math.PI);
+      ctx.fillStyle = fillColor + '33';
+      ctx.fill();
+    }
 
-  // Draw nodes
-  genes.forEach(gene => {
-    const node = nodes[gene];
-    const isInCurrent = DATA.g1 === gene || DATA.g2 === gene;
-
+    // Draw node
     ctx.beginPath();
-    ctx.arc(node.x, node.y, isInCurrent ? 8 : 6, 0, 2 * Math.PI);
-    ctx.fillStyle = isInCurrent ? '#c39b63' : '#666';
+    ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = fillColor;
     ctx.fill();
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Label
-    ctx.fillStyle = '#352a18';
-    ctx.font = isInCurrent ? 'bold 12px sans-serif' : '11px sans-serif';
+    // Draw label
+    ctx.fillStyle = labelColor;
+    ctx.font = isCenter || isCurrentPair ? 'bold 12px sans-serif' : '11px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Position label outside the circle
-    const angle = Math.atan2(node.y - cy, node.x - cx);
-    const labelDist = isInCurrent ? 22 : 18;
-    const labelX = node.x + Math.cos(angle) * labelDist;
-    const labelY = node.y + Math.sin(angle) * labelDist;
+    // Position label below node
+    const labelY = pos.y + radius + 14;
+    ctx.fillText(gene, pos.x, labelY);
 
-    ctx.fillText(gene, labelX, labelY);
-  });
-
-  // Add simple pan interaction
-  let isDragging = false;
-  let dragStartX = 0;
-  let dragStartY = 0;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  canvas.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    dragStartX = e.offsetX - offsetX;
-    dragStartY = e.offsetY - offsetY;
-  });
-
-  canvas.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      offsetX = e.offsetX - dragStartX;
-      offsetY = e.offsetY - dragStartY;
-
-      // Redraw with offset (simple pan)
-      ctx.save();
-      ctx.clearRect(0, 0, width, height);
-      ctx.translate(offsetX, offsetY);
-
-      // Redraw edges and nodes with current transform
-      // (For simplicity, just re-render without transform for now)
-      ctx.restore();
+    // Show identity on hover
+    if (isHovered && !isCenter && state.centerGene) {
+      const identity = state.geneData[state.centerGene]?.identities[gene];
+      if (identity !== undefined) {
+        ctx.fillStyle = '#6366f1';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillText(`${(identity * 100).toFixed(1)}%`, pos.x, labelY + 12);
+      }
     }
   });
 
-  canvas.addEventListener('mouseup', () => {
-    isDragging = false;
+  // Draw legend
+  drawConstellationLegend(ctx, width, height);
+}
+
+function drawConstellationLegend(ctx, width, height) {
+  const legendX = 15;
+  const legendY = height - 90;
+
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  const items = [
+    { color: '#4f46e5', label: 'Center gene (click to deselect)' },
+    { color: '#c39b63', label: 'Current pair genes' },
+    { color: '#64748b', label: 'Family gene (click to navigate)' },
+    { color: '#d1d5db', label: 'No pair data yet' },
+  ];
+
+  items.forEach((item, i) => {
+    const y = legendY + i * 18;
+
+    ctx.beginPath();
+    ctx.arc(legendX + 6, y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = item.color;
+    ctx.fill();
+
+    ctx.fillStyle = '#666';
+    ctx.fillText(item.label, legendX + 18, y);
   });
 
-  canvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-  });
+  // Edge legend
+  ctx.beginPath();
+  ctx.moveTo(legendX, legendY + 72);
+  ctx.lineTo(legendX + 12, legendY + 72);
+  ctx.strokeStyle = '#4f46e5';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#666';
+  ctx.fillText('Closest pair in family', legendX + 18, legendY + 72);
 }
 
 // Start loading when DOM is ready

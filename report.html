@@ -235,28 +235,19 @@
 </header>
 
 <div id="wrap">
-  <!-- Family Navigation -->
+  <!-- Family Constellation -->
   <section class="card" id="familyNav" style="display:none;">
     <div class="card-header">
-      <h2>Paralog Family</h2>
-      <span class="small" id="familySubtitle">Other paralog pairs involving these genes</span>
+      <h2>Paralog Family Constellation</h2>
+      <span class="small" id="familySubtitle">Click genes to explore pairs · Orbits show sequence identity distance</span>
     </div>
-    <div class="body">
-      <div id="familyPairs" class="family-grid"></div>
-      <div style="margin-top:20px;">
-        <h3 style="font-size:14px;margin-bottom:10px;color:#352a18;">Family Network</h3>
-        <canvas id="familyNetworkCanvas" width="800" height="400" style="border:1px solid #e8dfc7;border-radius:6px;background:#fdfbf7;cursor:move;"></canvas>
-        <div style="margin-top:8px;font-size:11px;color:#666;">
-          <span style="display:inline-block;margin-right:15px;">
-            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#c39b63;vertical-align:middle;"></span> Current pair
-          </span>
-          <span style="display:inline-block;margin-right:15px;">
-            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#2e7d32;vertical-align:middle;"></span> Closest pair
-          </span>
-          <span style="display:inline-block;">
-            <span style="display:inline-block;width:20px;height:2px;background:#666;vertical-align:middle;"></span> Paralog pair (thicker = higher TM-score)
-          </span>
-        </div>
+    <div class="body" style="padding:15px;">
+      <div id="constellationContainer" style="display:flex;justify-content:center;">
+        <canvas id="familyNetworkCanvas" width="900" height="500" style="border:1px solid #e8dfc7;border-radius:8px;background:linear-gradient(180deg, #fdfbf7 0%, #f8f4ed 100%);"></canvas>
+      </div>
+      <div id="constellationHelp" style="margin-top:12px;padding:10px 15px;background:#f0f0f8;border-radius:6px;font-size:12px;color:#555;">
+        <strong>How to use:</strong> The center gene shows sequence identity to all family members (inner = more similar).
+        Click any gene to navigate to its pair with the center. Click the center gene to deselect and choose two different genes.
       </div>
     </div>
   </section>
