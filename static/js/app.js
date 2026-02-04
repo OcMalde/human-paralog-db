@@ -427,18 +427,33 @@ function findGeneAtPosition(x, y) {
   return null;
 }
 
+function getCanvasDisplayDimensions(canvas) {
+  // Get the actual display dimensions (CSS pixels, not device pixels)
+  // Priority: stored _displayWidth, then style.width, then getBoundingClientRect
+  if (canvas._displayWidth && canvas._displayHeight) {
+    return { width: canvas._displayWidth, height: canvas._displayHeight };
+  }
+  if (canvas.style.width && canvas.style.height) {
+    return {
+      width: parseInt(canvas.style.width, 10),
+      height: parseInt(canvas.style.height, 10)
+    };
+  }
+  const rect = canvas.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+
 function calculateGenePositions() {
   const canvas = document.getElementById('familyNetworkCanvas');
   if (!canvas) return {};
 
   const state = constellationState;
-  // Use display dimensions for calculations
-  const width = canvas._displayWidth || canvas.width;
-  const height = canvas._displayHeight || canvas.height;
+  // Use display dimensions for calculations (CSS pixels, not device pixels)
+  const { width, height } = getCanvasDisplayDimensions(canvas);
   const cx = width / 2;
   const cy = height / 2;
-  // Leave generous padding for labels (50px on each side)
-  const maxRadius = Math.min(width, height) / 2 - 70;
+  // Leave generous padding for labels
+  const maxRadius = Math.min(width, height) / 2 - 60;
 
   const positions = {};
   const centerGene = state.centerGene;
@@ -535,18 +550,17 @@ function renderFamilyConstellation() {
   if (!canvas) return;
 
   const ctx = canvas.getContext('2d');
-  // Use display dimensions (not scaled canvas dimensions)
-  const width = canvas._displayWidth || canvas.width;
-  const height = canvas._displayHeight || canvas.height;
+  // Use display dimensions (CSS pixels, not device pixels)
+  const { width, height } = getCanvasDisplayDimensions(canvas);
   const cx = width / 2;
   const cy = height / 2;
   // Match the maxRadius calculation in calculateGenePositions
-  const maxRadius = Math.min(width, height) / 2 - 70;
+  const maxRadius = Math.min(width, height) / 2 - 60;
 
   const state = constellationState;
   const positions = calculateGenePositions();
 
-  // Clear canvas (use actual canvas size)
+  // Clear canvas (use actual canvas size for clearing)
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -563,16 +577,20 @@ function renderFamilyConstellation() {
     const radius = minRadius + (1 - threshold) * (maxRadius - minRadius);
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Label the orbit (subtle)
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = '10px -apple-system, sans-serif';
+    // Label the orbit - with shadow for visibility on dark background
+    ctx.font = 'bold 10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
+    // Draw shadow first
+    ctx.fillStyle = '#000';
+    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 7, cy - 1);
+    // Then draw text
+    ctx.fillStyle = '#888';
     ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 6, cy - 2);
   });
 
