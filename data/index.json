@@ -18,6 +18,51 @@
     "fident": 0.839
   },
   {
+    "id": "ENO1_ENO3",
+    "geneA": "ENO1",
+    "geneB": "ENO3",
+    "accA": "P06733",
+    "accB": "P13929",
+    "tm": 0.9994,
+    "fident": 0.834
+  },
+  {
+    "id": "ENO1_ENO4",
+    "geneA": "ENO1",
+    "geneB": "ENO4",
+    "accA": "P06733",
+    "accB": "A0A5H1",
+    "tm": null,
+    "fident": null
+  },
+  {
+    "id": "ENO2_ENO3",
+    "geneA": "ENO2",
+    "geneB": "ENO3",
+    "accA": "P09104",
+    "accB": "P13929",
+    "tm": 0.9977,
+    "fident": 0.834
+  },
+  {
+    "id": "ENO2_ENO4",
+    "geneA": "ENO2",
+    "geneB": "ENO4",
+    "accA": "P09104",
+    "accB": "A0A5H1",
+    "tm": null,
+    "fident": null
+  },
+  {
+    "id": "ENO3_ENO4",
+    "geneA": "ENO3",
+    "geneB": "ENO4",
+    "accA": "P13929",
+    "accB": "A0A5H1",
+    "tm": null,
+    "fident": null
+  },
+  {
     "id": "MAGOH_MAGOHB",
     "geneA": "MAGOH",
     "geneB": "MAGOHB",
@@ -57,7 +102,7 @@
     "id": "STAG1_STAG2",
     "geneA": "STAG1",
     "geneB": "STAG2",
-    "accA": "Q8WVM7",
+    "accA": "Q68DW7",
     "accB": "Q8N3U4",
     "tm": 0.841,
     "fident": 0.695

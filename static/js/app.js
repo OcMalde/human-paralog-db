@@ -359,47 +359,44 @@ function handleConstellationClick(e) {
   const state = constellationState;
   const geneInfo = state.geneData[clickedGene];
 
-  // If clicking the center gene, deselect it
+  // Only allow selecting genes that have report data
+  if (!geneInfo?.hasData) {
+    console.log(`${clickedGene} has no report data - cannot select`);
+    return;
+  }
+
+  // If clicking the center gene, deselect it (clear all selection)
   if (clickedGene === state.centerGene) {
+    state.centerGene = null;
     state.selectedGenes = [];
     renderFamilyConstellation();
     return;
   }
 
-  // If center gene is selected (default state), clicking another gene navigates to that pair
-  if (state.selectedGenes.includes(state.centerGene) && state.selectedGenes.length <= 2) {
-    // Find pair between center and clicked gene
-    const pairId = findPairBetweenGenes(state.centerGene, clickedGene);
-    if (pairId && state.pairData[pairId]) {
-      // Navigate to this pair
-      window.location.href = `report.html?pair=${pairId}`;
-      return;
-    }
-  }
-
-  // If no center selected, we're in "select two genes" mode
-  if (state.selectedGenes.length === 0) {
-    // First selection - make this the new center
+  // If no center selected, make clicked gene the new center
+  if (!state.centerGene || state.selectedGenes.length === 0) {
     state.centerGene = clickedGene;
     state.selectedGenes = [clickedGene];
     renderFamilyConstellation();
     return;
   }
 
-  if (state.selectedGenes.length === 1 && !state.selectedGenes.includes(clickedGene)) {
-    // Second selection - find pair and navigate
-    const pairId = findPairBetweenGenes(state.selectedGenes[0], clickedGene);
+  // If center is selected and clicking another gene
+  if (state.selectedGenes.length === 1 && state.selectedGenes[0] === state.centerGene) {
+    // Try to find pair between center and clicked gene
+    const pairId = findPairBetweenGenes(state.centerGene, clickedGene);
     if (pairId && state.pairData[pairId]) {
+      // Navigate to this pair
       window.location.href = `report.html?pair=${pairId}`;
     } else {
-      // No pair exists, just show both selected
-      state.selectedGenes.push(clickedGene);
+      // No direct pair - just highlight but don't navigate
+      state.selectedGenes = [state.centerGene, clickedGene];
       renderFamilyConstellation();
     }
     return;
   }
 
-  // Reset selection and select new gene as center
+  // If two genes already selected, clicking a third resets and makes it center
   state.centerGene = clickedGene;
   state.selectedGenes = [clickedGene];
   renderFamilyConstellation();
@@ -455,17 +452,12 @@ function calculateGenePositions() {
   // Leave generous padding for labels
   const maxRadius = Math.min(width, height) / 2 - 60;
 
-  // Debug logging
-  console.log('Canvas dimensions:', { width, height, cx, cy, maxRadius });
-  console.log('State:', { centerGene: state.centerGene, allGenes: state.allGenes?.length });
-
   const positions = {};
   const centerGene = state.centerGene;
 
   // Center gene position
   if (centerGene) {
     positions[centerGene] = { x: cx, y: cy };
-    console.log('Center gene position:', centerGene, positions[centerGene]);
   }
 
   // Get other genes and compute their distance to center
@@ -545,11 +537,6 @@ function calculateGenePositions() {
       x: cx + radius * Math.cos(angle),
       y: cy + radius * Math.sin(angle)
     };
-
-    // Debug: log first few genes
-    if (i < 3) {
-      console.log(`Gene ${gene}: identity=${identity}, radius=${radius}, pos=(${positions[gene].x.toFixed(1)}, ${positions[gene].y.toFixed(1)})`);
-    }
   });
 
   return positions;
@@ -568,18 +555,6 @@ function renderFamilyConstellation() {
   const cy = height / 2;
   // Match the maxRadius calculation in calculateGenePositions
   const maxRadius = Math.min(width, height) / 2 - 60;
-
-  // Debug: log render parameters (only once)
-  if (!canvas._debugLogged) {
-    console.log('Render params:', {
-      dpr,
-      displayDims: { width, height },
-      canvasDims: { w: canvas.width, h: canvas.height },
-      center: { cx, cy },
-      maxRadius
-    });
-    canvas._debugLogged = true;
-  }
 
   const state = constellationState;
   const positions = calculateGenePositions();
@@ -638,24 +613,38 @@ function renderFamilyConstellation() {
     }
   }
 
-  // Draw double edge to closest gene (gray)
-  if (closestToCenter && positions[closestToCenter] && positions[state.centerGene]) {
+  // Draw double edge to closest gene (gray) - only if center exists
+  if (state.centerGene && closestToCenter && positions[closestToCenter] && positions[state.centerGene]) {
     const p1 = positions[state.centerGene];
     const p2 = positions[closestToCenter];
     // Draw double line
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const len = Math.sqrt(dx * dx + dy * dy);
-    const nx = -dy / len * 2; // perpendicular offset
-    const ny = dx / len * 2;
+    if (len > 0) {
+      const nx = -dy / len * 2.5; // perpendicular offset
+      const ny = dx / len * 2.5;
 
+      ctx.beginPath();
+      ctx.moveTo(p1.x + nx, p1.y + ny);
+      ctx.lineTo(p2.x + nx, p2.y + ny);
+      ctx.moveTo(p1.x - nx, p1.y - ny);
+      ctx.lineTo(p2.x - nx, p2.y - ny);
+      ctx.strokeStyle = '#999';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  // Draw edge for current pair (teal colored line)
+  if (DATA.g1 && DATA.g2 && positions[DATA.g1] && positions[DATA.g2]) {
+    const p1 = positions[DATA.g1];
+    const p2 = positions[DATA.g2];
     ctx.beginPath();
-    ctx.moveTo(p1.x + nx, p1.y + ny);
-    ctx.lineTo(p2.x + nx, p2.y + ny);
-    ctx.moveTo(p1.x - nx, p1.y - ny);
-    ctx.lineTo(p2.x - nx, p2.y - ny);
-    ctx.strokeStyle = '#888';
-    ctx.lineWidth = 2;
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = '#0d9488';
+    ctx.lineWidth = 3;
     ctx.stroke();
   }
 
@@ -760,7 +749,7 @@ function renderFamilyConstellation() {
 
 function drawConstellationLegend(ctx, width, height) {
   const legendX = 15;
-  const legendY = height - 110;
+  const legendY = height - 130;
 
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'left';
@@ -788,18 +777,29 @@ function drawConstellationLegend(ctx, width, height) {
     ctx.fillText(item.label, legendX + 16, y);
   });
 
+  // Edge legend - current pair (teal)
+  ctx.beginPath();
+  ctx.moveTo(legendX, legendY + 70);
+  ctx.lineTo(legendX + 12, legendY + 70);
+  ctx.strokeStyle = '#0d9488';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#444';
+  ctx.fillText('Shown pair', legendX + 18, legendY + 70);
+
   // Edge legend - double line for closest
   ctx.beginPath();
-  ctx.moveTo(legendX, legendY + 68);
-  ctx.lineTo(legendX + 10, legendY + 68);
-  ctx.moveTo(legendX, legendY + 72);
-  ctx.lineTo(legendX + 10, legendY + 72);
-  ctx.strokeStyle = '#888';
+  ctx.moveTo(legendX, legendY + 86);
+  ctx.lineTo(legendX + 12, legendY + 86);
+  ctx.moveTo(legendX, legendY + 90);
+  ctx.lineTo(legendX + 12, legendY + 90);
+  ctx.strokeStyle = '#999';
   ctx.lineWidth = 2;
   ctx.stroke();
 
   ctx.fillStyle = '#444';
-  ctx.fillText('Closest to center', legendX + 16, legendY + 70);
+  ctx.fillText('Closest to center', legendX + 18, legendY + 88);
 }
 
 // Start loading when DOM is ready
