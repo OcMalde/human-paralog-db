@@ -23,7 +23,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 <div class="top-bar">
   <h1>Human Paralog DB</h1>
   <div class="search-box">
-    <input id="pairInput" type="text" placeholder="Search pair (e.g. DOCK1_DOCK5)" list="pairOptions" autocomplete="off"/>
+    <input id="pairInput" type="text" placeholder="Search gene or pair (e.g. ENO1 or ENO1_ENO2)" list="pairOptions" autocomplete="off"/>
     <datalist id="pairOptions"></datalist>
     <button id="loadBtn">Load</button>
   </div>
@@ -92,8 +92,23 @@ function renderChips() {
 function renderDatalist() {
   const dl = document.getElementById('pairOptions');
   dl.innerHTML = '';
-  // Only show first 50 in datalist for performance
-  pairs.slice(0, 50).forEach(p => {
+
+  // Collect unique gene names
+  const genes = new Set();
+  pairs.forEach(p => {
+    genes.add(p.geneA);
+    genes.add(p.geneB);
+  });
+
+  // Add gene names first (for single gene search)
+  Array.from(genes).sort().forEach(gene => {
+    const opt = document.createElement('option');
+    opt.value = gene;
+    dl.appendChild(opt);
+  });
+
+  // Then add pair IDs
+  pairs.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.id;
     dl.appendChild(opt);
@@ -101,17 +116,39 @@ function renderDatalist() {
 }
 
 function loadPair(id) {
-  const p = pairs.find(x => x.id === id || x.id.toLowerCase() === id.toLowerCase());
+  const input = id.trim();
+
+  // Try exact pair match first
+  let p = pairs.find(x => x.id === input || x.id.toLowerCase() === input.toLowerCase());
+
+  // If not found, check if it's a single gene name
   if (!p) {
-    alert(`Pair "${id}" not found`);
+    const gene = input.toUpperCase();
+    // Find all pairs containing this gene
+    const matching = pairs.filter(x =>
+      x.geneA.toUpperCase() === gene || x.geneB.toUpperCase() === gene
+    );
+
+    if (matching.length > 0) {
+      // Pick the pair with highest fident (closest pair)
+      p = matching.reduce((best, curr) => {
+        const bestIdent = best.fident || 0;
+        const currIdent = curr.fident || 0;
+        return currIdent > bestIdent ? curr : best;
+      }, matching[0]);
+    }
+  }
+
+  if (!p) {
+    alert(`No pair found for "${input}"`);
     return;
   }
-  
+
   current = p.id;
   document.getElementById('pairInput').value = p.id;
   window.location.hash = p.id;
   renderChips();
-  
+
   document.getElementById('reportFrame').src = `report.html?pair=${encodeURIComponent(p.id)}`;
 }
 

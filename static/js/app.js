@@ -359,72 +359,65 @@ function handleConstellationClick(e) {
   const state = constellationState;
   const geneInfo = state.geneData[clickedGene];
 
-  // Only allow selecting genes that have report data
-  if (!geneInfo?.hasData) {
-    console.log(`${clickedGene} has no report data - cannot select`);
-    return;
-  }
-
   const isCenter = clickedGene === state.centerGene;
   const isPairPartner = state.selectedGenes.length === 2 && state.selectedGenes[1] === clickedGene;
 
-  // CASE 1: Clicking the center gene - toggle it off
+  // CASE 1: Clicking the center gene - unselect it
   if (isCenter) {
     if (state.selectedGenes.length === 2) {
-      // Had pair partner - pair partner becomes new center
+      // Had pair partner - partner becomes new center, constellation rebuilds
       const oldPartner = state.selectedGenes[1];
       state.centerGene = oldPartner;
       state.selectedGenes = [oldPartner];
-      // Rebuild constellation with new center (orbits change)
       renderFamilyConstellation();
     } else {
-      // Only center selected - clear all
-      state.centerGene = null;
+      // Only center selected - clear selection but keep centerGene for positioning
+      // Visual shows nothing selected, next click will set new center
       state.selectedGenes = [];
       renderFamilyConstellation();
     }
     return;
   }
 
-  // CASE 2: Clicking the pair partner - toggle it off
+  // CASE 2: Clicking the pair partner - unselect it
   if (isPairPartner) {
     state.selectedGenes = [state.centerGene];
     renderFamilyConstellation();
     return;
   }
 
-  // CASE 3: Clicking an unselected gene
+  // CASE 3: Clicking an unselected gene - check hasData first
+  if (!geneInfo?.hasData) {
+    console.log(`${clickedGene} has no report data - cannot select`);
+    return;
+  }
 
-  // No center selected - make this the new center
-  if (!state.centerGene) {
+  // No selection at all - make this the new center
+  if (state.selectedGenes.length === 0) {
     state.centerGene = clickedGene;
     state.selectedGenes = [clickedGene];
     renderFamilyConstellation();
     return;
   }
 
-  // Center exists but no pair partner - add as pair partner
+  // Only center selected - add as pair partner and load pair
   if (state.selectedGenes.length === 1) {
     state.selectedGenes = [state.centerGene, clickedGene];
-    // Load pair if it exists
     const pairId = findPairBetweenGenes(state.centerGene, clickedGene);
     if (pairId && state.pairData[pairId]) {
       window.location.href = `report.html?pair=${pairId}`;
     } else {
-      // No direct pair data - just highlight
       renderFamilyConstellation();
     }
     return;
   }
 
-  // Both center and pair partner exist - replace pair partner with new gene
+  // Both selected - replace pair partner with new gene and load pair
   state.selectedGenes = [state.centerGene, clickedGene];
-  // Load new pair if it exists
   const pairId = findPairBetweenGenes(state.centerGene, clickedGene);
   if (pairId && state.pairData[pairId]) {
     window.location.href = `report.html?pair=${pairId}`;
   } else {
-    // No direct pair data - just highlight
     renderFamilyConstellation();
   }
 }
