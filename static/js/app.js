@@ -455,12 +455,17 @@ function calculateGenePositions() {
   // Leave generous padding for labels
   const maxRadius = Math.min(width, height) / 2 - 60;
 
+  // Debug logging
+  console.log('Canvas dimensions:', { width, height, cx, cy, maxRadius });
+  console.log('State:', { centerGene: state.centerGene, allGenes: state.allGenes?.length });
+
   const positions = {};
   const centerGene = state.centerGene;
 
   // Center gene position
   if (centerGene) {
     positions[centerGene] = { x: cx, y: cy };
+    console.log('Center gene position:', centerGene, positions[centerGene]);
   }
 
   // Get other genes and compute their distance to center
@@ -540,6 +545,11 @@ function calculateGenePositions() {
       x: cx + radius * Math.cos(angle),
       y: cy + radius * Math.sin(angle)
     };
+
+    // Debug: log first few genes
+    if (i < 3) {
+      console.log(`Gene ${gene}: identity=${identity}, radius=${radius}, pos=(${positions[gene].x.toFixed(1)}, ${positions[gene].y.toFixed(1)})`);
+    }
   });
 
   return positions;
@@ -550,6 +560,8 @@ function renderFamilyConstellation() {
   if (!canvas) return;
 
   const ctx = canvas.getContext('2d');
+  const dpr = canvas._dpr || window.devicePixelRatio || 1;
+
   // Use display dimensions (CSS pixels, not device pixels)
   const { width, height } = getCanvasDisplayDimensions(canvas);
   const cx = width / 2;
@@ -557,14 +569,27 @@ function renderFamilyConstellation() {
   // Match the maxRadius calculation in calculateGenePositions
   const maxRadius = Math.min(width, height) / 2 - 60;
 
+  // Debug: log render parameters (only once)
+  if (!canvas._debugLogged) {
+    console.log('Render params:', {
+      dpr,
+      displayDims: { width, height },
+      canvasDims: { w: canvas.width, h: canvas.height },
+      center: { cx, cy },
+      maxRadius
+    });
+    canvas._debugLogged = true;
+  }
+
   const state = constellationState;
   const positions = calculateGenePositions();
 
-  // Clear canvas (use actual canvas size for clearing)
-  ctx.save();
+  // Reset transform and clear canvas
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.restore();
+
+  // Apply DPR scaling for all subsequent drawing
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Dark background matching structure viewer
   ctx.fillStyle = '#1e1e24';
