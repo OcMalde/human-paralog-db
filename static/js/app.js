@@ -621,44 +621,10 @@ function renderFamilyConstellation() {
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Find and draw closest gene to center (highest identity)
-  let closestToCenter = null;
-  let highestIdentity = 0;
-  if (state.centerGene && state.geneData[state.centerGene]) {
-    const centerIdentities = state.geneData[state.centerGene].identities || {};
-    for (const [gene, identity] of Object.entries(centerIdentities)) {
-      if (identity > highestIdentity) {
-        highestIdentity = identity;
-        closestToCenter = gene;
-      }
-    }
-  }
-
-  // Draw double edge to closest gene (gray) - only if center exists
-  if (state.centerGene && closestToCenter && positions[closestToCenter] && positions[state.centerGene]) {
-    const p1 = positions[state.centerGene];
-    const p2 = positions[closestToCenter];
-    // Draw double line
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len > 0) {
-      const nx = -dy / len * 2.5; // perpendicular offset
-      const ny = dx / len * 2.5;
-
-      ctx.beginPath();
-      ctx.moveTo(p1.x + nx, p1.y + ny);
-      ctx.lineTo(p2.x + nx, p2.y + ny);
-      ctx.moveTo(p1.x - nx, p1.y - ny);
-      ctx.lineTo(p2.x - nx, p2.y - ny);
-      ctx.strokeStyle = '#999';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  }
-
-  // Draw edge for current pair (teal colored line)
-  if (DATA.g1 && DATA.g2 && positions[DATA.g1] && positions[DATA.g2]) {
+  // Draw edge for selected pair (teal line) - only when BOTH genes are selected
+  const bothSelected = state.selectedGenes.length === 2 &&
+    state.selectedGenes.includes(DATA.g1) && state.selectedGenes.includes(DATA.g2);
+  if (bothSelected && positions[DATA.g1] && positions[DATA.g2]) {
     const p1 = positions[DATA.g1];
     const p2 = positions[DATA.g2];
     ctx.beginPath();
@@ -682,8 +648,6 @@ function renderFamilyConstellation() {
     // Partner is the second gene in selection (not the center)
     const isSelectedPartner = state.selectedGenes.length === 2 && state.selectedGenes[1] === gene;
     const isHovered = gene === state.hoveredGene;
-    const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
-    const isClosestToCenter = gene === closestToCenter;
     const hasData = geneInfo?.hasData;
 
     // Determine colors and sizes - scheme for light background
@@ -701,12 +665,6 @@ function renderFamilyConstellation() {
       strokeColor = '#5b21b6';
       radius = 12;
       labelColor = '#5b21b6';
-    } else if (isCurrentPair) {
-      // Current pair genes (from URL) - teal
-      fillColor = '#0d9488';
-      strokeColor = '#115e59';
-      radius = 11;
-      labelColor = '#115e59';
     } else if (hasData) {
       // Genes with data - slate blue
       fillColor = isHovered ? '#475569' : '#64748b';
@@ -729,15 +687,6 @@ function renderFamilyConstellation() {
       ctx.fill();
     }
 
-    // Draw extra ring for closest to center (but not if it's AT center)
-    if (isClosestToCenter && !isPositionalCenter) {
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius + 4, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#888';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
     // Draw node
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
@@ -749,7 +698,7 @@ function renderFamilyConstellation() {
 
     // Draw label
     ctx.fillStyle = labelColor;
-    ctx.font = (isSelectedCenter || isSelectedPartner || isCurrentPair) ? 'bold 11px sans-serif' : '10px sans-serif';
+    ctx.font = (isSelectedCenter || isSelectedPartner) ? 'bold 11px sans-serif' : '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
