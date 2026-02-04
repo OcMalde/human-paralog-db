@@ -679,8 +679,8 @@ function renderFamilyConstellation() {
       labelColor = '#9ca3af';
     }
 
-    // Draw node glow for selected/important genes
-    if (isSelectedCenter || isSelectedPartner || isCurrentPair) {
+    // Draw node glow for selected genes
+    if (isSelectedCenter || isSelectedPartner) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 6, 0, 2 * Math.PI);
       ctx.fillStyle = fillColor + '30';
