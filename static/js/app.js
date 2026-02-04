@@ -591,32 +591,28 @@ function renderFamilyConstellation() {
   // Apply DPR scaling for all subsequent drawing
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  // Dark background matching structure viewer
-  ctx.fillStyle = '#1e1e24';
+  // Light background matching rest of page
+  ctx.fillStyle = '#fafafa';
   ctx.fillRect(0, 0, width, height);
 
-  // Draw orbit circles (identity thresholds) - subtle on dark background
-  const thresholds = [0.2, 0.4, 0.6, 0.8];
+  // Draw orbit circles (identity thresholds) - including 0%
+  const thresholds = [0, 0.2, 0.4, 0.6, 0.8];
   const minRadius = 40;
   thresholds.forEach(threshold => {
     const radius = minRadius + (1 - threshold) * (maxRadius - minRadius);
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = threshold === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = threshold === 0 ? 1.5 : 1;
     ctx.setLineDash([4, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Label the orbit - with shadow for visibility on dark background
-    ctx.font = 'bold 10px -apple-system, sans-serif';
+    // Label the orbit
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    // Draw shadow first
-    ctx.fillStyle = '#000';
-    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 7, cy - 1);
-    // Then draw text
-    ctx.fillStyle = '#888';
-    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 6, cy - 2);
+    ctx.fillStyle = '#666';
+    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 5, cy - 2);
   });
 
   // Draw center crosshair
@@ -625,22 +621,42 @@ function renderFamilyConstellation() {
   ctx.lineTo(cx + 6, cy);
   ctx.moveTo(cx, cy - 6);
   ctx.lineTo(cx, cy + 6);
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Draw closest pair edge (gold/amber color)
-  if (state.closestPair) {
-    const p1 = positions[state.closestPair.gene_a];
-    const p2 = positions[state.closestPair.gene_b];
-    if (p1 && p2) {
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#d4a84b';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+  // Find and draw closest gene to center (highest identity)
+  let closestToCenter = null;
+  let highestIdentity = 0;
+  if (state.centerGene && state.geneData[state.centerGene]) {
+    const centerIdentities = state.geneData[state.centerGene].identities || {};
+    for (const [gene, identity] of Object.entries(centerIdentities)) {
+      if (identity > highestIdentity) {
+        highestIdentity = identity;
+        closestToCenter = gene;
+      }
     }
+  }
+
+  // Draw double edge to closest gene (gray)
+  if (closestToCenter && positions[closestToCenter] && positions[state.centerGene]) {
+    const p1 = positions[state.centerGene];
+    const p2 = positions[closestToCenter];
+    // Draw double line
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const nx = -dy / len * 2; // perpendicular offset
+    const ny = dx / len * 2;
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x + nx, p1.y + ny);
+    ctx.lineTo(p2.x + nx, p2.y + ny);
+    ctx.moveTo(p1.x - nx, p1.y - ny);
+    ctx.lineTo(p2.x - nx, p2.y - ny);
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
   // Draw genes (nodes)
@@ -653,49 +669,59 @@ function renderFamilyConstellation() {
     const isSelected = state.selectedGenes.includes(gene);
     const isHovered = gene === state.hoveredGene;
     const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
+    const isClosestToCenter = gene === closestToCenter;
     const hasData = geneInfo?.hasData;
 
-    // Determine colors and sizes - scheme for dark background
+    // Determine colors and sizes - scheme for light background
     let fillColor, strokeColor, radius, labelColor;
 
     if (isCenter) {
-      // Center gene - bright gold
-      fillColor = '#d4a84b';
-      strokeColor = '#f5d890';
+      // Center gene - warm amber/orange
+      fillColor = '#d97706';
+      strokeColor = '#92400e';
       radius = 14;
-      labelColor = '#f5d890';
+      labelColor = '#92400e';
     } else if (isCurrentPair) {
-      // Current pair genes - teal/cyan
-      fillColor = '#2dd4bf';
-      strokeColor = '#5eead4';
+      // Current pair genes - teal
+      fillColor = '#0d9488';
+      strokeColor = '#115e59';
       radius = 11;
-      labelColor = '#5eead4';
+      labelColor = '#115e59';
     } else if (isSelected) {
       // Selected genes - purple
-      fillColor = '#a78bfa';
-      strokeColor = '#c4b5fd';
+      fillColor = '#7c3aed';
+      strokeColor = '#5b21b6';
       radius = 11;
-      labelColor = '#c4b5fd';
+      labelColor = '#5b21b6';
     } else if (hasData) {
-      // Genes with data - soft blue-gray
-      fillColor = isHovered ? '#94a3b8' : '#64748b';
-      strokeColor = isHovered ? '#cbd5e1' : '#94a3b8';
+      // Genes with data - slate blue
+      fillColor = isHovered ? '#475569' : '#64748b';
+      strokeColor = isHovered ? '#334155' : '#475569';
       radius = isHovered ? 10 : 8;
-      labelColor = '#cbd5e1';
+      labelColor = '#334155';
     } else {
-      // No data - dim gray
-      fillColor = '#374151';
-      strokeColor = '#4b5563';
+      // No data - light gray
+      fillColor = '#d1d5db';
+      strokeColor = '#9ca3af';
       radius = 7;
-      labelColor = '#6b7280';
+      labelColor = '#9ca3af';
     }
 
     // Draw node glow for important genes
     if (isCenter || isCurrentPair || isSelected) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius + 6, 0, 2 * Math.PI);
-      ctx.fillStyle = fillColor + '40';
+      ctx.fillStyle = fillColor + '30';
       ctx.fill();
+    }
+
+    // Draw extra ring for closest to center
+    if (isClosestToCenter && !isCenter) {
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 4, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 2;
+      ctx.stroke();
     }
 
     // Draw node
@@ -721,7 +747,7 @@ function renderFamilyConstellation() {
     if (isHovered && !isCenter && state.centerGene) {
       const identity = state.geneData[state.centerGene]?.identities[gene];
       if (identity !== undefined) {
-        ctx.fillStyle = '#d4a84b';
+        ctx.fillStyle = '#d97706';
         ctx.font = 'bold 10px sans-serif';
         ctx.fillText(`${(identity * 100).toFixed(1)}%`, pos.x, labelY + 11);
       }
@@ -734,17 +760,17 @@ function renderFamilyConstellation() {
 
 function drawConstellationLegend(ctx, width, height) {
   const legendX = 15;
-  const legendY = height - 100;
+  const legendY = height - 110;
 
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
   const items = [
-    { color: '#d4a84b', label: 'Center gene (query)' },
-    { color: '#2dd4bf', label: 'Current pair' },
+    { color: '#d97706', label: 'Center gene (query)' },
+    { color: '#0d9488', label: 'Current pair' },
     { color: '#64748b', label: 'Family member' },
-    { color: '#374151', label: 'No report data' },
+    { color: '#d1d5db', label: 'No report data' },
   ];
 
   items.forEach((item, i) => {
@@ -754,21 +780,26 @@ function drawConstellationLegend(ctx, width, height) {
     ctx.arc(legendX + 5, y, 4, 0, 2 * Math.PI);
     ctx.fillStyle = item.color;
     ctx.fill();
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillStyle = '#444';
     ctx.fillText(item.label, legendX + 16, y);
   });
 
-  // Edge legend
+  // Edge legend - double line for closest
   ctx.beginPath();
   ctx.moveTo(legendX, legendY + 68);
   ctx.lineTo(legendX + 10, legendY + 68);
-  ctx.strokeStyle = '#d4a84b';
+  ctx.moveTo(legendX, legendY + 72);
+  ctx.lineTo(legendX + 10, legendY + 72);
+  ctx.strokeStyle = '#888';
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText('Closest pair', legendX + 16, legendY + 68);
+  ctx.fillStyle = '#444';
+  ctx.fillText('Closest to center', legendX + 16, legendY + 70);
 }
 
 // Start loading when DOM is ready
