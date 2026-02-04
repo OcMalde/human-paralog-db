@@ -432,11 +432,13 @@ function calculateGenePositions() {
   if (!canvas) return {};
 
   const state = constellationState;
-  const width = canvas.width;
-  const height = canvas.height;
+  // Use display dimensions for calculations
+  const width = canvas._displayWidth || canvas.width;
+  const height = canvas._displayHeight || canvas.height;
   const cx = width / 2;
   const cy = height / 2;
-  const maxRadius = Math.min(width, height) * 0.42;
+  // Leave generous padding for labels (50px on each side)
+  const maxRadius = Math.min(width, height) / 2 - 70;
 
   const positions = {};
   const centerGene = state.centerGene;
@@ -446,59 +448,83 @@ function calculateGenePositions() {
     positions[centerGene] = { x: cx, y: cy };
   }
 
-  // Get other genes and their identities to center
+  // Get other genes and compute their distance to center
   const otherGenes = state.allGenes.filter(g => g !== centerGene);
-  const geneIdentities = [];
+  if (otherGenes.length === 0) return positions;
 
-  otherGenes.forEach(gene => {
+  // Get identity to center for each gene
+  const geneDistances = otherGenes.map(gene => {
     const identity = state.geneData[centerGene]?.identities[gene] || 0;
-    geneIdentities.push({ gene, identity });
+    return { gene, identity, distanceToCenter: 1 - identity };
   });
 
-  // Sort by identity (highest first) for consistent ordering
-  geneIdentities.sort((a, b) => b.identity - a.identity);
+  // Angular clustering: order genes so similar genes are adjacent
+  // Build inter-gene similarity lookup
+  const getInterGeneIdentity = (g1, g2) => {
+    return state.geneData[g1]?.identities[g2] ||
+           state.geneData[g2]?.identities[g1] || 0;
+  };
 
-  // Position genes in orbits based on identity
-  // Identity 1.0 = center, 0.0 = outer edge
-  // Orbits at 0.2, 0.4, 0.6, 0.8 thresholds
-  const orbits = [
-    { threshold: 0.8, genes: [] },
-    { threshold: 0.6, genes: [] },
-    { threshold: 0.4, genes: [] },
-    { threshold: 0.2, genes: [] },
-    { threshold: 0.0, genes: [] },
-  ];
+  // Greedy ordering: start with gene closest to center, then add most similar unplaced gene
+  const ordered = [];
+  const remaining = new Set(otherGenes);
 
-  geneIdentities.forEach(({ gene, identity }) => {
-    for (const orbit of orbits) {
-      if (identity >= orbit.threshold) {
-        orbit.genes.push({ gene, identity });
-        break;
+  // Start with gene closest to center (highest identity)
+  geneDistances.sort((a, b) => a.distanceToCenter - b.distanceToCenter);
+  const firstGene = geneDistances[0].gene;
+  ordered.push(firstGene);
+  remaining.delete(firstGene);
+
+  // Greedily add genes by similarity to the last placed gene
+  while (remaining.size > 0) {
+    const lastPlaced = ordered[ordered.length - 1];
+    let bestGene = null;
+    let bestSimilarity = -1;
+
+    for (const gene of remaining) {
+      const sim = getInterGeneIdentity(lastPlaced, gene);
+      if (sim > bestSimilarity) {
+        bestSimilarity = sim;
+        bestGene = gene;
       }
     }
-  });
 
-  // Position genes in each orbit
-  orbits.forEach((orbit, orbitIdx) => {
-    const orbitRadius = maxRadius * (1 - orbit.threshold);
-    const genes = orbit.genes;
+    // If no similarity found, just pick the one closest to center
+    if (bestGene === null || bestSimilarity === 0) {
+      let minDist = Infinity;
+      for (const gene of remaining) {
+        const dist = 1 - (state.geneData[centerGene]?.identities[gene] || 0);
+        if (dist < minDist) {
+          minDist = dist;
+          bestGene = gene;
+        }
+      }
+    }
 
-    genes.forEach((item, i) => {
-      // Distribute evenly around the orbit with some jitter based on identity
-      const baseAngle = (i / Math.max(genes.length, 1)) * 2 * Math.PI - Math.PI / 2;
-      // Add small offset based on exact identity for variety
-      const identOffset = (item.identity - orbit.threshold) * 0.5;
-      const angle = baseAngle + identOffset;
+    if (bestGene) {
+      ordered.push(bestGene);
+      remaining.delete(bestGene);
+    } else {
+      break;
+    }
+  }
 
-      // Slight radius variation based on exact identity
-      const radiusVariation = (item.identity - orbit.threshold) * maxRadius * 0.15;
-      const r = orbitRadius - radiusVariation;
+  // Position genes in a circle, with radial distance based on identity to center
+  // Angular position based on clustering order
+  ordered.forEach((gene, i) => {
+    const identity = state.geneData[centerGene]?.identities[gene] || 0;
+    // Radial distance: higher identity = closer to center
+    // Clamp minimum radius so genes don't overlap with center
+    const minRadius = 40;
+    const radius = minRadius + (1 - identity) * (maxRadius - minRadius);
 
-      positions[item.gene] = {
-        x: cx + r * Math.cos(angle),
-        y: cy + r * Math.sin(angle)
-      };
-    });
+    // Angular position based on order
+    const angle = (i / ordered.length) * 2 * Math.PI - Math.PI / 2;
+
+    positions[gene] = {
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle)
+    };
   });
 
   return positions;
@@ -514,7 +540,8 @@ function renderFamilyConstellation() {
   const height = canvas._displayHeight || canvas.height;
   const cx = width / 2;
   const cy = height / 2;
-  const maxRadius = Math.min(width, height) * 0.40;
+  // Match the maxRadius calculation in calculateGenePositions
+  const maxRadius = Math.min(width, height) / 2 - 70;
 
   const state = constellationState;
   const positions = calculateGenePositions();
@@ -525,39 +552,41 @@ function renderFamilyConstellation() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
 
-  // Draw subtle radial gradient background
-  const bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius * 1.2);
-  bgGradient.addColorStop(0, '#fdfcfa');
-  bgGradient.addColorStop(1, '#f8f5f0');
-  ctx.fillStyle = bgGradient;
+  // Dark background matching structure viewer
+  ctx.fillStyle = '#1e1e24';
   ctx.fillRect(0, 0, width, height);
 
-  // Draw orbit circles (identity thresholds) - softer styling
+  // Draw orbit circles (identity thresholds) - subtle on dark background
   const thresholds = [0.2, 0.4, 0.6, 0.8];
+  const minRadius = 40;
   thresholds.forEach(threshold => {
-    const radius = maxRadius * (1 - threshold);
+    const radius = minRadius + (1 - threshold) * (maxRadius - minRadius);
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#e8e0d4';
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([3, 5]);
+    ctx.setLineDash([4, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Label the orbit (subtle)
-    ctx.fillStyle = '#c0b8a8';
-    ctx.font = '9px -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 4, cy - 2);
+    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 6, cy - 2);
   });
 
-  // Draw center marker
+  // Draw center crosshair
   ctx.beginPath();
-  ctx.arc(cx, cy, 2, 0, 2 * Math.PI);
-  ctx.fillStyle = '#d8d0c4';
-  ctx.fill();
+  ctx.moveTo(cx - 6, cy);
+  ctx.lineTo(cx + 6, cy);
+  ctx.moveTo(cx, cy - 6);
+  ctx.lineTo(cx, cy + 6);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  // Draw closest pair edge (gold/amber color to match theme)
+  // Draw closest pair edge (gold/amber color)
   if (state.closestPair) {
     const p1 = positions[state.closestPair.gene_a];
     const p2 = positions[state.closestPair.gene_b];
@@ -565,7 +594,7 @@ function renderFamilyConstellation() {
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#c39b63';
+      ctx.strokeStyle = '#d4a84b';
       ctx.lineWidth = 2.5;
       ctx.stroke();
     }
@@ -583,46 +612,46 @@ function renderFamilyConstellation() {
     const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
     const hasData = geneInfo?.hasData;
 
-    // Determine colors and sizes - warm color scheme
+    // Determine colors and sizes - scheme for dark background
     let fillColor, strokeColor, radius, labelColor;
 
     if (isCenter) {
-      // Center gene - warm brown
-      fillColor = '#5f4d2f';
-      strokeColor = '#3d3220';
-      radius = 12;
-      labelColor = '#2f2514';
+      // Center gene - bright gold
+      fillColor = '#d4a84b';
+      strokeColor = '#f5d890';
+      radius = 14;
+      labelColor = '#f5d890';
     } else if (isCurrentPair) {
-      // Current pair genes - gold
-      fillColor = '#c39b63';
-      strokeColor = '#9a7a4a';
-      radius = 10;
-      labelColor = '#5f4d2f';
+      // Current pair genes - teal/cyan
+      fillColor = '#2dd4bf';
+      strokeColor = '#5eead4';
+      radius = 11;
+      labelColor = '#5eead4';
     } else if (isSelected) {
-      // Selected genes - teal
-      fillColor = '#2d9d92';
-      strokeColor = '#1f7a72';
-      radius = 10;
-      labelColor = '#1a5f59';
+      // Selected genes - purple
+      fillColor = '#a78bfa';
+      strokeColor = '#c4b5fd';
+      radius = 11;
+      labelColor = '#c4b5fd';
     } else if (hasData) {
-      // Genes with data - warm gray
-      fillColor = isHovered ? '#8b7355' : '#a89880';
-      strokeColor = isHovered ? '#6d5830' : '#7a6842';
+      // Genes with data - soft blue-gray
+      fillColor = isHovered ? '#94a3b8' : '#64748b';
+      strokeColor = isHovered ? '#cbd5e1' : '#94a3b8';
       radius = isHovered ? 10 : 8;
-      labelColor = '#5f4d2f';
+      labelColor = '#cbd5e1';
     } else {
-      // No data - greyed out
-      fillColor = '#d1d5db';
-      strokeColor = '#9ca3af';
+      // No data - dim gray
+      fillColor = '#374151';
+      strokeColor = '#4b5563';
       radius = 7;
-      labelColor = '#9ca3af';
+      labelColor = '#6b7280';
     }
 
     // Draw node glow for important genes
     if (isCenter || isCurrentPair || isSelected) {
       ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius + 4, 0, 2 * Math.PI);
-      ctx.fillStyle = fillColor + '33';
+      ctx.arc(pos.x, pos.y, radius + 6, 0, 2 * Math.PI);
+      ctx.fillStyle = fillColor + '40';
       ctx.fill();
     }
 
@@ -637,21 +666,21 @@ function renderFamilyConstellation() {
 
     // Draw label
     ctx.fillStyle = labelColor;
-    ctx.font = isCenter || isCurrentPair ? 'bold 12px sans-serif' : '11px sans-serif';
+    ctx.font = isCenter || isCurrentPair ? 'bold 11px sans-serif' : '10px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     // Position label below node
-    const labelY = pos.y + radius + 14;
+    const labelY = pos.y + radius + 12;
     ctx.fillText(gene, pos.x, labelY);
 
     // Show identity on hover
     if (isHovered && !isCenter && state.centerGene) {
       const identity = state.geneData[state.centerGene]?.identities[gene];
       if (identity !== undefined) {
-        ctx.fillStyle = '#c39b63';
+        ctx.fillStyle = '#d4a84b';
         ctx.font = 'bold 10px sans-serif';
-        ctx.fillText(`${(identity * 100).toFixed(1)}%`, pos.x, labelY + 12);
+        ctx.fillText(`${(identity * 100).toFixed(1)}%`, pos.x, labelY + 11);
       }
     }
   });
@@ -662,41 +691,41 @@ function renderFamilyConstellation() {
 
 function drawConstellationLegend(ctx, width, height) {
   const legendX = 15;
-  const legendY = height - 90;
+  const legendY = height - 100;
 
-  ctx.font = '11px sans-serif';
+  ctx.font = '10px sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
   const items = [
-    { color: '#5f4d2f', label: 'Center gene (click to deselect)' },
-    { color: '#c39b63', label: 'Current pair genes' },
-    { color: '#a89880', label: 'Family gene (click to navigate)' },
-    { color: '#d1d5db', label: 'No pair data yet' },
+    { color: '#d4a84b', label: 'Center gene (query)' },
+    { color: '#2dd4bf', label: 'Current pair' },
+    { color: '#64748b', label: 'Family member' },
+    { color: '#374151', label: 'No report data' },
   ];
 
   items.forEach((item, i) => {
-    const y = legendY + i * 18;
+    const y = legendY + i * 16;
 
     ctx.beginPath();
-    ctx.arc(legendX + 6, y, 5, 0, 2 * Math.PI);
+    ctx.arc(legendX + 5, y, 4, 0, 2 * Math.PI);
     ctx.fillStyle = item.color;
     ctx.fill();
 
-    ctx.fillStyle = '#5f4d2f';
-    ctx.fillText(item.label, legendX + 18, y);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(item.label, legendX + 16, y);
   });
 
   // Edge legend
   ctx.beginPath();
-  ctx.moveTo(legendX, legendY + 72);
-  ctx.lineTo(legendX + 12, legendY + 72);
-  ctx.strokeStyle = '#c39b63';
+  ctx.moveTo(legendX, legendY + 68);
+  ctx.lineTo(legendX + 10, legendY + 68);
+  ctx.strokeStyle = '#d4a84b';
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = '#5f4d2f';
-  ctx.fillText('Closest pair in family', legendX + 18, legendY + 72);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('Closest pair', legendX + 16, legendY + 68);
 }
 
 // Start loading when DOM is ready

@@ -243,11 +243,11 @@
     </div>
     <div class="body" style="padding:15px;">
       <div id="constellationContainer" style="display:flex;justify-content:center;">
-        <canvas id="familyNetworkCanvas" width="900" height="500" style="border:1px solid #e8dfc7;border-radius:8px;background:linear-gradient(180deg, #fdfbf7 0%, #f8f4ed 100%);"></canvas>
+        <canvas id="familyNetworkCanvas" width="900" height="500" style="border:1px solid #333;border-radius:8px;background:#1e1e24;"></canvas>
       </div>
-      <div id="constellationHelp" style="margin-top:12px;padding:10px 15px;background:#f0f0f8;border-radius:6px;font-size:12px;color:#555;">
-        <strong>How to use:</strong> The center gene shows sequence identity to all family members (inner = more similar).
-        Click any gene to navigate to its pair with the center. Click the center gene to deselect and choose two different genes.
+      <div id="constellationHelp" style="margin-top:12px;padding:10px 15px;background:#2a2a32;border-radius:6px;font-size:12px;color:#aaa;border:1px solid #333;">
+        <strong style="color:#d4a84b;">How to read:</strong> Center = query gene. Distance from center = sequence identity (closer = more similar).
+        Similar genes are clustered together. Click any gene to navigate to that pair.
       </div>
     </div>
   </section>
