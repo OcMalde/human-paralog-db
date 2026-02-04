@@ -119,6 +119,9 @@ let constellationState = {
   closestPair: null,          // The pair with highest identity
 };
 
+// Full families data cache
+let FULL_FAMILIES = null;
+
 // Family navigation
 async function loadFamilyData() {
   if (!DATA || (!DATA.g1 && !DATA.g2)) {
@@ -135,29 +138,49 @@ async function loadFamilyData() {
   try {
     console.log(`Loading family data for ${DATA.g1} and ${DATA.g2}...`);
 
-    // Load family index if not already loaded
+    // Load full families data (includes all genes in each family with identities)
+    if (!FULL_FAMILIES) {
+      const fullFamiliesResp = await fetch(`${DATA_BASE}/full_families.json`);
+      if (fullFamiliesResp.ok) {
+        FULL_FAMILIES = await fullFamiliesResp.json();
+        console.log('Loaded full_families.json');
+      }
+    }
+
+    // Load family index (for pairs with reports)
     if (!FAMILY_INDEX) {
       const indexResp = await fetch(`${DATA_BASE}/family_index.json`);
       if (indexResp.ok) {
         FAMILY_INDEX = await indexResp.json();
-      } else {
-        console.log('Family index not available');
-        return;
       }
     }
 
-    // Load index.json to get all pair metadata
+    // Load index.json to get all pair metadata (for pairs with reports)
     const indexResp = await fetch(`${DATA_BASE}/index.json`);
     const allPairsIndex = indexResp.ok ? await indexResp.json() : [];
     const pairMap = new Map(allPairsIndex.map(p => [p.id, p]));
 
-    // Build complete family data structure
-    // Get all genes that share pairs with g1 or g2
-    const familyGenes = new Set([DATA.g1, DATA.g2]);
+    // Get full family members from full_families.json
+    let familyGenes = new Set([DATA.g1, DATA.g2]);
+    let fullFamilyIdentities = {};
+
+    if (FULL_FAMILIES) {
+      // Find which family these genes belong to
+      const familyId = FULL_FAMILIES.families[DATA.g1] || FULL_FAMILIES.families[DATA.g2];
+      if (familyId && FULL_FAMILIES.family_data[familyId]) {
+        const familyData = FULL_FAMILIES.family_data[familyId];
+        // Add all genes from the full family
+        familyData.genes.forEach(g => familyGenes.add(g));
+        fullFamilyIdentities = familyData.identities || {};
+        console.log(`Full family ${familyId}: ${familyData.genes.length} genes`);
+      }
+    }
+
+    // Also add genes from pairs with reports (in case full_families is missing some)
     const allPairIds = new Set();
 
     // Get pairs for g1
-    (FAMILY_INDEX[DATA.g1] || []).forEach(pairId => {
+    (FAMILY_INDEX && FAMILY_INDEX[DATA.g1] || []).forEach(pairId => {
       allPairIds.add(pairId);
       const meta = pairMap.get(pairId);
       if (meta) {
@@ -167,7 +190,7 @@ async function loadFamilyData() {
     });
 
     // Get pairs for g2
-    (FAMILY_INDEX[DATA.g2] || []).forEach(pairId => {
+    (FAMILY_INDEX && FAMILY_INDEX[DATA.g2] || []).forEach(pairId => {
       allPairIds.add(pairId);
       const meta = pairMap.get(pairId);
       if (meta) {
@@ -179,15 +202,18 @@ async function loadFamilyData() {
     // Build gene data with identities to other genes
     const geneData = {};
     familyGenes.forEach(gene => {
+      // Get identities from full_families.json (sequence identity from CSV)
+      const fullIdentities = fullFamilyIdentities[gene] || {};
+
       geneData[gene] = {
         gene: gene,
-        pairs: [],        // Pairs this gene is part of
-        identities: {},   // gene -> identity score
-        hasData: false    // Has at least one pair with data
+        pairs: [],        // Pairs this gene is part of (with reports)
+        identities: { ...fullIdentities },  // Start with full family identities
+        hasData: false    // Has at least one pair with a report
       };
     });
 
-    // Process all pairs to build identity matrix
+    // Process pairs with reports to update hasData and override identities if needed
     const pairData = {};
     let closestPair = null;
     let maxIdent = -1;
@@ -206,24 +232,42 @@ async function loadFamilyData() {
       };
       pairData[pairId] = pair;
 
-      // Update gene data
+      // Update gene data - mark as having data
       if (geneData[pair.gene_a]) {
         geneData[pair.gene_a].pairs.push(pairId);
-        geneData[pair.gene_a].identities[pair.gene_b] = pair.fident || 0;
+        // Use structural identity (fident) from report if available
+        if (pair.fident) {
+          geneData[pair.gene_a].identities[pair.gene_b] = pair.fident;
+        }
         geneData[pair.gene_a].hasData = true;
       }
       if (geneData[pair.gene_b]) {
         geneData[pair.gene_b].pairs.push(pairId);
-        geneData[pair.gene_b].identities[pair.gene_a] = pair.fident || 0;
+        if (pair.fident) {
+          geneData[pair.gene_b].identities[pair.gene_a] = pair.fident;
+        }
         geneData[pair.gene_b].hasData = true;
       }
 
-      // Track closest pair
+      // Track closest pair (only among those with reports)
       if (pair.fident && pair.fident > maxIdent) {
         maxIdent = pair.fident;
         closestPair = pair;
       }
     });
+
+    // Also check full_families for the closest pair if we don't have one
+    if (!closestPair && Object.keys(fullFamilyIdentities).length > 0) {
+      // Find the pair with highest identity in the full family
+      Object.entries(fullFamilyIdentities).forEach(([geneA, identities]) => {
+        Object.entries(identities).forEach(([geneB, ident]) => {
+          if (ident > maxIdent) {
+            maxIdent = ident;
+            closestPair = { gene_a: geneA, gene_b: geneB, fident: ident, has_report: false };
+          }
+        });
+      });
+    }
 
     // Update constellation state
     constellationState = {
@@ -236,13 +280,14 @@ async function loadFamilyData() {
       closestPair: closestPair
     };
 
-    console.log(`Family constellation: ${familyGenes.size} genes, ${allPairIds.size} pairs`);
+    const pairsWithReports = allPairIds.size;
+    console.log(`Family: ${familyGenes.size} genes total, ${pairsWithReports} pairs with reports`);
 
     // Show the family section
     familyNav.style.display = 'block';
     const familySubtitle = document.getElementById('familySubtitle');
     if (familySubtitle) {
-      familySubtitle.textContent = `${familyGenes.size} genes in family · ${allPairIds.size} paralog pairs`;
+      familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
     }
 
     // Initialize constellation canvas
@@ -257,10 +302,26 @@ function initFamilyConstellation() {
   const canvas = document.getElementById('familyNetworkCanvas');
   if (!canvas) return;
 
-  // Make canvas responsive
+  // Handle HiDPI displays for sharp rendering
+  const dpr = window.devicePixelRatio || 1;
   const container = canvas.parentElement;
-  canvas.width = Math.min(container.offsetWidth - 20, 900);
-  canvas.height = 500;
+  const displayWidth = Math.min(container.offsetWidth - 20, 900);
+  const displayHeight = 480;
+
+  // Set canvas size accounting for device pixel ratio
+  canvas.width = displayWidth * dpr;
+  canvas.height = displayHeight * dpr;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+
+  // Scale context to match
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Store display dimensions for calculations
+  canvas._displayWidth = displayWidth;
+  canvas._displayHeight = displayHeight;
+  canvas._dpr = dpr;
 
   // Add event listeners
   canvas.removeEventListener('mousemove', handleConstellationMouseMove);
@@ -448,44 +509,55 @@ function renderFamilyConstellation() {
   if (!canvas) return;
 
   const ctx = canvas.getContext('2d');
-  const width = canvas.width;
-  const height = canvas.height;
+  // Use display dimensions (not scaled canvas dimensions)
+  const width = canvas._displayWidth || canvas.width;
+  const height = canvas._displayHeight || canvas.height;
   const cx = width / 2;
   const cy = height / 2;
-  const maxRadius = Math.min(width, height) * 0.42;
+  const maxRadius = Math.min(width, height) * 0.40;
 
   const state = constellationState;
   const positions = calculateGenePositions();
 
-  // Clear canvas
-  ctx.clearRect(0, 0, width, height);
+  // Clear canvas (use actual canvas size)
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
 
-  // Draw orbit circles (identity thresholds)
+  // Draw subtle radial gradient background
+  const bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius * 1.2);
+  bgGradient.addColorStop(0, '#fdfcfa');
+  bgGradient.addColorStop(1, '#f8f5f0');
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(0, 0, width, height);
+
+  // Draw orbit circles (identity thresholds) - softer styling
   const thresholds = [0.2, 0.4, 0.6, 0.8];
-  ctx.setLineDash([4, 4]);
   thresholds.forEach(threshold => {
     const radius = maxRadius * (1 - threshold);
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#e0d8c8';
+    ctx.strokeStyle = '#e8e0d4';
     ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // Label the orbit
-    ctx.fillStyle = '#b0a090';
-    ctx.font = '10px sans-serif';
+    // Label the orbit (subtle)
+    ctx.fillStyle = '#c0b8a8';
+    ctx.font = '9px -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 5, cy - 3);
+    ctx.fillText(`${(threshold * 100).toFixed(0)}%`, cx + radius + 4, cy - 2);
   });
-  ctx.setLineDash([]);
 
   // Draw center marker
   ctx.beginPath();
-  ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
-  ctx.fillStyle = '#d0c8b8';
+  ctx.arc(cx, cy, 2, 0, 2 * Math.PI);
+  ctx.fillStyle = '#d8d0c4';
   ctx.fill();
 
-  // Draw closest pair edge
+  // Draw closest pair edge (gold/amber color to match theme)
   if (state.closestPair) {
     const p1 = positions[state.closestPair.gene_a];
     const p2 = positions[state.closestPair.gene_b];
@@ -493,8 +565,8 @@ function renderFamilyConstellation() {
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#4f46e5';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#c39b63';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
     }
   }
@@ -511,29 +583,33 @@ function renderFamilyConstellation() {
     const isCurrentPair = gene === DATA.g1 || gene === DATA.g2;
     const hasData = geneInfo?.hasData;
 
-    // Determine colors and sizes
+    // Determine colors and sizes - warm color scheme
     let fillColor, strokeColor, radius, labelColor;
 
     if (isCenter) {
-      fillColor = '#4f46e5';
-      strokeColor = '#312e81';
-      radius = 14;
-      labelColor = '#1e1b4b';
-    } else if (isCurrentPair) {
-      fillColor = '#c39b63';
-      strokeColor = '#8b6914';
+      // Center gene - warm brown
+      fillColor = '#5f4d2f';
+      strokeColor = '#3d3220';
       radius = 12;
-      labelColor = '#352a18';
+      labelColor = '#2f2514';
+    } else if (isCurrentPair) {
+      // Current pair genes - gold
+      fillColor = '#c39b63';
+      strokeColor = '#9a7a4a';
+      radius = 10;
+      labelColor = '#5f4d2f';
     } else if (isSelected) {
-      fillColor = '#10b981';
-      strokeColor = '#047857';
-      radius = 11;
-      labelColor = '#064e3b';
+      // Selected genes - teal
+      fillColor = '#2d9d92';
+      strokeColor = '#1f7a72';
+      radius = 10;
+      labelColor = '#1a5f59';
     } else if (hasData) {
-      fillColor = isHovered ? '#6366f1' : '#64748b';
-      strokeColor = isHovered ? '#4338ca' : '#475569';
+      // Genes with data - warm gray
+      fillColor = isHovered ? '#8b7355' : '#a89880';
+      strokeColor = isHovered ? '#6d5830' : '#7a6842';
       radius = isHovered ? 10 : 8;
-      labelColor = '#334155';
+      labelColor = '#5f4d2f';
     } else {
       // No data - greyed out
       fillColor = '#d1d5db';
@@ -573,7 +649,7 @@ function renderFamilyConstellation() {
     if (isHovered && !isCenter && state.centerGene) {
       const identity = state.geneData[state.centerGene]?.identities[gene];
       if (identity !== undefined) {
-        ctx.fillStyle = '#6366f1';
+        ctx.fillStyle = '#c39b63';
         ctx.font = 'bold 10px sans-serif';
         ctx.fillText(`${(identity * 100).toFixed(1)}%`, pos.x, labelY + 12);
       }
@@ -593,9 +669,9 @@ function drawConstellationLegend(ctx, width, height) {
   ctx.textBaseline = 'middle';
 
   const items = [
-    { color: '#4f46e5', label: 'Center gene (click to deselect)' },
+    { color: '#5f4d2f', label: 'Center gene (click to deselect)' },
     { color: '#c39b63', label: 'Current pair genes' },
-    { color: '#64748b', label: 'Family gene (click to navigate)' },
+    { color: '#a89880', label: 'Family gene (click to navigate)' },
     { color: '#d1d5db', label: 'No pair data yet' },
   ];
 
@@ -607,7 +683,7 @@ function drawConstellationLegend(ctx, width, height) {
     ctx.fillStyle = item.color;
     ctx.fill();
 
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#5f4d2f';
     ctx.fillText(item.label, legendX + 18, y);
   });
 
@@ -615,11 +691,11 @@ function drawConstellationLegend(ctx, width, height) {
   ctx.beginPath();
   ctx.moveTo(legendX, legendY + 72);
   ctx.lineTo(legendX + 12, legendY + 72);
-  ctx.strokeStyle = '#4f46e5';
+  ctx.strokeStyle = '#c39b63';
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = '#666';
+  ctx.fillStyle = '#5f4d2f';
   ctx.fillText('Closest pair in family', legendX + 18, legendY + 72);
 }
 

@@ -1,10 +1,16 @@
 # Database (regenerated from scripts)
 data/pairs.db
 
+# Structures (regenerated, large binary files)
+data/structures/
+
 # Cache
 data/cache/
 __pycache__/
 *.pyc
+
+# Input data (local symlinks to source data)
+input/
 
 # OS files
 .DS_Store
