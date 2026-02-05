@@ -1,13 +1,15 @@
 """Data loading functions for CSV files."""
 
 import ast
+import time
 from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
+import requests
 
 from .config import (
-    FEATURES_CSV, GENE_LOC_CSV, ESSENTIAL_CSV, GENE_ID_MAP_CSV, log
+    FEATURES_CSV, GENE_LOC_CSV, ESSENTIAL_CSV, GENE_ID_MAP_CSV, SL_DATA_CSV, log
 )
 
 # Caches
@@ -15,6 +17,7 @@ _features_df_cache = None
 _gene_loc_cache = None
 _essential_genes_cache = None
 _gene_id_map_cache = None
+_sl_data_cache = None
 
 
 def load_features_df() -> pd.DataFrame:
@@ -104,6 +107,18 @@ def load_gene_id_map() -> Dict[str, str]:
                                 pass
             log(f"Loaded {len(_gene_id_map_cache)} gene ID mappings")
     return _gene_id_map_cache
+
+
+def load_sl_data() -> pd.DataFrame:
+    global _sl_data_cache
+    if _sl_data_cache is None:
+        if SL_DATA_CSV.exists():
+            _sl_data_cache = pd.read_csv(SL_DATA_CSV, low_memory=False)
+            log(f"Loaded {len(_sl_data_cache)} pairs from SL data CSV")
+        else:
+            log(f"WARNING: SL data CSV not found at {SL_DATA_CSV}")
+            _sl_data_cache = pd.DataFrame()
+    return _sl_data_cache
 
 
 def get_pair_row(pair_id: str) -> Optional[pd.Series]:
@@ -282,6 +297,138 @@ def enrich_partner_ids(partners: Set[str]) -> List[Dict[str, Optional[str]]]:
     return result
 
 
+def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str, Dict[str, Any]]:
+    """Get similarity search metrics with percentiles for radar chart.
+
+    Metrics are shown symmetrically for gene A and gene B.
+    - rank: Position in search results (lower = more similar, so invert for display)
+    - selfSP: Self-score percentage (higher = better)
+    - taxid: Number of taxonomic groups hit (higher = more conserved across species)
+    """
+    df = load_features_df()
+    if df.empty or pair_row is None:
+        return {}
+
+    # Define metrics - structure metrics are shared, sequence metrics are per-gene
+    results = {}
+
+    # Structure metrics (shared between both genes as they're aligned together)
+    struct_metrics = {
+        'rank_struct': {'label': 'Search Rank', 'higher_is_better': False},
+        'selfSP_struct': {'label': 'Self-Score %', 'higher_is_better': True},
+        'taxid_struct': {'label': 'Taxon Diversity', 'higher_is_better': True},
+    }
+
+    for col, info in struct_metrics.items():
+        if col in pair_row.index and col in df.columns:
+            val = pair_row[col]
+            pct = compute_percentile(val, df[col])
+            display_pct = float(pct) if info['higher_is_better'] else float(100 - pct)
+            display_pct = max(0.0, min(100.0, display_pct))
+            results[col] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': display_pct,
+                'raw_percentile': float(pct),
+                'label': info['label'],
+                'higher_is_better': info['higher_is_better'],
+                'radar_value': display_pct,
+                'type': 'structure',
+            }
+
+    # Sequence metrics (per-gene: A1 and A2)
+    seq_metrics = {
+        'rank_seq': {'label': 'Search Rank', 'higher_is_better': False, 'cols': ('A1_A2_rank_seq', 'A2_A1_rank_seq')},
+        'selfSP_seq': {'label': 'Self-Score #', 'higher_is_better': True, 'cols': ('A1_nb_selfSP_seq', 'A2_nb_selfSP_seq')},
+        'taxid_seq': {'label': 'Taxon Diversity', 'higher_is_better': True, 'cols': ('A1_nb_taxid_seq', 'A2_nb_taxid_seq')},
+    }
+
+    for key, info in seq_metrics.items():
+        col_a, col_b = info['cols']
+        for suffix, col in [('_A', col_a), ('_B', col_b)]:
+            if col in pair_row.index and col in df.columns:
+                val = pair_row[col]
+                pct = compute_percentile(val, df[col])
+                display_pct = float(pct) if info['higher_is_better'] else float(100 - pct)
+                display_pct = max(0.0, min(100.0, display_pct))
+                results[key + suffix] = {
+                    'value': float(val) if pd.notna(val) else None,
+                    'percentile': display_pct,
+                    'raw_percentile': float(pct),
+                    'label': info['label'],
+                    'higher_is_better': info['higher_is_better'],
+                    'radar_value': display_pct,
+                    'type': 'sequence',
+                    'gene': 'A' if suffix == '_A' else 'B',
+                }
+
+    return results
+
+
+def get_family_feature_percentiles(pair_row: Optional[pd.Series]) -> Dict[str, Dict[str, Any]]:
+    """Get family feature metrics with percentiles for radar chart.
+
+    These measure amino acid conservation patterns within the paralog family:
+    - shared_aa_withFamily: Positions shared with other family members
+    - shared_aa_pairExclusive: Positions unique to this pair
+    - clustalo alignment-based metrics
+    """
+    df = load_features_df()
+    if df.empty or pair_row is None:
+        return {}
+
+    results = {}
+
+    # Main family feature metrics (ratios are better for comparison)
+    metrics = {
+        'rmean_shared_aa_withFamily': {'label': 'Shared with Family', 'higher_is_better': True},
+        'rmean_shared_aa_pairExclusive': {'label': 'Pair-Exclusive', 'higher_is_better': True},
+        'rmean_shared_aa_onlyWithFamily': {'label': 'Family-Only', 'higher_is_better': True},
+        'clustalo_r_shared_aa_withFamily': {'label': 'MSA Shared w/ Family', 'higher_is_better': True},
+        'clustalo_r_shared_aa_pairExclusive': {'label': 'MSA Pair-Exclusive', 'higher_is_better': True},
+        'clustalo_r_sum_specific': {'label': 'MSA Sum Specific', 'higher_is_better': True},
+    }
+
+    for col, info in metrics.items():
+        if col in pair_row.index and col in df.columns:
+            val = pair_row[col]
+            pct = compute_percentile(val, df[col])
+            display_pct = float(pct) if info['higher_is_better'] else float(100 - pct)
+            display_pct = max(0.0, min(100.0, display_pct))
+            results[col] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': display_pct,
+                'raw_percentile': float(pct),
+                'label': info['label'],
+                'higher_is_better': info['higher_is_better'],
+                'radar_value': display_pct,
+            }
+
+    # Gene-specific clustalo metrics (A1/A2)
+    gene_metrics = {
+        'clustalo_specific': {'label': 'Clustalo Specific', 'higher_is_better': True, 'cols': ('clustalo_specific_A1', 'clustalo_specific_A2')},
+    }
+
+    for key, info in gene_metrics.items():
+        col_a, col_b = info['cols']
+        for suffix, col in [('_A', col_a), ('_B', col_b)]:
+            if col in pair_row.index and col in df.columns:
+                val = pair_row[col]
+                pct = compute_percentile(val, df[col])
+                display_pct = float(pct) if info['higher_is_better'] else float(100 - pct)
+                display_pct = max(0.0, min(100.0, display_pct))
+                results[key + suffix] = {
+                    'value': float(val) if pd.notna(val) else None,
+                    'percentile': display_pct,
+                    'raw_percentile': float(pct),
+                    'label': info['label'],
+                    'higher_is_better': info['higher_is_better'],
+                    'radar_value': display_pct,
+                    'gene': 'A' if suffix == '_A' else 'B',
+                }
+
+    return results
+
+
 def build_ppi_network_info(pair_row: Optional[pd.Series]) -> Dict[str, Any]:
     if pair_row is None:
         return {}
@@ -306,4 +453,139 @@ def build_ppi_network_info(pair_row: Optional[pd.Series]) -> Dict[str, Any]:
             'total_gene1': len(a1),
             'total_gene2': len(a2),
         }
+    }
+
+
+def get_sl_row(pair_id: str) -> Optional[pd.Series]:
+    """Get a row from the SL data by pair ID."""
+    sl_df = load_sl_data()
+    if sl_df.empty:
+        return None
+    for col in ['sorted_gene_pair', 'pair', 'pair_id', 'Pair', 'PAIR']:
+        if col in sl_df.columns:
+            match = sl_df[sl_df[col] == pair_id]
+            if not match.empty:
+                return match.iloc[0]
+    return None
+
+
+def get_sl_functional_overlap(pair_id: str, pair_row: Optional[pd.Series]) -> Dict[str, Any]:
+    """Get synthetic lethality and functional overlap data for a pair.
+
+    Combines:
+    - SL flags from the SL data CSV (SL_consensus, SL_lenient, SL)
+    - GO similarity scores from features CSV (BPO, CCO, MFO)
+    """
+    result = {
+        'sl_flags': {},
+        'go_similarity': {},
+        'sl_screens': {},
+    }
+
+    # Get SL data
+    sl_row = get_sl_row(pair_id)
+    if sl_row is not None:
+        # SL flags
+        for flag in ['SL_consensus', 'SL_lenient', 'SL']:
+            if flag in sl_row.index:
+                val = sl_row[flag]
+                result['sl_flags'][flag] = bool(val) if pd.notna(val) else None
+
+        # SL screen counts
+        screen_cols = {
+            'n_SL_thompson': 'Thompson',
+            'n_SL_dede': 'Dede',
+            'n_SL_parrish': 'Parrish',
+            'n_SL_chymera': 'Chymera',
+            'n_SL_ito': 'Ito',
+            'n_SL_TCGA_DepMap': 'TCGA/DepMap',
+            'n_screens_tested': 'Screens Tested',
+            'n_screens_SL': 'Screens SL',
+        }
+        for col, label in screen_cols.items():
+            if col in sl_row.index:
+                val = sl_row[col]
+                result['sl_screens'][col] = {
+                    'label': label,
+                    'value': int(val) if pd.notna(val) else None
+                }
+
+    # Get GO similarity from features CSV
+    if pair_row is not None:
+        df = load_features_df()
+        go_metrics = {
+            'BPO': {'label': 'Biological Process', 'description': 'GO BP semantic similarity'},
+            'CCO': {'label': 'Cellular Component', 'description': 'GO CC semantic similarity'},
+            'MFO': {'label': 'Molecular Function', 'description': 'GO MF semantic similarity'},
+        }
+        for col, info in go_metrics.items():
+            if col in pair_row.index:
+                val = pair_row[col]
+                pct = compute_percentile(val, df[col]) if col in df.columns else 50.0
+                result['go_similarity'][col] = {
+                    'label': info['label'],
+                    'description': info['description'],
+                    'value': float(val) if pd.notna(val) else None,
+                    'percentile': float(pct),
+                }
+
+    return result
+
+
+# UniProt description cache (persists across calls)
+_uniprot_cache: Dict[str, Dict[str, str]] = {}
+
+
+def fetch_uniprot_description(accession: str) -> Dict[str, str]:
+    """Fetch protein description from UniProt API.
+
+    Returns dict with 'name' (recommended name) and 'function' (function description).
+    """
+    global _uniprot_cache
+
+    if accession in _uniprot_cache:
+        return _uniprot_cache[accession]
+
+    result = {'name': '', 'function': ''}
+
+    try:
+        url = f"https://rest.uniprot.org/uniprotkb/{accession}.json"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+
+            # Get recommended protein name
+            prot_desc = data.get('proteinDescription', {})
+            rec_name = prot_desc.get('recommendedName', {})
+            if rec_name:
+                full_name = rec_name.get('fullName', {})
+                if isinstance(full_name, dict):
+                    result['name'] = full_name.get('value', '')
+                elif isinstance(full_name, str):
+                    result['name'] = full_name
+
+            # Get function from comments
+            comments = data.get('comments', [])
+            for comment in comments:
+                if comment.get('commentType') == 'FUNCTION':
+                    texts = comment.get('texts', [])
+                    if texts:
+                        result['function'] = texts[0].get('value', '')
+                    break
+
+        # Rate limit - UniProt allows ~10 req/sec
+        time.sleep(0.1)
+
+    except Exception as e:
+        log(f"Error fetching UniProt data for {accession}: {e}")
+
+    _uniprot_cache[accession] = result
+    return result
+
+
+def get_gene_descriptions(acc_a: str, acc_b: str) -> Dict[str, Dict[str, str]]:
+    """Get protein descriptions for both genes in a pair."""
+    return {
+        'gene_a': fetch_uniprot_description(acc_a) if acc_a else {'name': '', 'function': ''},
+        'gene_b': fetch_uniprot_description(acc_b) if acc_b else {'name': '', 'function': ''},
     }

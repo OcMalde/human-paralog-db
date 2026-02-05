@@ -31,7 +31,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from lib.config import DB_PATH, CACHE_DIR, AM_MODES, log, STRUCTURES_DIR
 from lib.data_loading import (
     get_pair_row, get_chromosome_info, load_essential_genes,
-    get_conservation_percentiles, get_boxplot_data, build_ppi_network_info
+    get_conservation_percentiles, get_boxplot_data, build_ppi_network_info,
+    get_similarity_search_percentiles, get_family_feature_percentiles,
+    get_sl_functional_overlap, get_gene_descriptions
 )
 from lib.api_fetching import (
     fetch_am_hotspots, build_am_matrix_scores, fetch_pdbe_complexes
@@ -565,16 +567,38 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     
     conservation = get_conservation_percentiles(pair_row)
     log(f"  Conservation metrics: {list(conservation.keys())}")
-    
+
+    # Get new radar chart metrics
+    similarity_search = get_similarity_search_percentiles(pair_row)
+    log(f"  Similarity search metrics: {list(similarity_search.keys())}")
+
+    family_features = get_family_feature_percentiles(pair_row)
+    log(f"  Family feature metrics: {list(family_features.keys())}")
+
+    # Get SL and functional overlap data
+    sl_functional = get_sl_functional_overlap(pair_id, pair_row)
+    log(f"  SL flags: {sl_functional.get('sl_flags', {})}")
+
+    # Get UniProt protein descriptions
+    log(f"  Fetching UniProt descriptions...")
+    gene_descriptions = get_gene_descriptions(acc_a, acc_b)
+    gene1_info['description'] = gene_descriptions.get('gene_a', {})
+    gene2_info['description'] = gene_descriptions.get('gene_b', {})
+    log(f"  {gene_a}: {gene1_info['description'].get('name', 'N/A')[:50]}...")
+    log(f"  {gene_b}: {gene2_info['description'].get('name', 'N/A')[:50]}...")
+
     boxplots = {}
     for metric_col, metric_info in conservation.items():
         boxplots[metric_col] = get_boxplot_data(metric_col, metric_info.get('value'))
-    
+
     SUMMARY = {
         'gene1': gene1_info,
         'gene2': gene2_info,
         'pair': pair_info,
         'conservation': conservation,
+        'similarity_search': similarity_search,
+        'family_features': family_features,
+        'sl_functional': sl_functional,
         'boxplots': boxplots,
     }
     

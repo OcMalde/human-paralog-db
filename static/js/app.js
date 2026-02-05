@@ -978,6 +978,12 @@ function initSummarySection() {
   renderConservationList();
   resetMetricSelection();
 
+  // Initialize new sections
+  initProteinDescriptions();
+  initSimilaritySearchSection();
+  initFamilyFeaturesSection();
+  initSlFunctionalSection();
+
   const resetBtn = document.getElementById('resetMetricView');
   if (resetBtn && !resetBtn.dataset.bound) {
     resetBtn.addEventListener('click', () => resetMetricSelection(), { passive: true });
@@ -1187,6 +1193,330 @@ function renderConservationList() {
     container.appendChild(card);
   });
   highlightMetricSelection();
+}
+
+/* ========== NEW SECTION FUNCTIONS ========== */
+
+// Charts for new sections
+let simSearchRadarChart = null;
+let famFeatRadarChart = null;
+
+function initProteinDescriptions() {
+  const gene1 = SUMMARY.gene1 || {};
+  const gene2 = SUMMARY.gene2 || {};
+
+  // Gene 1 description
+  const desc1 = gene1.description || {};
+  const gene1DescEl = document.getElementById('gene1Desc');
+  if (gene1DescEl && (desc1.name || desc1.function)) {
+    document.getElementById('gene1DescTitle').textContent = desc1.name || 'Unknown protein';
+    document.getElementById('gene1DescFunc').textContent = desc1.function || 'Function not available';
+    gene1DescEl.style.display = 'block';
+  }
+
+  // Gene 2 description
+  const desc2 = gene2.description || {};
+  const gene2DescEl = document.getElementById('gene2Desc');
+  if (gene2DescEl && (desc2.name || desc2.function)) {
+    document.getElementById('gene2DescTitle').textContent = desc2.name || 'Unknown protein';
+    document.getElementById('gene2DescFunc').textContent = desc2.function || 'Function not available';
+    gene2DescEl.style.display = 'block';
+  }
+}
+
+function initSimilaritySearchSection() {
+  const simSearch = SUMMARY.similarity_search || {};
+  const g1 = DATA.g1 || 'Gene A';
+  const g2 = DATA.g2 || 'Gene B';
+
+  // Update gene labels
+  const simSearchGeneA = document.getElementById('simSearchGeneA');
+  const simSearchGeneB = document.getElementById('simSearchGeneB');
+  if (simSearchGeneA) simSearchGeneA.textContent = g1;
+  if (simSearchGeneB) simSearchGeneB.textContent = g2;
+
+  // Populate gene columns with sequence metrics
+  const formatMetric = (key) => {
+    const info = simSearch[key] || {};
+    const val = info.value;
+    const pct = info.percentile;
+    if (val === null || val === undefined) return '–';
+    return `${val.toFixed(1)} (${pct?.toFixed(0) ?? '?'}%ile)`;
+  };
+
+  // Gene A sequence metrics
+  setText('simRankSeqA', formatMetric('rank_seq_A'));
+  setText('simSelfSPSeqA', formatMetric('selfSP_seq_A'));
+  setText('simTaxidSeqA', formatMetric('taxid_seq_A'));
+
+  // Gene B sequence metrics
+  setText('simRankSeqB', formatMetric('rank_seq_B'));
+  setText('simSelfSPSeqB', formatMetric('selfSP_seq_B'));
+  setText('simTaxidSeqB', formatMetric('taxid_seq_B'));
+
+  // Structure radar chart (center)
+  initSimilaritySearchRadar();
+}
+
+function initSimilaritySearchRadar() {
+  const simSearch = SUMMARY.similarity_search || {};
+  const wrapper = document.getElementById('simSearchRadarWrapper');
+  if (!wrapper) return;
+
+  // Get structure metrics only
+  const structMetrics = ['rank_struct', 'selfSP_struct', 'taxid_struct'];
+  const labels = [];
+  const values = [];
+
+  for (const key of structMetrics) {
+    const info = simSearch[key];
+    if (info) {
+      labels.push(info.label || key);
+      values.push(info.radar_value ?? 50);
+    }
+  }
+
+  if (labels.length === 0) {
+    wrapper.innerHTML = '<div class="boxplot-hint">Structure similarity data not available</div>';
+    return;
+  }
+
+  if (typeof Chart === 'undefined') {
+    wrapper.innerHTML = '<div class="boxplot-hint">Chart.js not loaded</div>';
+    return;
+  }
+
+  let canvas = wrapper.querySelector('canvas#simSearchRadar');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'simSearchRadar';
+    wrapper.innerHTML = '';
+    wrapper.appendChild(canvas);
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (simSearchRadarChart) {
+    simSearchRadarChart.destroy();
+  }
+
+  simSearchRadarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Structure Search Percentile',
+        data: values,
+        fill: true,
+        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+        borderColor: 'rgba(76, 175, 80, 1)',
+        pointBackgroundColor: 'rgba(76, 175, 80, 1)',
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          angleLines: { display: true },
+          suggestedMin: 0,
+          suggestedMax: 100,
+          ticks: { stepSize: 25, callback: (v) => v + '%' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
+      }
+    }
+  });
+}
+
+function initFamilyFeaturesSection() {
+  const famFeat = SUMMARY.family_features || {};
+  const g1 = DATA.g1 || 'Gene A';
+  const g2 = DATA.g2 || 'Gene B';
+
+  // Update gene labels
+  const famFeatGeneA = document.getElementById('famFeatGeneA');
+  const famFeatGeneB = document.getElementById('famFeatGeneB');
+  if (famFeatGeneA) famFeatGeneA.textContent = g1;
+  if (famFeatGeneB) famFeatGeneB.textContent = g2;
+
+  // Format metric helper
+  const formatMetric = (key) => {
+    const info = famFeat[key] || {};
+    const val = info.value;
+    const pct = info.percentile;
+    if (val === null || val === undefined) return '–';
+    return `${val.toFixed(3)} (${pct?.toFixed(0) ?? '?'}%ile)`;
+  };
+
+  // Gene-specific metrics
+  setText('famClustaloA', formatMetric('clustalo_specific_A'));
+  setText('famClustaloB', formatMetric('clustalo_specific_B'));
+
+  // Family features radar
+  initFamilyFeaturesRadar();
+}
+
+function initFamilyFeaturesRadar() {
+  const famFeat = SUMMARY.family_features || {};
+  const wrapper = document.getElementById('famFeatRadarWrapper');
+  if (!wrapper) return;
+
+  // Shared family metrics
+  const sharedMetrics = [
+    'rmean_shared_aa_withFamily',
+    'rmean_shared_aa_pairExclusive',
+    'rmean_shared_aa_onlyWithFamily',
+    'clustalo_r_shared_aa_withFamily',
+    'clustalo_r_shared_aa_pairExclusive',
+    'clustalo_r_sum_specific'
+  ];
+
+  const labels = [];
+  const values = [];
+
+  for (const key of sharedMetrics) {
+    const info = famFeat[key];
+    if (info) {
+      labels.push(info.label || key);
+      values.push(info.radar_value ?? 50);
+    }
+  }
+
+  if (labels.length === 0) {
+    wrapper.innerHTML = '<div class="boxplot-hint">Family feature data not available</div>';
+    return;
+  }
+
+  if (typeof Chart === 'undefined') {
+    wrapper.innerHTML = '<div class="boxplot-hint">Chart.js not loaded</div>';
+    return;
+  }
+
+  let canvas = wrapper.querySelector('canvas#famFeatRadar');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'famFeatRadar';
+    wrapper.innerHTML = '';
+    wrapper.appendChild(canvas);
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (famFeatRadarChart) {
+    famFeatRadarChart.destroy();
+  }
+
+  famFeatRadarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Family Feature Percentile',
+        data: values,
+        fill: true,
+        backgroundColor: 'rgba(255, 152, 0, 0.2)',
+        borderColor: 'rgba(255, 152, 0, 1)',
+        pointBackgroundColor: 'rgba(255, 152, 0, 1)',
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 7,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          angleLines: { display: true },
+          suggestedMin: 0,
+          suggestedMax: 100,
+          ticks: { stepSize: 25, callback: (v) => v + '%' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
+      }
+    }
+  });
+}
+
+function initSlFunctionalSection() {
+  const slFunc = SUMMARY.sl_functional || {};
+  const slFlags = slFunc.sl_flags || {};
+  const slScreens = slFunc.sl_screens || {};
+  const goSim = slFunc.go_similarity || {};
+
+  // SL Flags
+  const flagsContainer = document.getElementById('slFlags');
+  if (flagsContainer) {
+    let flagsHtml = '';
+
+    const flagLabels = {
+      'SL_consensus': 'SL Consensus',
+      'SL_lenient': 'SL Lenient',
+      'SL': 'SL (Any)'
+    };
+
+    for (const [key, label] of Object.entries(flagLabels)) {
+      const val = slFlags[key];
+      let cssClass = 'unknown';
+      let text = label + ': ?';
+
+      if (val === true) {
+        cssClass = 'positive';
+        text = label + ': Yes';
+      } else if (val === false) {
+        cssClass = 'negative';
+        text = label + ': No';
+      }
+
+      flagsHtml += `<span class="sl-flag ${cssClass}">${text}</span>`;
+    }
+
+    flagsContainer.innerHTML = flagsHtml || '<span class="sl-flag unknown">No SL data</span>';
+  }
+
+  // SL Screens
+  const screensContainer = document.getElementById('slScreens');
+  if (screensContainer) {
+    let screensHtml = '';
+    for (const [key, info] of Object.entries(slScreens)) {
+      const val = info.value ?? '–';
+      screensHtml += `<div class="screen-item"><span>${info.label || key}</span><span>${val}</span></div>`;
+    }
+    screensContainer.innerHTML = screensHtml || '<div class="screen-item"><span>Screen data</span><span>Not available</span></div>';
+  }
+
+  // GO Similarity
+  const formatGO = (key) => {
+    const info = goSim[key] || {};
+    return {
+      value: info.value !== null && info.value !== undefined ? info.value.toFixed(3) : '–',
+      pct: info.percentile !== null && info.percentile !== undefined ? `${info.percentile.toFixed(0)}%ile` : '–'
+    };
+  };
+
+  const bpo = formatGO('BPO');
+  const cco = formatGO('CCO');
+  const mfo = formatGO('MFO');
+
+  setText('goBPO', bpo.value);
+  setText('goBPOPct', bpo.pct);
+  setText('goCCO', cco.value);
+  setText('goCCOPct', cco.pct);
+  setText('goMFO', mfo.value);
+  setText('goMFOPct', mfo.pct);
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
 
 function renderPpiSection(pair, gene1, gene2) {
