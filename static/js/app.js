@@ -1291,23 +1291,25 @@ function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
 function getPartnerLabel(entry) {
   if (!entry) return 'NA';
   if (typeof entry === 'string') return entry;
-  // Prefer gene symbol for cleaner display
+  // Show only gene symbol if available, otherwise Entrez ID
   return entry.symbol || entry.id || 'NA';
 }
 
 function getPartnerShortLabel(entry) {
   if (!entry) return 'NA';
   if (typeof entry === 'string') return entry;
-  return entry.symbol || entry.display || entry.id || 'NA';
+  // Show only gene symbol if available, otherwise Entrez ID
+  return entry.symbol || entry.id || 'NA';
 }
 
 function getPartnerTooltip(entry) {
   if (!entry) return '';
   if (typeof entry === 'string') return entry;
-  const bits = [];
-  if (entry.symbol) bits.push(entry.symbol);
-  if (entry.id) bits.push(`Entrez ${entry.id}`);
-  return bits.join(' • ');
+  // Only show Entrez ID in tooltip if we have a gene symbol
+  if (entry.symbol && entry.id) {
+    return `${entry.symbol} (Entrez: ${entry.id})`;
+  }
+  return entry.id ? `Entrez: ${entry.id}` : '';
 }
 
 function escapeHtml(value) {
@@ -1336,91 +1338,157 @@ function drawPpiGraph(data, showUnique = true) {
   const centerY = height / 2;
   const svgNS = 'http://www.w3.org/2000/svg';
 
+  const sharedAll = Array.isArray(data.shared) ? data.shared : [];
+  const unique1All = showUnique && Array.isArray(data.unique1) ? data.unique1 : [];
+  const unique2All = showUnique && Array.isArray(data.unique2) ? data.unique2 : [];
+  const totalPartners = sharedAll.length + unique1All.length + unique2All.length;
+
+  // Scale partner node size based on total count
+  const baseRadius = totalPartners > 100 ? 2 : totalPartners > 50 ? 3 : totalPartners > 20 ? 5 : totalPartners > 10 ? 8 : 12;
+  const showLabelsAlways = totalPartners <= 15;
+
   const nodes = [];
   const lines = [];
 
-  const gene1 = { key: 'gene1', label: data.gene1, x: 110, y: centerY, r: 22, className: 'gene-node', labelDy: 34 };
-  const gene2 = { key: 'gene2', label: data.gene2, x: width - 110, y: centerY, r: 22, className: 'gene-node', labelDy: 34 };
+  // Main gene nodes - always large with labels
+  const gene1X = 100;
+  const gene2X = width - 100;
+  const gene1 = { key: 'gene1', label: data.gene1, x: gene1X, y: centerY, r: 20, className: 'gene-node', showLabel: true };
+  const gene2 = { key: 'gene2', label: data.gene2, x: gene2X, y: centerY, r: 20, className: 'gene-node', showLabel: true };
   nodes.push(gene1, gene2);
 
-  const sharedAll = Array.isArray(data.shared) ? data.shared : [];
-  const shared = sharedAll.slice(0, MAX_SHARED_GRAPH);
-  const sharedCount = shared.length;
-  shared.forEach((partner, idx) => {
-    const frac = sharedCount === 1 ? 0.5 : idx / (sharedCount - 1);
-    const y = 50 + frac * (height - 100);
-    const node = { key: `shared-${idx}`, label: getPartnerShortLabel(partner), x: width / 2, y, r: 14, className: 'shared-node', labelDy: 30 };
+  // Shared partners - arranged in arc between genes
+  const sharedCenterX = width / 2;
+  sharedAll.forEach((partner, idx) => {
+    const count = sharedAll.length;
+    let x, y;
+    if (count <= 10) {
+      // Vertical stack in center
+      const frac = count === 1 ? 0.5 : idx / (count - 1);
+      x = sharedCenterX;
+      y = 25 + frac * (height - 50);
+    } else {
+      // Multiple columns for many shared partners
+      const cols = Math.ceil(count / Math.ceil(height / (baseRadius * 3)));
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const rowCount = Math.ceil(count / cols);
+      const colWidth = 60 / Math.max(cols - 1, 1);
+      x = sharedCenterX - 30 + col * colWidth;
+      y = 20 + (row / Math.max(rowCount - 1, 1)) * (height - 40);
+    }
+    const node = { key: `shared-${idx}`, label: getPartnerShortLabel(partner), x, y, r: baseRadius, className: 'shared-node', showLabel: showLabelsAlways };
     nodes.push(node);
     lines.push({ from: gene1, to: node, className: 'shared-link' });
     lines.push({ from: gene2, to: node, className: 'shared-link' });
   });
 
-  const unique1All = Array.isArray(data.unique1) ? data.unique1 : [];
-  const unique2All = Array.isArray(data.unique2) ? data.unique2 : [];
-
-  if (showUnique && unique1All.length) {
-    unique1All.slice(0, MAX_UNIQUE_GRAPH).forEach((partner, idx) => {
-      const y = 60 + idx * 38;
-      const node = { key: `uniqA-${idx}`, label: getPartnerShortLabel(partner), x: 40, y, r: 11, className: 'unique-node', labelDx: -20, labelAlign: 'end', labelDy: 4 };
+  // Unique partners for gene1 - arranged in arc to the left
+  if (unique1All.length) {
+    const arcRadius = 70;
+    unique1All.forEach((partner, idx) => {
+      const count = unique1All.length;
+      const angleSpan = Math.min(Math.PI * 0.8, count * 0.08);
+      const startAngle = Math.PI / 2 - angleSpan / 2;
+      const angle = count === 1 ? Math.PI / 2 : startAngle + (idx / (count - 1)) * angleSpan;
+      const x = gene1X - arcRadius * Math.cos(angle);
+      const y = centerY - arcRadius * Math.sin(angle) + (angle - Math.PI / 2) * 10;
+      // Clamp to viewport
+      const clampedX = Math.max(baseRadius + 2, Math.min(gene1X - 20, x));
+      const clampedY = Math.max(baseRadius + 2, Math.min(height - baseRadius - 2, y));
+      const node = { key: `uniqA-${idx}`, label: getPartnerShortLabel(partner), x: clampedX, y: clampedY, r: baseRadius * 0.8, className: 'unique-node', showLabel: showLabelsAlways };
       nodes.push(node);
       lines.push({ from: gene1, to: node, className: 'non-shared' });
     });
   }
-  if (showUnique && unique2All.length) {
-    unique2All.slice(0, MAX_UNIQUE_GRAPH).forEach((partner, idx) => {
-      const y = 60 + idx * 38;
-      const node = { key: `uniqB-${idx}`, label: getPartnerShortLabel(partner), x: width - 40, y, r: 11, className: 'unique-node', labelDx: 20, labelAlign: 'start', labelDy: 4 };
+
+  // Unique partners for gene2 - arranged in arc to the right
+  if (unique2All.length) {
+    const arcRadius = 70;
+    unique2All.forEach((partner, idx) => {
+      const count = unique2All.length;
+      const angleSpan = Math.min(Math.PI * 0.8, count * 0.08);
+      const startAngle = Math.PI / 2 - angleSpan / 2;
+      const angle = count === 1 ? Math.PI / 2 : startAngle + (idx / (count - 1)) * angleSpan;
+      const x = gene2X + arcRadius * Math.cos(angle);
+      const y = centerY - arcRadius * Math.sin(angle) + (angle - Math.PI / 2) * 10;
+      // Clamp to viewport
+      const clampedX = Math.max(gene2X + 20, Math.min(width - baseRadius - 2, x));
+      const clampedY = Math.max(baseRadius + 2, Math.min(height - baseRadius - 2, y));
+      const node = { key: `uniqB-${idx}`, label: getPartnerShortLabel(partner), x: clampedX, y: clampedY, r: baseRadius * 0.8, className: 'unique-node', showLabel: showLabelsAlways };
       nodes.push(node);
       lines.push({ from: gene2, to: node, className: 'non-shared' });
     });
   }
 
+  // Draw lines first (behind nodes)
   lines.forEach((ln) => {
     const el = document.createElementNS(svgNS, 'line');
     el.setAttribute('x1', ln.from.x);
     el.setAttribute('y1', ln.from.y);
     el.setAttribute('x2', ln.to.x);
     el.setAttribute('y2', ln.to.y);
-    if (ln.className) el.setAttribute('class', ln.className);
+    el.setAttribute('class', ln.className || '');
+    el.style.opacity = totalPartners > 50 ? '0.3' : totalPartners > 20 ? '0.5' : '0.7';
     svg.appendChild(el);
   });
 
+  // Draw nodes with hover labels
   nodes.forEach((node) => {
     const group = document.createElementNS(svgNS, 'g');
     group.setAttribute('class', `ppi-node ${node.className || ''}`.trim());
+    group.style.cursor = 'pointer';
+
     const circle = document.createElementNS(svgNS, 'circle');
     circle.setAttribute('cx', node.x);
     circle.setAttribute('cy', node.y);
     circle.setAttribute('r', node.r);
     group.appendChild(circle);
 
+    // Label - always show for gene nodes, hover-only for partners when many
     const label = document.createElementNS(svgNS, 'text');
-    label.setAttribute('x', node.x + (node.labelDx || 0));
-    const labelY = node.labelDy != null ? node.y + node.labelDy : node.y + node.r + 14;
-    label.setAttribute('y', labelY);
-    label.setAttribute('text-anchor', node.labelAlign || 'middle');
+    const isGeneNode = node.className === 'gene-node';
+    if (isGeneNode) {
+      label.setAttribute('x', node.x);
+      label.setAttribute('y', node.y + node.r + 14);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-weight', '600');
+    } else {
+      label.setAttribute('x', node.x);
+      label.setAttribute('y', node.y - node.r - 4);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '9px');
+      if (!node.showLabel) {
+        label.style.opacity = '0';
+        label.style.transition = 'opacity 0.15s';
+      }
+    }
     label.textContent = node.label;
     group.appendChild(label);
+
+    // Hover effect for partner labels
+    if (!isGeneNode && !node.showLabel) {
+      group.addEventListener('mouseenter', () => { label.style.opacity = '1'; });
+      group.addEventListener('mouseleave', () => { label.style.opacity = '0'; });
+    }
+
+    // Add title tooltip
+    const title = document.createElementNS(svgNS, 'title');
+    title.textContent = node.label;
+    group.appendChild(title);
 
     svg.appendChild(group);
   });
 
   if (note) {
-    const notes = [];
-    if (sharedAll.length > shared.length) {
-      notes.push(`+${sharedAll.length - shared.length} shared partners hidden`);
+    const counts = [];
+    if (sharedAll.length) counts.push(`${sharedAll.length} shared`);
+    if (unique1All.length) counts.push(`${unique1All.length} ${data.gene1}-only`);
+    if (unique2All.length) counts.push(`${unique2All.length} ${data.gene2}-only`);
+    if (!showUnique && (data.unique1?.length || data.unique2?.length)) {
+      counts.push('unique partners hidden');
     }
-    if (showUnique) {
-      if (unique1All.length > Math.min(unique1All.length, MAX_UNIQUE_GRAPH)) {
-        notes.push(`+${unique1All.length - Math.min(unique1All.length, MAX_UNIQUE_GRAPH)} ${data.gene1} uniques hidden`);
-      }
-      if (unique2All.length > Math.min(unique2All.length, MAX_UNIQUE_GRAPH)) {
-        notes.push(`+${unique2All.length - Math.min(unique2All.length, MAX_UNIQUE_GRAPH)} ${data.gene2} uniques hidden`);
-      }
-    } else if (unique1All.length || unique2All.length) {
-      notes.push('Unique partners hidden (toggle to show).');
-    }
-    note.textContent = notes.join(' • ') || 'Shared nodes connect both paralogs; toggle to include unique-only partners.';
+    note.textContent = counts.length ? counts.join(' • ') + (totalPartners > 15 ? ' (hover for labels)' : '') : 'No PPI data available.';
   }
 }
 
