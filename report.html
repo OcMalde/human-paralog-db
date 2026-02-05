@@ -124,10 +124,14 @@
  .ppi-lists{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
  @media(max-width:900px){.ppi-lists{grid-template-columns:1fr}}
  .ppi-label{font-size:11px;font-weight:700;color:#5d4c2f;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px}
- .ppi-chip-list{display:flex;flex-wrap:wrap;gap:6px}
- .ppi-chip{padding:4px 12px;border-radius:999px;background:#fff3d8;border:1px solid #f0d6ac;font-size:12px;font-weight:600;color:#5a3300}
+ .ppi-chip-list{display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow-y:auto}
+ .ppi-chip-list.expanded{max-height:none}
+ .ppi-chip{padding:3px 8px;border-radius:999px;background:#fff3d8;border:1px solid #f0d6ac;font-size:11px;font-weight:500;color:#5a3300;cursor:default;white-space:nowrap}
+ .ppi-chip:hover{background:#ffe8c0;border-color:#d9b87a}
  .ppi-chip.empty{background:#f8f0e1;border-style:dashed;color:#9c8561}
  .ppi-note{font-size:11px;color:#8d7a57;margin-top:4px}
+ .ppi-note.clickable{color:#5a3300;cursor:pointer;text-decoration:underline}
+ .ppi-note.clickable:hover{color:#3d2200}
  .ppi-graph-wrapper{margin-top:18px;padding:12px;border:1px dashed #efd8af;border-radius:12px;background:#fffdf5}
  #ppiNetwork{width:100%;height:230px;display:block}
  #ppiNetwork text{font-size:11px;fill:#3a3225}
@@ -259,6 +263,7 @@
     <ul>
       <li><a href="#familyNav" data-section="familyNav">Paralog Family</a></li>
       <li><a href="#summarySection" data-section="summarySection">Pair Summary</a></li>
+      <li><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
       <li><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
       <li><a href="#structureSection" data-section="structureSection">3D Structure</a></li>
       <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
@@ -319,7 +324,7 @@
         <div class="meta-item"><div class="value" id="sum-shared-ppi">–</div><div class="label">Shared PPIs</div></div>
       </div>
     </div>
-    <div class="ppi-highlights">
+    <div class="ppi-highlights" id="ppiSection">
       <div class="ppi-header">
         <div>
           <h3>Shared Protein Partners</h3>

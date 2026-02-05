@@ -81,14 +81,27 @@ def load_gene_id_map() -> Dict[str, str]:
                 cl = col.lower()
                 if 'entrez' in cl or 'ncbi' in cl:
                     entrez_col = col
-                elif 'symbol' in cl or 'name' in cl:
+                elif 'symbol' in cl or 'gene_name' in cl.replace(' ', '_'):
                     symbol_col = col
             if entrez_col and symbol_col:
                 for _, row in df.iterrows():
-                    eid = str(row.get(entrez_col, '')).strip()
+                    eid_raw = str(row.get(entrez_col, '')).strip()
                     sym = str(row.get(symbol_col, '')).strip()
-                    if eid and sym and eid != 'nan':
-                        _gene_id_map_cache[eid] = sym
+                    if not sym or sym == 'nan':
+                        continue
+                    # Parse Entrez ID - handle list format like [7105]
+                    eid_raw = eid_raw.strip('[]').strip()
+                    if not eid_raw or eid_raw == 'nan':
+                        continue
+                    # Handle comma-separated lists (take first)
+                    for eid in eid_raw.split(','):
+                        eid = eid.strip().strip("'\"")
+                        if eid and eid != 'nan':
+                            try:
+                                eid = str(int(float(eid)))
+                                _gene_id_map_cache[eid] = sym
+                            except ValueError:
+                                pass
             log(f"Loaded {len(_gene_id_map_cache)} gene ID mappings")
     return _gene_id_map_cache
 

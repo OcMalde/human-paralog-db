@@ -871,8 +871,8 @@ document.addEventListener('DOMContentLoaded', loadDataAndInit);
 
 const AA_ORDER = ['K','R','H','E','D','N','Q','T','S','C','G','A','V','L','I','M','P','Y','F','W'];
 let AM_MODES = ["raw"];
-const MAX_SHARED_LIST = 18;
-const MAX_UNIQUE_LIST = 12;
+const MAX_SHARED_LIST = 30;
+const MAX_UNIQUE_LIST = 20;
 const MAX_SHARED_GRAPH = 7;
 const MAX_UNIQUE_GRAPH = 4;
 
@@ -1250,26 +1250,49 @@ function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
   const note = noteId ? document.getElementById(noteId) : null;
   if (!partners || !partners.length) {
     el.innerHTML = `<span class="ppi-chip empty">${emptyMsg}</span>`;
-    if (note) note.textContent = '';
+    if (note) { note.textContent = ''; note.className = 'ppi-note'; }
     return;
   }
-  const shown = partners.slice(0, limit);
-  el.innerHTML = shown.map((p) => {
+
+  const renderChips = (items) => items.map((p) => {
     const label = escapeHtml(getPartnerLabel(p));
     const tooltip = escapeHtml(getPartnerTooltip(p));
     const attr = tooltip ? ` title="${tooltip}"` : '';
     return `<span class="ppi-chip"${attr}>${label}</span>`;
   }).join('');
+
+  const hidden = partners.length - limit;
+  el.innerHTML = renderChips(partners.slice(0, limit));
+  el.classList.remove('expanded');
+
   if (note) {
-    const hidden = partners.length - shown.length;
-    note.textContent = hidden > 0 ? `+${hidden} more` : '';
+    if (hidden > 0) {
+      note.textContent = `+${hidden} more`;
+      note.className = 'ppi-note clickable';
+      note.onclick = () => {
+        if (el.classList.contains('expanded')) {
+          el.innerHTML = renderChips(partners.slice(0, limit));
+          el.classList.remove('expanded');
+          note.textContent = `+${hidden} more`;
+        } else {
+          el.innerHTML = renderChips(partners);
+          el.classList.add('expanded');
+          note.textContent = 'Show less';
+        }
+      };
+    } else {
+      note.textContent = '';
+      note.className = 'ppi-note';
+      note.onclick = null;
+    }
   }
 }
 
 function getPartnerLabel(entry) {
   if (!entry) return 'NA';
   if (typeof entry === 'string') return entry;
-  return entry.display || entry.symbol || entry.name || entry.id || 'NA';
+  // Prefer gene symbol for cleaner display
+  return entry.symbol || entry.id || 'NA';
 }
 
 function getPartnerShortLabel(entry) {
