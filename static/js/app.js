@@ -305,8 +305,9 @@ function initFamilyConstellation() {
   // Handle HiDPI displays for sharp rendering
   const dpr = window.devicePixelRatio || 1;
   const container = canvas.parentElement;
-  const displayWidth = Math.min(container.offsetWidth - 20, 900);
-  const displayHeight = 480;
+  // Allow larger canvas on big screens for better resolution
+  const displayWidth = Math.min(container.offsetWidth - 20, 1200);
+  const displayHeight = Math.min(560, Math.max(400, displayWidth * 0.5));
 
   // Set canvas size accounting for device pixel ratio
   canvas.width = displayWidth * dpr;
@@ -621,12 +622,55 @@ function renderFamilyConstellation() {
   ctx.lineWidth = 1;
   ctx.stroke();
 
+  // Find closest gene to center (highest identity)
+  let closestToCenter = null;
+  let highestIdentity = 0;
+  if (state.centerGene && state.geneData[state.centerGene]) {
+    const centerIdentities = state.geneData[state.centerGene].identities || {};
+    for (const [gene, identity] of Object.entries(centerIdentities)) {
+      if (identity > highestIdentity) {
+        highestIdentity = identity;
+        closestToCenter = gene;
+      }
+    }
+  }
+
+  // Draw double edge to closest gene (always visible)
+  if (state.centerGene && closestToCenter && positions[closestToCenter] && positions[state.centerGene]) {
+    const p1 = positions[state.centerGene];
+    const p2 = positions[closestToCenter];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      const nx = -dy / len * 3; // perpendicular offset
+      const ny = dx / len * 3;
+
+      // Check if closest pair matches selected pair
+      const isSelectedPair = state.selectedGenes.length === 2 &&
+        state.selectedGenes.includes(state.centerGene) &&
+        state.selectedGenes.includes(closestToCenter);
+
+      ctx.beginPath();
+      ctx.moveTo(p1.x + nx, p1.y + ny);
+      ctx.lineTo(p2.x + nx, p2.y + ny);
+      ctx.moveTo(p1.x - nx, p1.y - ny);
+      ctx.lineTo(p2.x - nx, p2.y - ny);
+      ctx.strokeStyle = isSelectedPair ? '#0d9488' : '#888';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
   // Draw edge for selected pair (teal line) - only when BOTH genes are selected
-  const bothSelected = state.selectedGenes.length === 2 &&
-    state.selectedGenes.includes(DATA.g1) && state.selectedGenes.includes(DATA.g2);
-  if (bothSelected && positions[DATA.g1] && positions[DATA.g2]) {
-    const p1 = positions[DATA.g1];
-    const p2 = positions[DATA.g2];
+  // Skip if it's already the closest pair (already drawn above)
+  const bothSelected = state.selectedGenes.length === 2;
+  const selectedIsClosest = bothSelected &&
+    state.selectedGenes.includes(state.centerGene) &&
+    state.selectedGenes.includes(closestToCenter);
+  if (bothSelected && !selectedIsClosest && positions[state.selectedGenes[0]] && positions[state.selectedGenes[1]]) {
+    const p1 = positions[state.selectedGenes[0]];
+    const p2 = positions[state.selectedGenes[1]];
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
