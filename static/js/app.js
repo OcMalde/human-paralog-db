@@ -1274,6 +1274,11 @@ function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
           el.innerHTML = renderChips(partners.slice(0, limit));
           el.classList.remove('expanded');
           note.textContent = `+${hidden} more`;
+          // Scroll back to PPI section when collapsing
+          const ppiSection = document.getElementById('ppiSection');
+          if (ppiSection) {
+            ppiSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
         } else {
           el.innerHTML = renderChips(partners);
           el.classList.add('expanded');
@@ -1383,39 +1388,61 @@ function drawPpiGraph(data, showUnique = true) {
     lines.push({ from: gene2, to: node, className: 'shared-link' });
   });
 
-  // Unique partners for gene1 - arranged in arc to the left
+  // Unique partners for gene1 - fill left side with grid layout
   if (unique1All.length) {
-    const arcRadius = 70;
+    const count = unique1All.length;
+    const availableWidth = gene1X - 25;  // Space to the left of gene1
+    const availableHeight = height - 30;  // Vertical space with padding
+    const nodeSize = baseRadius * 0.8;
+    const spacing = Math.max(nodeSize * 2.5, 8);
+
+    // Calculate grid dimensions based on available space and count
+    const rowsInHeight = Math.floor(availableHeight / spacing);
+    const neededCols = Math.ceil(count / rowsInHeight);
+    const cols = Math.max(1, neededCols);
+    const rowsPerCol = Math.ceil(count / cols);
+    const colSpacing = availableWidth / (cols + 1);
+
     unique1All.forEach((partner, idx) => {
-      const count = unique1All.length;
-      const angleSpan = Math.min(Math.PI * 0.8, count * 0.08);
-      const startAngle = Math.PI / 2 - angleSpan / 2;
-      const angle = count === 1 ? Math.PI / 2 : startAngle + (idx / (count - 1)) * angleSpan;
-      const x = gene1X - arcRadius * Math.cos(angle);
-      const y = centerY - arcRadius * Math.sin(angle) + (angle - Math.PI / 2) * 10;
-      // Clamp to viewport
-      const clampedX = Math.max(baseRadius + 2, Math.min(gene1X - 20, x));
-      const clampedY = Math.max(baseRadius + 2, Math.min(height - baseRadius - 2, y));
-      const node = { key: `uniqA-${idx}`, label: getPartnerShortLabel(partner), x: clampedX, y: clampedY, r: baseRadius * 0.8, className: 'unique-node', showLabel: showLabelsAlways };
+      const col = Math.floor(idx / rowsPerCol);
+      const row = idx % rowsPerCol;
+      const rowsInThisCol = col === cols - 1 ? count - col * rowsPerCol : rowsPerCol;
+
+      // Position from left edge, columns go right toward gene1
+      const x = 10 + colSpacing * (col + 1);
+      const y = 15 + (rowsInThisCol === 1 ? availableHeight / 2 : (row / Math.max(rowsInThisCol - 1, 1)) * availableHeight);
+
+      const node = { key: `uniqA-${idx}`, label: getPartnerShortLabel(partner), x, y, r: nodeSize, className: 'unique-node', showLabel: showLabelsAlways };
       nodes.push(node);
       lines.push({ from: gene1, to: node, className: 'non-shared' });
     });
   }
 
-  // Unique partners for gene2 - arranged in arc to the right
+  // Unique partners for gene2 - fill right side with grid layout
   if (unique2All.length) {
-    const arcRadius = 70;
+    const count = unique2All.length;
+    const availableWidth = width - gene2X - 25;  // Space to the right of gene2
+    const availableHeight = height - 30;  // Vertical space with padding
+    const nodeSize = baseRadius * 0.8;
+    const spacing = Math.max(nodeSize * 2.5, 8);
+
+    // Calculate grid dimensions based on available space and count
+    const rowsInHeight = Math.floor(availableHeight / spacing);
+    const neededCols = Math.ceil(count / rowsInHeight);
+    const cols = Math.max(1, neededCols);
+    const rowsPerCol = Math.ceil(count / cols);
+    const colSpacing = availableWidth / (cols + 1);
+
     unique2All.forEach((partner, idx) => {
-      const count = unique2All.length;
-      const angleSpan = Math.min(Math.PI * 0.8, count * 0.08);
-      const startAngle = Math.PI / 2 - angleSpan / 2;
-      const angle = count === 1 ? Math.PI / 2 : startAngle + (idx / (count - 1)) * angleSpan;
-      const x = gene2X + arcRadius * Math.cos(angle);
-      const y = centerY - arcRadius * Math.sin(angle) + (angle - Math.PI / 2) * 10;
-      // Clamp to viewport
-      const clampedX = Math.max(gene2X + 20, Math.min(width - baseRadius - 2, x));
-      const clampedY = Math.max(baseRadius + 2, Math.min(height - baseRadius - 2, y));
-      const node = { key: `uniqB-${idx}`, label: getPartnerShortLabel(partner), x: clampedX, y: clampedY, r: baseRadius * 0.8, className: 'unique-node', showLabel: showLabelsAlways };
+      const col = Math.floor(idx / rowsPerCol);
+      const row = idx % rowsPerCol;
+      const rowsInThisCol = col === cols - 1 ? count - col * rowsPerCol : rowsPerCol;
+
+      // Position from right edge, columns go left toward gene2
+      const x = width - 10 - colSpacing * (col + 1);
+      const y = 15 + (rowsInThisCol === 1 ? availableHeight / 2 : (row / Math.max(rowsInThisCol - 1, 1)) * availableHeight);
+
+      const node = { key: `uniqB-${idx}`, label: getPartnerShortLabel(partner), x, y, r: nodeSize, className: 'unique-node', showLabel: showLabelsAlways };
       nodes.push(node);
       lines.push({ from: gene2, to: node, className: 'non-shared' });
     });
