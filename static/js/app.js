@@ -1226,49 +1226,19 @@ function initProteinDescriptions() {
 
 function initSimilaritySearchSection() {
   const simSearch = SUMMARY.similarity_search || {};
-  const g1 = DATA.g1 || 'Gene A';
-  const g2 = DATA.g2 || 'Gene B';
-
-  // Update gene labels
-  const simSearchGeneA = document.getElementById('simSearchGeneA');
-  const simSearchGeneB = document.getElementById('simSearchGeneB');
-  if (simSearchGeneA) simSearchGeneA.textContent = g1;
-  if (simSearchGeneB) simSearchGeneB.textContent = g2;
-
-  // Populate gene columns with sequence metrics
-  const formatMetric = (key) => {
-    const info = simSearch[key] || {};
-    const val = info.value;
-    const pct = info.percentile;
-    if (val === null || val === undefined) return '–';
-    return `${val.toFixed(1)} (${pct?.toFixed(0) ?? '?'}%ile)`;
-  };
-
-  // Gene A sequence metrics
-  setText('simRankSeqA', formatMetric('rank_seq_A'));
-  setText('simSelfSPSeqA', formatMetric('selfSP_seq_A'));
-  setText('simTaxidSeqA', formatMetric('taxid_seq_A'));
-
-  // Gene B sequence metrics
-  setText('simRankSeqB', formatMetric('rank_seq_B'));
-  setText('simSelfSPSeqB', formatMetric('selfSP_seq_B'));
-  setText('simTaxidSeqB', formatMetric('taxid_seq_B'));
-
-  // Structure radar chart (center)
-  initSimilaritySearchRadar();
-}
-
-function initSimilaritySearchRadar() {
-  const simSearch = SUMMARY.similarity_search || {};
   const wrapper = document.getElementById('simSearchRadarWrapper');
   if (!wrapper) return;
 
-  // Get structure metrics only
-  const structMetrics = ['rank_struct', 'selfSP_struct', 'taxid_struct'];
+  // All 6 metrics for radar - use exact column names
+  const allMetrics = [
+    'rank_struct', 'selfSP_struct', 'taxid_struct',
+    'rank_seq', 'selfSP_seq', 'taxid_seq'
+  ];
+
   const labels = [];
   const values = [];
 
-  for (const key of structMetrics) {
+  for (const key of allMetrics) {
     const info = simSearch[key];
     if (info) {
       labels.push(info.label || key);
@@ -1277,7 +1247,7 @@ function initSimilaritySearchRadar() {
   }
 
   if (labels.length === 0) {
-    wrapper.innerHTML = '<div class="boxplot-hint">Structure similarity data not available</div>';
+    wrapper.innerHTML = '<div class="boxplot-hint">Similarity search data not available</div>';
     return;
   }
 
@@ -1304,7 +1274,7 @@ function initSimilaritySearchRadar() {
     data: {
       labels: labels,
       datasets: [{
-        label: 'Structure Search Percentile',
+        label: 'Similarity Search Percentile',
         data: values,
         fill: true,
         backgroundColor: 'rgba(76, 175, 80, 0.2)',
@@ -1336,51 +1306,24 @@ function initSimilaritySearchRadar() {
 
 function initFamilyFeaturesSection() {
   const famFeat = SUMMARY.family_features || {};
-  const g1 = DATA.g1 || 'Gene A';
-  const g2 = DATA.g2 || 'Gene B';
-
-  // Update gene labels
-  const famFeatGeneA = document.getElementById('famFeatGeneA');
-  const famFeatGeneB = document.getElementById('famFeatGeneB');
-  if (famFeatGeneA) famFeatGeneA.textContent = g1;
-  if (famFeatGeneB) famFeatGeneB.textContent = g2;
-
-  // Format metric helper
-  const formatMetric = (key) => {
-    const info = famFeat[key] || {};
-    const val = info.value;
-    const pct = info.percentile;
-    if (val === null || val === undefined) return '–';
-    return `${val.toFixed(3)} (${pct?.toFixed(0) ?? '?'}%ile)`;
-  };
-
-  // Gene-specific metrics
-  setText('famClustaloA', formatMetric('clustalo_specific_A'));
-  setText('famClustaloB', formatMetric('clustalo_specific_B'));
-
-  // Family features radar
-  initFamilyFeaturesRadar();
-}
-
-function initFamilyFeaturesRadar() {
-  const famFeat = SUMMARY.family_features || {};
   const wrapper = document.getElementById('famFeatRadarWrapper');
   if (!wrapper) return;
 
-  // Shared family metrics
-  const sharedMetrics = [
+  // All ratio metrics for radar - use exact column names
+  const allMetrics = [
     'rmean_shared_aa_withFamily',
     'rmean_shared_aa_pairExclusive',
     'rmean_shared_aa_onlyWithFamily',
     'clustalo_r_shared_aa_withFamily',
     'clustalo_r_shared_aa_pairExclusive',
+    'clustalo_r_shared_aa_onlyWithFamily',
     'clustalo_r_sum_specific'
   ];
 
   const labels = [];
   const values = [];
 
-  for (const key of sharedMetrics) {
+  for (const key of allMetrics) {
     const info = famFeat[key];
     if (info) {
       labels.push(info.label || key);
@@ -1448,49 +1391,33 @@ function initFamilyFeaturesRadar() {
 
 function initSlFunctionalSection() {
   const slFunc = SUMMARY.sl_functional || {};
-  const slFlags = slFunc.sl_flags || {};
-  const slScreens = slFunc.sl_screens || {};
+  const isSL = slFunc.is_sl;
+  const slScreens = slFunc.sl_screens || [];
   const goSim = slFunc.go_similarity || {};
 
-  // SL Flags
+  // SL Status - single flag with screens
   const flagsContainer = document.getElementById('slFlags');
   if (flagsContainer) {
-    let flagsHtml = '';
+    let html = '';
 
-    const flagLabels = {
-      'SL_consensus': 'SL Consensus',
-      'SL_lenient': 'SL Lenient',
-      'SL': 'SL (Any)'
-    };
-
-    for (const [key, label] of Object.entries(flagLabels)) {
-      const val = slFlags[key];
-      let cssClass = 'unknown';
-      let text = label + ': ?';
-
-      if (val === true) {
-        cssClass = 'positive';
-        text = label + ': Yes';
-      } else if (val === false) {
-        cssClass = 'negative';
-        text = label + ': No';
+    if (isSL === true) {
+      html = '<span class="sl-flag positive">Synthetic Lethal</span>';
+      if (slScreens.length > 0) {
+        html += `<span class="sl-note">Found in: ${slScreens.join(', ')}</span>`;
       }
-
-      flagsHtml += `<span class="sl-flag ${cssClass}">${text}</span>`;
+    } else if (isSL === false) {
+      html = '<span class="sl-flag negative">Not Synthetic Lethal</span>';
+    } else {
+      html = '<span class="sl-flag unknown">SL status unknown</span>';
     }
 
-    flagsContainer.innerHTML = flagsHtml || '<span class="sl-flag unknown">No SL data</span>';
+    flagsContainer.innerHTML = html;
   }
 
-  // SL Screens
+  // Hide screens container (now shown inline with flag)
   const screensContainer = document.getElementById('slScreens');
   if (screensContainer) {
-    let screensHtml = '';
-    for (const [key, info] of Object.entries(slScreens)) {
-      const val = info.value ?? '–';
-      screensHtml += `<div class="screen-item"><span>${info.label || key}</span><span>${val}</span></div>`;
-    }
-    screensContainer.innerHTML = screensHtml || '<div class="screen-item"><span>Screen data</span><span>Not available</span></div>';
+    screensContainer.style.display = 'none';
   }
 
   // GO Similarity

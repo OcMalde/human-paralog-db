@@ -273,6 +273,7 @@
   .sl-flag.positive{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
   .sl-flag.negative{background:#fafafa;color:#888;border:1px solid #e0e0e0}
   .sl-flag.unknown{background:#fff8e1;color:#f57f17;border:1px solid #fff0b3}
+  .sl-note{font-size:12px;color:#666;margin-left:8px}
   .go-sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
   .go-sim-item{background:#fff;border-radius:8px;padding:12px;text-align:center;border:1px solid #f0e8d8}
   .go-sim-item .label{font-size:11px;color:#7a6f55;text-transform:uppercase;margin-bottom:4px}
@@ -299,12 +300,12 @@
     <div class="nav-title">Sections</div>
     <ul>
       <li><a href="#familyNav" data-section="familyNav">Paralog Family</a></li>
+      <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Features</a></li>
       <li><a href="#summarySection" data-section="summarySection">Pair Summary</a></li>
       <li><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
+      <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
       <li><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
       <li><a href="#similaritySearchSection" data-section="similaritySearchSection">Similarity Searches</a></li>
-      <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Features</a></li>
-      <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
       <li><a href="#structureSection" data-section="structureSection">3D Structure</a></li>
       <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
       <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Alignment</a></li>
@@ -329,6 +330,21 @@
       <div id="constellationHelp" style="margin-top:12px;padding:10px 15px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#555;border:1px solid #e0e0e0;">
         <strong style="color:#d97706;">How to read:</strong> Center = query gene. Distance from center = sequence identity (closer = more similar).
         Double line shows closest pair. Click genes to select. Select two genes to navigate to that pair.
+      </div>
+    </div>
+  </section>
+
+  <!-- Family Features Section -->
+  <section class="card new-section" id="familyFeaturesSection">
+    <h2>Family Features</h2>
+    <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Ratio metrics for proper cross-pair comparison.</p>
+    <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
+      <div class="radar-plot" id="famFeatRadarWrapper">
+        <canvas id="famFeatRadar"></canvas>
+      </div>
+      <div class="boxplot-panel">
+        <h4>Metrics Shown</h4>
+        <p class="small">rmean_shared_aa_* (pairwise alignment ratios)<br>clustalo_r_* (MSA alignment ratios)</p>
       </div>
     </div>
   </section>
@@ -407,6 +423,38 @@
         <div class="ppi-graph-note" id="ppiGraphNote"></div>
       </div>
     </div>
+    <!-- SL & Functional Overlap Section -->
+    <div class="sl-functional-wrapper" id="slFunctionalSection" style="background:#fdfbf7;border-radius:12px;padding:20px;margin:20px 0;border:1px solid #f0e6d4;">
+      <h3 style="margin:0 0 16px;color:#2a2620;">Synthetic Lethality & Functional Overlap</h3>
+      <div class="sl-functional-grid">
+        <div class="sl-card">
+          <h4>Synthetic Lethality</h4>
+          <div id="slFlags">
+            <span class="sl-flag unknown">Loading...</span>
+          </div>
+        </div>
+        <div class="sl-card">
+          <h4>GO Semantic Similarity</h4>
+          <div class="go-sim-grid" id="goSimGrid">
+            <div class="go-sim-item">
+              <div class="label">Biological Process</div>
+              <div class="value" id="goBPO">–</div>
+              <div class="percentile" id="goBPOPct">–</div>
+            </div>
+            <div class="go-sim-item">
+              <div class="label">Cellular Component</div>
+              <div class="value" id="goCCO">–</div>
+              <div class="percentile" id="goCCOPct">–</div>
+            </div>
+            <div class="go-sim-item">
+              <div class="label">Molecular Function</div>
+              <div class="value" id="goMFO">–</div>
+              <div class="percentile" id="goMFOPct">–</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="conservation-viz" id="conservationSection">
       <h3>Conservation Compared to ~100k Human Paralog Pairs</h3>
       <p class="small" style="color:#666;margin-bottom:15px;">Click on any metric point in the radar chart to see the detailed distribution.</p>
@@ -435,87 +483,15 @@
 
   <!-- Similarity Searches Section -->
   <section class="card new-section" id="similaritySearchSection">
-    <h2>Similarity Searches – Structure & Sequence</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Metrics from structural (Foldseek) and sequence (BLAST) similarity searches. Higher percentile = more distinctive/conserved search results.</p>
-    <div class="symmetric-radar-container">
-      <div class="gene-column" id="simSearchColA">
-        <h4><span id="simSearchGeneA">Gene A</span> – Sequence</h4>
-        <div class="metric-item"><span class="metric-label">Search Rank</span><span class="metric-value" id="simRankSeqA">–</span></div>
-        <div class="metric-item"><span class="metric-label">Self-Score #</span><span class="metric-value" id="simSelfSPSeqA">–</span></div>
-        <div class="metric-item"><span class="metric-label">Taxon Diversity</span><span class="metric-value" id="simTaxidSeqA">–</span></div>
+    <h2>Similarity Searches</h2>
+    <p class="small" style="color:#666;margin-bottom:16px;">Percentile comparison against all paralog pairs for structure (Foldseek) and sequence (BLAST) similarity metrics.</p>
+    <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
+      <div class="radar-plot" id="simSearchRadarWrapper">
+        <canvas id="simSearchRadar"></canvas>
       </div>
-      <div class="center-radar">
-        <h4 style="font-size:14px;color:#4a3f2d;margin-bottom:8px;">Structure (Shared)</h4>
-        <div class="radar-plot" id="simSearchRadarWrapper">
-          <canvas id="simSearchRadar"></canvas>
-        </div>
-        <div class="radar-note">Structure metrics are computed on the aligned pair</div>
-      </div>
-      <div class="gene-column" id="simSearchColB">
-        <h4><span id="simSearchGeneB">Gene B</span> – Sequence</h4>
-        <div class="metric-item"><span class="metric-label">Search Rank</span><span class="metric-value" id="simRankSeqB">–</span></div>
-        <div class="metric-item"><span class="metric-label">Self-Score #</span><span class="metric-value" id="simSelfSPSeqB">–</span></div>
-        <div class="metric-item"><span class="metric-label">Taxon Diversity</span><span class="metric-value" id="simTaxidSeqB">–</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Family Features Section -->
-  <section class="card new-section" id="familyFeaturesSection">
-    <h2>Family Features – Amino Acid Conservation</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Conservation patterns within the paralog family. Higher = more conserved positions shared or exclusive to this pair.</p>
-    <div class="symmetric-radar-container">
-      <div class="gene-column" id="famFeatColA">
-        <h4><span id="famFeatGeneA">Gene A</span> – Specific</h4>
-        <div class="metric-item"><span class="metric-label">Clustalo Specific</span><span class="metric-value" id="famClustaloA">–</span></div>
-      </div>
-      <div class="center-radar">
-        <h4 style="font-size:14px;color:#4a3f2d;margin-bottom:8px;">Shared Family Metrics</h4>
-        <div class="radar-plot" id="famFeatRadarWrapper">
-          <canvas id="famFeatRadar"></canvas>
-        </div>
-        <div class="radar-note">Position-based conservation from pairwise and MSA alignments</div>
-      </div>
-      <div class="gene-column" id="famFeatColB">
-        <h4><span id="famFeatGeneB">Gene B</span> – Specific</h4>
-        <div class="metric-item"><span class="metric-label">Clustalo Specific</span><span class="metric-value" id="famClustaloB">–</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- SL & Functional Overlap Section -->
-  <section class="card new-section" id="slFunctionalSection">
-    <h2>Synthetic Lethality & Functional Overlap</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Synthetic lethality status from multiple screens and Gene Ontology semantic similarity.</p>
-    <div class="sl-functional-grid">
-      <div class="sl-card">
-        <h4>Synthetic Lethality Status</h4>
-        <div id="slFlags">
-          <span class="sl-flag unknown">Loading...</span>
-        </div>
-        <div class="screen-list" id="slScreens">
-          <!-- Populated by JS -->
-        </div>
-      </div>
-      <div class="sl-card">
-        <h4>GO Semantic Similarity</h4>
-        <div class="go-sim-grid" id="goSimGrid">
-          <div class="go-sim-item">
-            <div class="label">Biological Process</div>
-            <div class="value" id="goBPO">–</div>
-            <div class="percentile" id="goBPOPct">–</div>
-          </div>
-          <div class="go-sim-item">
-            <div class="label">Cellular Component</div>
-            <div class="value" id="goCCO">–</div>
-            <div class="percentile" id="goCCOPct">–</div>
-          </div>
-          <div class="go-sim-item">
-            <div class="label">Molecular Function</div>
-            <div class="value" id="goMFO">–</div>
-            <div class="percentile" id="goMFOPct">–</div>
-          </div>
-        </div>
+      <div class="boxplot-panel">
+        <h4>Metrics Shown</h4>
+        <p class="small">rank_struct, selfSP_struct, taxid_struct (structure)<br>rank_seq, selfSP_seq, taxid_seq (sequence)</p>
       </div>
     </div>
   </section>
