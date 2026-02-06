@@ -2163,12 +2163,22 @@ function drawPpiVenn(data) {
   const countUniqueB = unique2.length;
 
   // Draw Venn diagram circles
-  const centerY = 130;
+  const centerY = 140;
   const circleRadius = 80;
-  const overlap = 50; // How much circles overlap
 
-  const circle1X = width / 2 - overlap / 2;
-  const circle2X = width / 2 + overlap / 2;
+  // Calculate overlap based on shared count - no overlap if no shared partners
+  let overlap;
+  if (countShared === 0) {
+    overlap = -20; // Separate circles with gap
+  } else {
+    // Scale overlap based on proportion of shared partners
+    const maxShared = Math.min(countA, countB);
+    const shareRatio = maxShared > 0 ? countShared / maxShared : 0;
+    overlap = 20 + shareRatio * 60; // Range from 20 to 80
+  }
+
+  const circle1X = width / 2 - circleRadius - overlap / 2 + 40;
+  const circle2X = width / 2 + circleRadius + overlap / 2 - 40;
 
   // Circle for gene A (left)
   const circle1 = document.createElementNS(svgNS, 'circle');
@@ -2203,23 +2213,27 @@ function drawPpiVenn(data) {
     svg.appendChild(el);
   };
 
-  // Gene names at top
-  addText(circle1X - 40, 30, data.gene1, '14px', '600', '#2e7d32');
-  addText(circle2X + 40, 30, data.gene2, '14px', '600', '#e65100');
+  // Gene names at top with total count right below
+  addText(circle1X, 30, data.gene1, '14px', '600', '#2e7d32');
+  addText(circle1X, 46, `(${countA} partners)`, '10px', 'normal', '#888');
+  addText(circle2X, 30, data.gene2, '14px', '600', '#e65100');
+  addText(circle2X, 46, `(${countB} partners)`, '10px', 'normal', '#888');
 
   // Counts in circles
-  addText(circle1X - 40, centerY + 5, countUniqueA.toString(), '20px', '700', '#2e7d32');
-  addText(width / 2, centerY + 5, countShared.toString(), '20px', '700', '#5d4037');
-  addText(circle2X + 40, centerY + 5, countUniqueB.toString(), '20px', '700', '#e65100');
+  addText(circle1X - 30, centerY + 5, countUniqueA.toString(), '20px', '700', '#2e7d32');
+  if (countShared > 0) {
+    addText((circle1X + circle2X) / 2, centerY + 5, countShared.toString(), '20px', '700', '#5d4037');
+    addText((circle1X + circle2X) / 2, centerY + 25, 'shared', '11px', 'normal', '#666');
+  } else {
+    // Show "0 shared" text between separate circles
+    addText(width / 2, centerY + 5, '0', '18px', '700', '#999');
+    addText(width / 2, centerY + 25, 'shared', '11px', 'normal', '#999');
+  }
+  addText(circle2X + 30, centerY + 5, countUniqueB.toString(), '20px', '700', '#e65100');
 
   // Labels below counts
-  addText(circle1X - 40, centerY + 25, 'unique', '11px', 'normal', '#666');
-  addText(width / 2, centerY + 25, 'shared', '11px', 'normal', '#666');
-  addText(circle2X + 40, centerY + 25, 'unique', '11px', 'normal', '#666');
-
-  // Total counts at bottom of circles
-  addText(circle1X - 40, centerY + 70, `Total: ${countA}`, '11px', 'normal', '#888');
-  addText(circle2X + 40, centerY + 70, `Total: ${countB}`, '11px', 'normal', '#888');
+  addText(circle1X - 30, centerY + 25, 'unique', '11px', 'normal', '#666');
+  addText(circle2X + 30, centerY + 25, 'unique', '11px', 'normal', '#666');
 
   // Calculate hypergeometric test
   // Estimate total human interactome size
