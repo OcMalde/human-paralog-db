@@ -337,14 +337,23 @@
   <!-- Family Features Section -->
   <section class="card new-section" id="familyFeaturesSection">
     <h2>Family Features</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Ratio metrics for proper cross-pair comparison.</p>
+    <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Click radar points to see distributions.</p>
     <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
       <div class="radar-plot" id="famFeatRadarWrapper">
         <canvas id="famFeatRadar"></canvas>
       </div>
-      <div class="boxplot-panel">
-        <h4>Metrics Shown</h4>
-        <p class="small">rmean_shared_aa_* (pairwise alignment ratios)<br>clustalo_r_* (MSA alignment ratios)</p>
+      <div class="boxplot-panel" id="famFeatBoxplotPanel">
+        <div class="boxplot-header">
+          <h4 id="famFeatBoxplotTitle">Select a Metric</h4>
+          <button type="button" class="reset-metric-btn" id="resetFamFeatView" style="display:none;">Back to overview</button>
+        </div>
+        <div id="famFeatBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
+        <div class="metric-details" id="famFeatMetricDetails" style="display:none;">
+          <div class="stat-row"><span>This pair's value:</span><strong id="famFeat-detail-value">–</strong></div>
+          <div class="stat-row"><span>Percentile:</span><strong id="famFeat-detail-percentile">–</strong></div>
+          <div class="stat-row"><span>Interpretation:</span><span id="famFeat-detail-interp">–</span></div>
+          <div class="percentile-bar"><div class="percentile-fill" id="famFeat-percentile-fill" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
   </section>
@@ -484,14 +493,24 @@
   <!-- Similarity Searches Section -->
   <section class="card new-section" id="similaritySearchSection">
     <h2>Similarity Searches</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Percentile comparison against all paralog pairs for structure (Foldseek) and sequence (BLAST) similarity metrics.</p>
+    <p class="small" style="color:#666;margin-bottom:16px;">Structure (Foldseek) and sequence (BLAST) similarity search metrics. Click radar points to see distributions.</p>
     <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
       <div class="radar-plot" id="simSearchRadarWrapper">
         <canvas id="simSearchRadar"></canvas>
       </div>
-      <div class="boxplot-panel">
-        <h4>Metrics Shown</h4>
-        <p class="small">rank_struct, selfSP_struct, taxid_struct (structure)<br>rank_seq, selfSP_seq, taxid_seq (sequence)</p>
+      <div class="boxplot-panel" id="simSearchBoxplotPanel">
+        <div class="boxplot-header">
+          <h4 id="simSearchBoxplotTitle">Select a Metric</h4>
+          <button type="button" class="reset-metric-btn" id="resetSimSearchView" style="display:none;">Back to overview</button>
+        </div>
+        <div id="simSearchBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
+        <div class="metric-details" id="simSearchMetricDetails" style="display:none;">
+          <div class="stat-row"><span>This pair's value:</span><strong id="simSearch-detail-value">–</strong></div>
+          <div class="stat-row"><span>Percentile:</span><strong id="simSearch-detail-percentile">–</strong></div>
+          <div class="stat-row"><span>Interpretation:</span><span id="simSearch-detail-interp">–</span></div>
+          <div class="stat-row"><span>Direction:</span><span id="simSearch-detail-direction">–</span></div>
+          <div class="percentile-bar"><div class="percentile-fill" id="simSearch-percentile-fill" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
   </section>

@@ -1224,6 +1224,10 @@ function initProteinDescriptions() {
   }
 }
 
+// Boxplot chart instances for new sections
+let simSearchBoxplotChart = null;
+let famFeatBoxplotChart = null;
+
 function initSimilaritySearchSection() {
   const simSearch = SUMMARY.similarity_search || {};
   const wrapper = document.getElementById('simSearchRadarWrapper');
@@ -1235,12 +1239,14 @@ function initSimilaritySearchSection() {
     'rank_seq', 'selfSP_seq', 'taxid_seq'
   ];
 
+  const metricKeys = [];
   const labels = [];
   const values = [];
 
   for (const key of allMetrics) {
     const info = simSearch[key];
     if (info) {
+      metricKeys.push(key);
       labels.push(info.label || key);
       values.push(info.radar_value ?? 50);
     }
@@ -1299,9 +1305,65 @@ function initSimilaritySearchSection() {
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
+      },
+      onClick: (evt, elements) => {
+        if (elements.length > 0) {
+          const idx = elements[0].index;
+          const metricKey = metricKeys[idx];
+          showSimSearchBoxplot(metricKey);
+        }
       }
     }
   });
+
+  // Setup reset button
+  const resetBtn = document.getElementById('resetSimSearchView');
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = 'true';
+    resetBtn.addEventListener('click', resetSimSearchView);
+  }
+}
+
+function showSimSearchBoxplot(metricKey) {
+  const simSearch = SUMMARY.similarity_search || {};
+  const boxplots = SUMMARY.boxplots || {};
+  const metricInfo = simSearch[metricKey];
+  const boxplotData = boxplots[metricKey];
+
+  if (!metricInfo || !boxplotData) {
+    document.getElementById('simSearchBoxplotContainer').innerHTML = '<div class="boxplot-hint">Data not available</div>';
+    return;
+  }
+
+  document.getElementById('simSearchBoxplotTitle').textContent = metricInfo.label || metricKey;
+  document.getElementById('simSearchMetricDetails').style.display = 'block';
+  document.getElementById('resetSimSearchView').style.display = 'inline-block';
+  document.getElementById('simSearch-detail-value').textContent = typeof metricInfo.value === 'number' ? metricInfo.value.toFixed(4) : '–';
+  const pctVal = typeof metricInfo.percentile === 'number' ? metricInfo.percentile : null;
+  document.getElementById('simSearch-detail-percentile').textContent = pctVal != null ? `${pctVal.toFixed(1)}%` : '–';
+  document.getElementById('simSearch-percentile-fill').style.width = pctVal != null ? `${pctVal}%` : '0%';
+  const dirText = metricInfo.higher_is_better ? 'Higher = better' : 'Lower = better';
+  document.getElementById('simSearch-detail-direction').textContent = dirText;
+
+  let interp = '';
+  if (pctVal >= 75) interp = '<span class="cons-high">Top 25%</span>';
+  else if (pctVal >= 50) interp = '<span class="cons-medium">Above average</span>';
+  else if (pctVal >= 25) interp = '<span class="cons-medium">Below average</span>';
+  else interp = '<span class="cons-low">Bottom 25%</span>';
+  document.getElementById('simSearch-detail-interp').innerHTML = interp;
+
+  drawGenericBoxplot('simSearchBoxplotContainer', metricInfo, boxplotData, simSearchBoxplotChart, (chart) => { simSearchBoxplotChart = chart; });
+}
+
+function resetSimSearchView() {
+  if (simSearchBoxplotChart) {
+    simSearchBoxplotChart.destroy();
+    simSearchBoxplotChart = null;
+  }
+  document.getElementById('simSearchBoxplotContainer').innerHTML = '<div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div>';
+  document.getElementById('simSearchMetricDetails').style.display = 'none';
+  document.getElementById('simSearchBoxplotTitle').textContent = 'Select a Metric';
+  document.getElementById('resetSimSearchView').style.display = 'none';
 }
 
 function initFamilyFeaturesSection() {
@@ -1320,12 +1382,14 @@ function initFamilyFeaturesSection() {
     'clustalo_r_sum_specific'
   ];
 
+  const metricKeys = [];
   const labels = [];
   const values = [];
 
   for (const key of allMetrics) {
     const info = famFeat[key];
     if (info) {
+      metricKeys.push(key);
       labels.push(info.label || key);
       values.push(info.radar_value ?? 50);
     }
@@ -1384,9 +1448,125 @@ function initFamilyFeaturesSection() {
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
+      },
+      onClick: (_, elements) => {
+        if (elements.length > 0) {
+          const idx = elements[0].index;
+          const metricKey = metricKeys[idx];
+          showFamFeatBoxplot(metricKey);
+        }
       }
     }
   });
+
+  // Setup reset button
+  const resetBtn = document.getElementById('resetFamFeatView');
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = 'true';
+    resetBtn.addEventListener('click', resetFamFeatView);
+  }
+}
+
+function showFamFeatBoxplot(metricKey) {
+  const famFeat = SUMMARY.family_features || {};
+  const boxplots = SUMMARY.boxplots || {};
+  const metricInfo = famFeat[metricKey];
+  const boxplotData = boxplots[metricKey];
+
+  if (!metricInfo || !boxplotData) {
+    document.getElementById('famFeatBoxplotContainer').innerHTML = '<div class="boxplot-hint">Data not available</div>';
+    return;
+  }
+
+  document.getElementById('famFeatBoxplotTitle').textContent = metricInfo.label || metricKey;
+  document.getElementById('famFeatMetricDetails').style.display = 'block';
+  document.getElementById('resetFamFeatView').style.display = 'inline-block';
+  document.getElementById('famFeat-detail-value').textContent = typeof metricInfo.value === 'number' ? metricInfo.value.toFixed(4) : '–';
+  const pctVal = typeof metricInfo.percentile === 'number' ? metricInfo.percentile : null;
+  document.getElementById('famFeat-detail-percentile').textContent = pctVal != null ? `${pctVal.toFixed(1)}%` : '–';
+  document.getElementById('famFeat-percentile-fill').style.width = pctVal != null ? `${pctVal}%` : '0%';
+
+  let interp = '';
+  if (pctVal >= 75) interp = '<span class="cons-high">Top 25%</span>';
+  else if (pctVal >= 50) interp = '<span class="cons-medium">Above average</span>';
+  else if (pctVal >= 25) interp = '<span class="cons-medium">Below average</span>';
+  else interp = '<span class="cons-low">Bottom 25%</span>';
+  document.getElementById('famFeat-detail-interp').innerHTML = interp;
+
+  drawGenericBoxplot('famFeatBoxplotContainer', metricInfo, boxplotData, famFeatBoxplotChart, (chart) => { famFeatBoxplotChart = chart; });
+}
+
+function resetFamFeatView() {
+  if (famFeatBoxplotChart) {
+    famFeatBoxplotChart.destroy();
+    famFeatBoxplotChart = null;
+  }
+  document.getElementById('famFeatBoxplotContainer').innerHTML = '<div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div>';
+  document.getElementById('famFeatMetricDetails').style.display = 'none';
+  document.getElementById('famFeatBoxplotTitle').textContent = 'Select a Metric';
+  document.getElementById('resetFamFeatView').style.display = 'none';
+}
+
+// Generic boxplot drawing function for reuse
+function drawGenericBoxplot(containerId, metricInfo, boxplotData, existingChart, setChart) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '<canvas style="width:100%;height:180px;"></canvas>';
+
+  const canvas = container.querySelector('canvas');
+  if (!canvas || typeof Chart === 'undefined') {
+    container.innerHTML = '<div class="boxplot-hint">Chart.js required</div>';
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const {q1, median, q3, whisker_low, whisker_high, pair_value} = boxplotData;
+
+  if (existingChart) existingChart.destroy();
+
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Distribution'],
+      datasets: [
+        { label: 'Lower', data: [q1 - whisker_low], backgroundColor: 'rgba(200,200,200,0.3)', barPercentage: 0.5 },
+        { label: 'Q1-Med', data: [median - q1], backgroundColor: 'rgba(102, 126, 234, 0.4)', barPercentage: 0.5 },
+        { label: 'Med-Q3', data: [q3 - median], backgroundColor: 'rgba(118, 75, 162, 0.4)', barPercentage: 0.5 },
+        { label: 'Upper', data: [whisker_high - q3], backgroundColor: 'rgba(200,200,200,0.3)', barPercentage: 0.5 },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { stacked: true, min: whisker_low - (whisker_high - whisker_low) * 0.1, max: whisker_high + (whisker_high - whisker_low) * 0.1, title: { display: true, text: metricInfo.label } },
+        y: { stacked: true, display: false }
+      },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    },
+    plugins: [{
+      id: 'pairMarker',
+      afterDraw: (chart) => {
+        if (pair_value == null) return;
+        const ctx = chart.ctx;
+        const xAxis = chart.scales.x;
+        const yAxis = chart.scales.y;
+        const x = xAxis.getPixelForValue(pair_value);
+        const y = yAxis.getPixelForValue(0);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef5350';
+        ctx.fill();
+        ctx.strokeStyle = '#c62828';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }]
+  });
+
+  setChart(chart);
 }
 
 function initSlFunctionalSection() {
@@ -1420,25 +1600,31 @@ function initSlFunctionalSection() {
     screensContainer.style.display = 'none';
   }
 
-  // GO Similarity
-  const formatGO = (key) => {
+  // GO Similarity with color coding
+  const formatGO = (key, valueElId, pctElId) => {
     const info = goSim[key] || {};
-    return {
-      value: info.value !== null && info.value !== undefined ? info.value.toFixed(3) : '–',
-      pct: info.percentile !== null && info.percentile !== undefined ? `${info.percentile.toFixed(0)}%ile` : '–'
-    };
+    const valueEl = document.getElementById(valueElId);
+    const pctEl = document.getElementById(pctElId);
+
+    if (valueEl) {
+      const val = info.value;
+      valueEl.textContent = val !== null && val !== undefined ? val.toFixed(3) : '–';
+      // Color based on value (0 = red, 0.5 = grey, 1 = green)
+      if (val !== null && val !== undefined) {
+        const hue = val * 120; // 0 = red (0°), 0.5 = yellow-ish (60°), 1 = green (120°)
+        const saturation = Math.abs(val - 0.5) * 100 + 50; // More saturated at extremes
+        valueEl.style.color = `hsl(${hue}, ${saturation}%, 35%)`;
+      }
+    }
+    if (pctEl) {
+      const pct = info.percentile;
+      pctEl.textContent = pct !== null && pct !== undefined ? `${pct.toFixed(0)}th percentile` : '–';
+    }
   };
 
-  const bpo = formatGO('BPO');
-  const cco = formatGO('CCO');
-  const mfo = formatGO('MFO');
-
-  setText('goBPO', bpo.value);
-  setText('goBPOPct', bpo.pct);
-  setText('goCCO', cco.value);
-  setText('goCCOPct', cco.pct);
-  setText('goMFO', mfo.value);
-  setText('goMFOPct', mfo.pct);
+  formatGO('BPO', 'goBPO', 'goBPOPct');
+  formatGO('CCO', 'goCCO', 'goCCOPct');
+  formatGO('MFO', 'goMFO', 'goMFOPct');
 }
 
 function setText(id, text) {

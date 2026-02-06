@@ -587,8 +587,13 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     log(f"  {gene_a}: {gene1_info['description'].get('name', 'N/A')[:50]}...")
     log(f"  {gene_b}: {gene2_info['description'].get('name', 'N/A')[:50]}...")
 
+    # Generate boxplot data for all metrics (conservation, similarity search, family features)
     boxplots = {}
     for metric_col, metric_info in conservation.items():
+        boxplots[metric_col] = get_boxplot_data(metric_col, metric_info.get('value'))
+    for metric_col, metric_info in similarity_search.items():
+        boxplots[metric_col] = get_boxplot_data(metric_col, metric_info.get('value'))
+    for metric_col, metric_info in family_features.items():
         boxplots[metric_col] = get_boxplot_data(metric_col, metric_info.get('value'))
 
     SUMMARY = {
