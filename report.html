@@ -567,26 +567,19 @@
       <button class="collapse-toggle" id="simSearchCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="section-body" id="simSearchBody">
-      <p class="small" style="color:#666;margin-bottom:16px;">Structure (Foldseek) and sequence (BLAST) similarity search metrics. Click radar points to see distributions.</p>
-      <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
-        <div class="radar-plot" id="simSearchRadarWrapper">
-          <canvas id="simSearchRadar"></canvas>
-        </div>
-        <div class="boxplot-panel" id="simSearchBoxplotPanel">
-          <div class="boxplot-header">
-            <h4 id="simSearchBoxplotTitle">Select a Metric</h4>
-            <button type="button" class="reset-metric-btn" id="resetSimSearchView" style="display:none;">Back to overview</button>
-          </div>
-          <div id="simSearchBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
-          <div class="metric-details" id="simSearchMetricDetails" style="display:none;">
-            <div class="stat-row"><span>This pair's value:</span><strong id="simSearch-detail-value">–</strong></div>
-            <div class="stat-row"><span>Percentile:</span><strong id="simSearch-detail-percentile">–</strong></div>
-            <div class="stat-row"><span>Interpretation:</span><span id="simSearch-detail-interp">–</span></div>
-            <div class="stat-row"><span>Direction:</span><span id="simSearch-detail-direction">–</span></div>
-            <div class="percentile-bar"><div class="percentile-fill" id="simSearch-percentile-fill" style="width:0%"></div></div>
-          </div>
-        </div>
+      <p class="small" style="color:#666;margin-bottom:16px;">How many proteins in the database rank between paralog A and B? Lower rank = A and B are very similar.</p>
+      <div class="sim-search-controls" style="margin-bottom:16px;">
+        <label>Database:
+          <select id="simSearchModeSelect">
+            <option value="struct" selected>Structure (AlphaFold DB via Foldseek)</option>
+            <option value="seq">Sequence (SwissProt via BLAST)</option>
+          </select>
+        </label>
       </div>
+      <div class="sim-search-viz-wrapper" style="display:flex;justify-content:center;">
+        <canvas id="simSearchRankCanvas" width="700" height="400" style="max-width:100%;border:1px solid #e8e8e8;border-radius:8px;background:#fefefe;"></canvas>
+      </div>
+      <div class="sim-search-legend" id="simSearchLegend" style="margin-top:12px;padding:12px;background:#f9f7f2;border-radius:8px;font-size:12px;color:#555;"></div>
     </div>
   </section>
 

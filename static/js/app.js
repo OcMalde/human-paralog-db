@@ -1201,7 +1201,6 @@ function renderConservationList() {
 /* ========== NEW SECTION FUNCTIONS ========== */
 
 // Charts for new sections
-let simSearchRadarChart = null;
 let famFeatRadarChart = null;
 
 const DESC_TRUNCATE_LENGTH = 200; // Characters before truncation
@@ -1293,145 +1292,278 @@ function initProteinDescriptions() {
 }
 
 // Boxplot chart instances for new sections
-let simSearchBoxplotChart = null;
 let famFeatBoxplotChart = null;
 
+// Current similarity search mode (struct or seq)
+let simSearchMode = 'struct';
+
 function initSimilaritySearchSection() {
-  const simSearch = SUMMARY.similarity_search || {};
-  const wrapper = document.getElementById('simSearchRadarWrapper');
-  if (!wrapper) return;
+  const canvas = document.getElementById('simSearchRankCanvas');
+  const modeSelect = document.getElementById('simSearchModeSelect');
+  if (!canvas) return;
 
-  // All 6 metrics for radar - use exact column names
-  const allMetrics = [
-    'rank_struct', 'selfSP_struct', 'taxid_struct',
-    'rank_seq', 'selfSP_seq', 'taxid_seq'
-  ];
+  // Initial draw
+  drawSimSearchRankViz(simSearchMode);
 
-  const metricKeys = [];
-  const labels = [];
-  const values = [];
-
-  for (const key of allMetrics) {
-    const info = simSearch[key];
-    if (info) {
-      metricKeys.push(key);
-      labels.push(info.label || key);
-      values.push(info.radar_value ?? 50);
-    }
+  // Mode switch handler
+  if (modeSelect && !modeSelect.dataset.bound) {
+    modeSelect.dataset.bound = 'true';
+    modeSelect.addEventListener('change', (e) => {
+      simSearchMode = e.target.value;
+      drawSimSearchRankViz(simSearchMode);
+    });
   }
+}
 
-  if (labels.length === 0) {
-    wrapper.innerHTML = '<div class="boxplot-hint">Similarity search data not available</div>';
-    return;
-  }
-
-  if (typeof Chart === 'undefined') {
-    wrapper.innerHTML = '<div class="boxplot-hint">Chart.js not loaded</div>';
-    return;
-  }
-
-  let canvas = wrapper.querySelector('canvas#simSearchRadar');
-  if (!canvas) {
-    canvas = document.createElement('canvas');
-    canvas.id = 'simSearchRadar';
-    wrapper.innerHTML = '';
-    wrapper.appendChild(canvas);
-  }
+function drawSimSearchRankViz(mode) {
+  const canvas = document.getElementById('simSearchRankCanvas');
+  const legendEl = document.getElementById('simSearchLegend');
+  if (!canvas || !SUMMARY) return;
 
   const ctx = canvas.getContext('2d');
-  if (simSearchRadarChart) {
-    simSearchRadarChart.destroy();
-  }
+  const dpr = window.devicePixelRatio || 1;
 
-  simSearchRadarChart = new Chart(ctx, {
-    type: 'radar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Similarity Search Percentile',
-        data: values,
-        fill: true,
-        backgroundColor: 'rgba(76, 175, 80, 0.2)',
-        borderColor: 'rgba(76, 175, 80, 1)',
-        pointBackgroundColor: 'rgba(76, 175, 80, 1)',
-        pointBorderColor: '#fff',
-        pointRadius: 5,
-        pointHoverRadius: 7,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        r: {
-          angleLines: { display: true },
-          suggestedMin: 0,
-          suggestedMax: 100,
-          ticks: { stepSize: 25, callback: (v) => v + '%' }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
-      },
-      onClick: (evt, elements) => {
-        if (elements.length > 0) {
-          const idx = elements[0].index;
-          const metricKey = metricKeys[idx];
-          showSimSearchBoxplot(metricKey);
-        }
+  // Set canvas size for HiDPI
+  const displayWidth = 700;
+  const displayHeight = 400;
+  canvas.width = displayWidth * dpr;
+  canvas.height = displayHeight * dpr;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+  ctx.scale(dpr, dpr);
+
+  // Clear canvas
+  ctx.fillStyle = '#fefefe';
+  ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+  const simSearch = SUMMARY.similarity_search || {};
+  const suffix = mode === 'struct' ? '_struct' : '_seq';
+  const dbName = mode === 'struct' ? 'AlphaFold DB' : 'SwissProt';
+  const searchMethod = mode === 'struct' ? 'Foldseek' : 'BLAST';
+
+  const rankInfo = simSearch['rank' + suffix];
+  const selfSPInfo = simSearch['selfSP' + suffix];
+  const taxidInfo = simSearch['taxid' + suffix];
+
+  const rank = rankInfo?.value ?? null;
+  const selfSP = selfSPInfo?.value ?? null;
+  const taxid = taxidInfo?.value ?? null;
+
+  const gene1 = SUMMARY.gene1?.symbol || 'Gene A';
+  const gene2 = SUMMARY.gene2?.symbol || 'Gene B';
+
+  // Layout constants
+  const padding = 40;
+  const geneCircleRadius = 28;
+
+  // Gene A position (top-left area)
+  const geneAx = padding + 60;
+  const geneAy = padding + 50;
+
+  // Database box dimensions
+  const dbBoxLeft = 160;
+  const dbBoxTop = 70;
+  const dbBoxWidth = 380;
+  const dbBoxHeight = 260;
+  const dbBoxRight = dbBoxLeft + dbBoxWidth;
+  const dbBoxBottom = dbBoxTop + dbBoxHeight;
+
+  // Gene B position (aligned to bottom of rank box)
+  const geneBx = dbBoxRight + 60;
+
+  // Draw Gene A circle and label
+  ctx.beginPath();
+  ctx.arc(geneAx, geneAy, geneCircleRadius, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(67, 160, 71, 0.3)';
+  ctx.fill();
+  ctx.strokeStyle = '#43a047';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillStyle = '#2e7d32';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(gene1, geneAx, geneAy);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.fillText('(Query)', geneAx, geneAy + geneCircleRadius + 14);
+
+  // Draw database box
+  ctx.fillStyle = '#f5f3ee';
+  ctx.fillRect(dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight);
+  ctx.strokeStyle = '#c9c2b3';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight);
+
+  // Database label at bottom
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = '#6b5d4d';
+  ctx.textAlign = 'center';
+  ctx.fillText(dbName, dbBoxLeft + dbBoxWidth / 2, dbBoxBottom + 20);
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.fillText(`(via ${searchMethod})`, dbBoxLeft + dbBoxWidth / 2, dbBoxBottom + 35);
+
+  // Calculate rank box height (proportional to rank)
+  // Use log scale for better visualization since ranks can vary widely
+  const maxRankForViz = 1000; // Cap for visualization
+  const effectiveRank = rank !== null ? Math.min(rank, maxRankForViz) : 0;
+  const rankRatio = effectiveRank / maxRankForViz;
+  const rankBoxHeight = Math.max(20, rankRatio * (dbBoxHeight - 40));
+  const rankBoxTop = dbBoxTop + 10;
+  const rankBoxBottom = rankBoxTop + rankBoxHeight;
+
+  // Draw rank box (proteins ranking better than B)
+  if (rank !== null && rank > 0) {
+    const rankBoxLeft = dbBoxLeft + 20;
+    const rankBoxWidth = dbBoxWidth - 40;
+
+    // Gradient fill for rank box
+    const gradient = ctx.createLinearGradient(rankBoxLeft, rankBoxTop, rankBoxLeft, rankBoxBottom);
+    gradient.addColorStop(0, 'rgba(67, 160, 71, 0.4)');
+    gradient.addColorStop(1, 'rgba(67, 160, 71, 0.15)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(rankBoxLeft, rankBoxTop, rankBoxWidth, rankBoxHeight);
+
+    // Thick border for rank box
+    ctx.strokeStyle = '#43a047';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(rankBoxLeft, rankBoxTop, rankBoxWidth, rankBoxHeight);
+
+    // Rank label in the box
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillStyle = '#2e7d32';
+    ctx.textAlign = 'center';
+    const rankLabelY = rankBoxTop + Math.min(rankBoxHeight / 2, 40);
+    ctx.fillText(rank.toLocaleString(), rankBoxLeft + rankBoxWidth / 2, rankLabelY);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#555';
+    ctx.fillText('proteins rank better', rankBoxLeft + rankBoxWidth / 2, rankLabelY + 22);
+
+    // Show selfSP and taxid inside the rank box if there's enough space
+    if (rankBoxHeight > 100 && (selfSP !== null || taxid !== null)) {
+      const infoY = rankLabelY + 55;
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = '#666';
+
+      if (selfSP !== null) {
+        ctx.textAlign = 'left';
+        ctx.fillText(`🧬 ${selfSP} human`, rankBoxLeft + 15, infoY);
+      }
+      if (taxid !== null) {
+        ctx.textAlign = 'right';
+        ctx.fillText(`🌍 ${taxid} species`, rankBoxLeft + rankBoxWidth - 15, infoY);
       }
     }
-  });
 
-  // Setup reset button
-  const resetBtn = document.getElementById('resetSimSearchView');
-  if (resetBtn && !resetBtn.dataset.bound) {
-    resetBtn.dataset.bound = 'true';
-    resetBtn.addEventListener('click', resetSimSearchView);
+    // Gene B position - aligned to bottom of rank box
+    const geneBBottomAlign = rankBoxBottom + geneCircleRadius + 15;
+    const geneBy = Math.min(geneBBottomAlign, dbBoxBottom - geneCircleRadius - 10);
+
+    // Draw Gene B circle
+    ctx.beginPath();
+    ctx.arc(geneBx, geneBy, geneCircleRadius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(251, 140, 0, 0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#fb8c00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#e65100';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gene2, geneBx, geneBy);
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#666';
+    ctx.fillText(`(Rank ${rank})`, geneBx, geneBy + geneCircleRadius + 14);
+
+    // Draw connecting arrow from A to DB to B
+    ctx.strokeStyle = '#aaa';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+
+    // Arrow from A to DB
+    ctx.beginPath();
+    ctx.moveTo(geneAx + geneCircleRadius + 5, geneAy);
+    ctx.lineTo(dbBoxLeft - 5, geneAy);
+    ctx.lineTo(dbBoxLeft - 5, dbBoxTop + dbBoxHeight / 2);
+    ctx.stroke();
+
+    // Arrow from DB to B
+    ctx.beginPath();
+    ctx.moveTo(dbBoxRight + 5, geneBy);
+    ctx.lineTo(geneBx - geneCircleRadius - 5, geneBy);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+  } else {
+    // No rank data or rank is 0
+    const geneBy = dbBoxTop + dbBoxHeight / 2;
+
+    // Draw Gene B circle
+    ctx.beginPath();
+    ctx.arc(geneBx, geneBy, geneCircleRadius, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(251, 140, 0, 0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#fb8c00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#e65100';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gene2, geneBx, geneBy);
+
+    if (rank === 0) {
+      ctx.font = '11px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.fillText('(Top hit!)', geneBx, geneBy + geneCircleRadius + 14);
+
+      // Show "Top match" in DB box
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillStyle = '#2e7d32';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎯 Top match!', dbBoxLeft + dbBoxWidth / 2, dbBoxTop + dbBoxHeight / 2 - 10);
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#555';
+      ctx.fillText('No proteins rank between A and B', dbBoxLeft + dbBoxWidth / 2, dbBoxTop + dbBoxHeight / 2 + 15);
+    } else {
+      ctx.font = '14px sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.textAlign = 'center';
+      ctx.fillText('Rank data not available', dbBoxLeft + dbBoxWidth / 2, dbBoxTop + dbBoxHeight / 2);
+    }
   }
-}
 
-function showSimSearchBoxplot(metricKey) {
-  const simSearch = SUMMARY.similarity_search || {};
-  const boxplots = SUMMARY.boxplots || {};
-  const metricInfo = simSearch[metricKey];
-  const boxplotData = boxplots[metricKey];
+  // Update legend
+  if (legendEl) {
+    let legendHTML = `<strong>Interpretation:</strong> `;
+    if (rank !== null) {
+      if (rank === 0) {
+        legendHTML += `<span style="color:#2e7d32">${gene2} is the top hit</span> when querying ${dbName} with ${gene1}. They are extremely similar.`;
+      } else if (rank <= 10) {
+        legendHTML += `Only <strong>${rank}</strong> proteins rank better than ${gene2}. These paralogs are <span style="color:#2e7d32">very similar</span>.`;
+      } else if (rank <= 100) {
+        legendHTML += `<strong>${rank}</strong> proteins rank between ${gene1} and ${gene2}. They are <span style="color:#5d8aa8">moderately similar</span>.`;
+      } else {
+        legendHTML += `<strong>${rank.toLocaleString()}</strong> proteins rank between ${gene1} and ${gene2}. They have <span style="color:#d4a017">diverged significantly</span>.`;
+      }
 
-  if (!metricInfo || !boxplotData) {
-    document.getElementById('simSearchBoxplotContainer').innerHTML = '<div class="boxplot-hint">Data not available</div>';
-    return;
+      if (selfSP !== null && selfSP > 0) {
+        legendHTML += ` Of these, <strong>${selfSP}</strong> are human proteins.`;
+      }
+      if (taxid !== null && taxid > 1) {
+        legendHTML += ` Hits span <strong>${taxid}</strong> different species.`;
+      }
+    } else {
+      legendHTML += 'Rank data not available for this pair.';
+    }
+    legendEl.innerHTML = legendHTML;
   }
-
-  document.getElementById('simSearchBoxplotTitle').textContent = metricInfo.label || metricKey;
-  document.getElementById('simSearchMetricDetails').style.display = 'block';
-  document.getElementById('resetSimSearchView').style.display = 'inline-block';
-  document.getElementById('simSearch-detail-value').textContent = typeof metricInfo.value === 'number' ? metricInfo.value.toFixed(4) : '–';
-  const pctVal = typeof metricInfo.percentile === 'number' ? metricInfo.percentile : null;
-  document.getElementById('simSearch-detail-percentile').textContent = pctVal != null ? `${pctVal.toFixed(1)}%` : '–';
-  document.getElementById('simSearch-percentile-fill').style.width = pctVal != null ? `${pctVal}%` : '0%';
-  const dirText = metricInfo.higher_is_better ? 'Higher = better' : 'Lower = better';
-  document.getElementById('simSearch-detail-direction').textContent = dirText;
-
-  let interp = '';
-  if (pctVal >= 75) interp = '<span class="cons-high">Top 25%</span>';
-  else if (pctVal >= 50) interp = '<span class="cons-medium">Above average</span>';
-  else if (pctVal >= 25) interp = '<span class="cons-medium">Below average</span>';
-  else interp = '<span class="cons-low">Bottom 25%</span>';
-  document.getElementById('simSearch-detail-interp').innerHTML = interp;
-
-  drawGenericBoxplot('simSearchBoxplotContainer', metricInfo, boxplotData, simSearchBoxplotChart, (chart) => { simSearchBoxplotChart = chart; });
-}
-
-function resetSimSearchView() {
-  if (simSearchBoxplotChart) {
-    simSearchBoxplotChart.destroy();
-    simSearchBoxplotChart = null;
-  }
-  document.getElementById('simSearchBoxplotContainer').innerHTML = '<div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div>';
-  document.getElementById('simSearchMetricDetails').style.display = 'none';
-  document.getElementById('simSearchBoxplotTitle').textContent = 'Select a Metric';
-  document.getElementById('resetSimSearchView').style.display = 'none';
 }
 
 function initFamilyFeaturesSection() {
@@ -2256,10 +2388,6 @@ function drawPpiVenn(data) {
     addText(circle2X, centerY, countUniqueB.toString(), '20px', '700', '#e65100');
     addText(circle2X, centerY + 18, 'unique', '10px', 'normal', '#666');
   }
-
-  // Labels below counts
-  addText(circle1X - 30, centerY + 25, 'unique', '11px', 'normal', '#666');
-  addText(circle2X + 30, centerY + 25, 'unique', '11px', 'normal', '#666');
 
   // Calculate hypergeometric test
   // Estimate total human interactome size
