@@ -22,6 +22,9 @@ let DATA = null;
 let SUMMARY = null;
 let PDB64_FULL = "";
 
+// PDBe highlight state
+let isProteinHighlighted = false;
+
 // Block Molstar volume server
 (function() {
     const block = ['molstarvolseg.ncbr.muni.cz', 'localhost:9000'];
@@ -2162,13 +2165,13 @@ function drawPpiVenn(data) {
   const countUniqueA = unique1.length;
   const countUniqueB = unique2.length;
 
-  // Draw Venn diagram circles with proportional sizing
-  const centerY = 140;
+  // Draw Venn diagram circles with proportional sizing - bigger diagram
+  const centerY = 160;
 
   // Scale circle radii based on partner counts (using sqrt for area proportionality)
   const maxCount = Math.max(countA, countB, 1);
-  const minRadius = 35;
-  const maxRadius = 85;
+  const minRadius = 45;
+  const maxRadius = 100;
 
   // Calculate radii proportional to sqrt of count (so area is proportional to count)
   const radiusA = minRadius + (maxRadius - minRadius) * Math.sqrt(countA / maxCount);
@@ -2179,7 +2182,7 @@ function drawPpiVenn(data) {
 
   if (countShared === 0) {
     // No overlap - completely separate circles with gap
-    const gap = 30;
+    const gap = 40;
     circle1X = width / 2 - radiusA - gap / 2;
     circle2X = width / 2 + radiusB + gap / 2;
   } else {
@@ -2227,29 +2230,31 @@ function drawPpiVenn(data) {
   };
 
   // Gene names at top with total count right below
-  addText(circle1X, 30, data.gene1, '14px', '600', '#2e7d32');
-  addText(circle1X, 46, `(${countA} partners)`, '10px', 'normal', '#888');
-  addText(circle2X, 30, data.gene2, '14px', '600', '#e65100');
-  addText(circle2X, 46, `(${countB} partners)`, '10px', 'normal', '#888');
+  addText(circle1X, 28, data.gene1, '15px', '600', '#2e7d32');
+  addText(circle1X, 44, `(${countA} partners)`, '11px', 'normal', '#888');
+  addText(circle2X, 28, data.gene2, '15px', '600', '#e65100');
+  addText(circle2X, 44, `(${countB} partners)`, '11px', 'normal', '#888');
 
-  // Counts in circles - position based on overlap
+  // Counts in circles - position based on overlap (only centered labels, no duplicates)
   if (countShared > 0) {
-    // With overlap: unique counts offset from center, shared in middle
+    // With overlap: unique counts in non-overlapping parts, shared in middle
     const overlapCenter = (circle1X + circle2X) / 2;
-    addText(circle1X - radiusA * 0.4, centerY + 5, countUniqueA.toString(), '18px', '700', '#2e7d32');
-    addText(overlapCenter, centerY + 5, countShared.toString(), '18px', '700', '#5d4037');
-    addText(circle2X + radiusB * 0.4, centerY + 5, countUniqueB.toString(), '18px', '700', '#e65100');
-    addText(circle1X - radiusA * 0.4, centerY + 22, 'unique', '10px', 'normal', '#666');
-    addText(overlapCenter, centerY + 22, 'shared', '10px', 'normal', '#666');
-    addText(circle2X + radiusB * 0.4, centerY + 22, 'unique', '10px', 'normal', '#666');
+    const uniqueAx = circle1X - radiusA * 0.4;
+    const uniqueBx = circle2X + radiusB * 0.4;
+    addText(uniqueAx, centerY, countUniqueA.toString(), '20px', '700', '#2e7d32');
+    addText(uniqueAx, centerY + 18, 'unique', '10px', 'normal', '#666');
+    addText(overlapCenter, centerY, countShared.toString(), '20px', '700', '#5d4037');
+    addText(overlapCenter, centerY + 18, 'shared', '10px', 'normal', '#666');
+    addText(uniqueBx, centerY, countUniqueB.toString(), '20px', '700', '#e65100');
+    addText(uniqueBx, centerY + 18, 'unique', '10px', 'normal', '#666');
   } else {
     // No overlap: counts centered in each circle, "0 shared" between
-    addText(circle1X, centerY + 5, countUniqueA.toString(), '18px', '700', '#2e7d32');
-    addText(circle1X, centerY + 22, 'unique', '10px', 'normal', '#666');
-    addText(width / 2, centerY + 5, '0', '16px', '700', '#999');
-    addText(width / 2, centerY + 22, 'shared', '10px', 'normal', '#999');
-    addText(circle2X, centerY + 5, countUniqueB.toString(), '18px', '700', '#e65100');
-    addText(circle2X, centerY + 22, 'unique', '10px', 'normal', '#666');
+    addText(circle1X, centerY, countUniqueA.toString(), '20px', '700', '#2e7d32');
+    addText(circle1X, centerY + 18, 'unique', '10px', 'normal', '#666');
+    addText(width / 2, centerY, '0', '18px', '700', '#999');
+    addText(width / 2, centerY + 18, 'shared', '10px', 'normal', '#999');
+    addText(circle2X, centerY, countUniqueB.toString(), '20px', '700', '#e65100');
+    addText(circle2X, centerY + 18, 'unique', '10px', 'normal', '#666');
   }
 
   // Labels below counts
@@ -3677,6 +3682,7 @@ async function loadPdbeByIndex(idx) {
     // Auto-highlight the protein of interest
     setTimeout(async () => {
       await highlightProteinChains(entry);
+      updateHighlightButtonState(true);
     }, 300);
   } else {
     console.error('Failed to load structure for entry:', entry);
@@ -3692,6 +3698,22 @@ function getGeneNameForAccession(acc) {
   if (acc === acc1) return SUMMARY.gene1?.symbol;
   if (acc === acc2) return SUMMARY.gene2?.symbol;
   return null;
+}
+
+function updateHighlightButtonState(highlighted) {
+  isProteinHighlighted = highlighted;
+  const btn = document.getElementById('pdbeHighlightProtein');
+  if (btn) {
+    if (highlighted) {
+      btn.style.backgroundColor = '#43a047';
+      btn.style.color = 'white';
+      btn.style.borderColor = '#388e3c';
+    } else {
+      btn.style.backgroundColor = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
+  }
 }
 
 function setupPdbeControls() {
@@ -3753,7 +3775,13 @@ function setupPdbeControls() {
   if (highlightProteinBtn) {
     highlightProteinBtn.addEventListener('click', async () => {
       if (currentPdbeEntry) {
-        await highlightProteinChains(currentPdbeEntry);
+        if (isProteinHighlighted) {
+          await clearPdbeHighlights();
+          updateHighlightButtonState(false);
+        } else {
+          await highlightProteinChains(currentPdbeEntry);
+          updateHighlightButtonState(true);
+        }
       }
     }, { passive: true });
   }
@@ -3761,6 +3789,7 @@ function setupPdbeControls() {
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
       await clearPdbeHighlights();
+      updateHighlightButtonState(false);
     }, { passive: true });
   }
 
