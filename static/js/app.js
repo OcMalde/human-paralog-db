@@ -302,14 +302,14 @@ function initFamilyConstellation() {
   const canvas = document.getElementById('familyNetworkCanvas');
   if (!canvas) return;
 
-  // Handle HiDPI displays for sharp rendering
-  const dpr = window.devicePixelRatio || 1;
+  // Handle HiDPI displays for sharp rendering - use minimum 2x for crisp rendering
+  const dpr = Math.max(2, window.devicePixelRatio || 1);
   const container = canvas.parentElement;
   // Allow larger canvas on big screens for better resolution
   const displayWidth = Math.min(container.offsetWidth - 20, 1200);
   const displayHeight = Math.min(560, Math.max(400, displayWidth * 0.5));
 
-  // Set canvas size accounting for device pixel ratio
+  // Set canvas size accounting for device pixel ratio (minimum 2x for crisp text)
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
@@ -2162,29 +2162,42 @@ function drawPpiVenn(data) {
   const countUniqueA = unique1.length;
   const countUniqueB = unique2.length;
 
-  // Draw Venn diagram circles
+  // Draw Venn diagram circles with proportional sizing
   const centerY = 140;
-  const circleRadius = 80;
 
-  // Calculate overlap based on shared count - no overlap if no shared partners
-  let overlap;
+  // Scale circle radii based on partner counts (using sqrt for area proportionality)
+  const maxCount = Math.max(countA, countB, 1);
+  const minRadius = 35;
+  const maxRadius = 85;
+
+  // Calculate radii proportional to sqrt of count (so area is proportional to count)
+  const radiusA = minRadius + (maxRadius - minRadius) * Math.sqrt(countA / maxCount);
+  const radiusB = minRadius + (maxRadius - minRadius) * Math.sqrt(countB / maxCount);
+
+  // Calculate circle positions
+  let circle1X, circle2X;
+
   if (countShared === 0) {
-    overlap = -20; // Separate circles with gap
+    // No overlap - completely separate circles with gap
+    const gap = 30;
+    circle1X = width / 2 - radiusA - gap / 2;
+    circle2X = width / 2 + radiusB + gap / 2;
   } else {
-    // Scale overlap based on proportion of shared partners
-    const maxShared = Math.min(countA, countB);
-    const shareRatio = maxShared > 0 ? countShared / maxShared : 0;
-    overlap = 20 + shareRatio * 60; // Range from 20 to 80
+    // Calculate overlap distance based on shared proportion
+    const minSharedCount = Math.min(countA, countB);
+    const shareRatio = minSharedCount > 0 ? countShared / minSharedCount : 0;
+    // overlap goes from touching (0) to significantly overlapping based on share ratio
+    const overlapAmount = shareRatio * Math.min(radiusA, radiusB) * 1.2;
+    const centerDistance = radiusA + radiusB - overlapAmount;
+    circle1X = width / 2 - centerDistance / 2;
+    circle2X = width / 2 + centerDistance / 2;
   }
-
-  const circle1X = width / 2 - circleRadius - overlap / 2 + 40;
-  const circle2X = width / 2 + circleRadius + overlap / 2 - 40;
 
   // Circle for gene A (left)
   const circle1 = document.createElementNS(svgNS, 'circle');
   circle1.setAttribute('cx', circle1X);
   circle1.setAttribute('cy', centerY);
-  circle1.setAttribute('r', circleRadius);
+  circle1.setAttribute('r', radiusA);
   circle1.setAttribute('fill', 'rgba(67, 160, 71, 0.3)');
   circle1.setAttribute('stroke', '#43a047');
   circle1.setAttribute('stroke-width', '2');
@@ -2194,7 +2207,7 @@ function drawPpiVenn(data) {
   const circle2 = document.createElementNS(svgNS, 'circle');
   circle2.setAttribute('cx', circle2X);
   circle2.setAttribute('cy', centerY);
-  circle2.setAttribute('r', circleRadius);
+  circle2.setAttribute('r', radiusB);
   circle2.setAttribute('fill', 'rgba(251, 140, 0, 0.3)');
   circle2.setAttribute('stroke', '#fb8c00');
   circle2.setAttribute('stroke-width', '2');
@@ -2219,17 +2232,25 @@ function drawPpiVenn(data) {
   addText(circle2X, 30, data.gene2, '14px', '600', '#e65100');
   addText(circle2X, 46, `(${countB} partners)`, '10px', 'normal', '#888');
 
-  // Counts in circles
-  addText(circle1X - 30, centerY + 5, countUniqueA.toString(), '20px', '700', '#2e7d32');
+  // Counts in circles - position based on overlap
   if (countShared > 0) {
-    addText((circle1X + circle2X) / 2, centerY + 5, countShared.toString(), '20px', '700', '#5d4037');
-    addText((circle1X + circle2X) / 2, centerY + 25, 'shared', '11px', 'normal', '#666');
+    // With overlap: unique counts offset from center, shared in middle
+    const overlapCenter = (circle1X + circle2X) / 2;
+    addText(circle1X - radiusA * 0.4, centerY + 5, countUniqueA.toString(), '18px', '700', '#2e7d32');
+    addText(overlapCenter, centerY + 5, countShared.toString(), '18px', '700', '#5d4037');
+    addText(circle2X + radiusB * 0.4, centerY + 5, countUniqueB.toString(), '18px', '700', '#e65100');
+    addText(circle1X - radiusA * 0.4, centerY + 22, 'unique', '10px', 'normal', '#666');
+    addText(overlapCenter, centerY + 22, 'shared', '10px', 'normal', '#666');
+    addText(circle2X + radiusB * 0.4, centerY + 22, 'unique', '10px', 'normal', '#666');
   } else {
-    // Show "0 shared" text between separate circles
-    addText(width / 2, centerY + 5, '0', '18px', '700', '#999');
-    addText(width / 2, centerY + 25, 'shared', '11px', 'normal', '#999');
+    // No overlap: counts centered in each circle, "0 shared" between
+    addText(circle1X, centerY + 5, countUniqueA.toString(), '18px', '700', '#2e7d32');
+    addText(circle1X, centerY + 22, 'unique', '10px', 'normal', '#666');
+    addText(width / 2, centerY + 5, '0', '16px', '700', '#999');
+    addText(width / 2, centerY + 22, 'shared', '10px', 'normal', '#999');
+    addText(circle2X, centerY + 5, countUniqueB.toString(), '18px', '700', '#e65100');
+    addText(circle2X, centerY + 22, 'unique', '10px', 'normal', '#666');
   }
-  addText(circle2X + 30, centerY + 5, countUniqueB.toString(), '20px', '700', '#e65100');
 
   // Labels below counts
   addText(circle1X - 30, centerY + 25, 'unique', '11px', 'normal', '#666');
@@ -2378,14 +2399,14 @@ function showBoxplotForMetric(metricKey) {
   else if (metricInfo.percentile >= 25) interp = '<span class="cons-medium">Less conserved than average</span>';
   else interp = '<span class="cons-low">Highly divergent</span> (bottom 25%)';
   document.getElementById('detail-interp').innerHTML = interp;
-  
-  drawBoxplot(metricInfo, boxplotData);
+
+  drawBoxplot(metricInfo, boxplotData, metricKey);
 }
 
-function drawBoxplot(metricInfo, boxplotData) {
+function drawBoxplot(metricInfo, boxplotData, metricKey) {
   const container = document.getElementById('boxplotContainer');
   container.innerHTML = '<canvas id="boxplotCanvas" style="width:100%;height:180px;"></canvas>';
-  
+
   const canvas = document.getElementById('boxplotCanvas');
   if (!canvas || typeof Chart === 'undefined') {
     container.innerHTML = '<div class="boxplot-hint">Interactive chart requires Chart.js. Metric percentiles are still listed below.</div>';
@@ -2394,9 +2415,18 @@ function drawBoxplot(metricInfo, boxplotData) {
   }
   const ctx = canvas.getContext('2d');
   const {q1, median, q3, whisker_low, whisker_high, pair_value} = boxplotData;
-  
+
   if (boxplotChart) boxplotChart.destroy();
-  
+
+  // Determine if this metric should have fixed 0-1 range
+  // ESM2 and ProtT5 are distance metrics that can exceed 1
+  const key = metricKey || metricInfo.key || metricInfo.label || '';
+  const isDistanceMetric = key.includes('esm2') || key.includes('ProtT5') ||
+                           key.toLowerCase().includes('cosine');
+  const useFixedRange = !isDistanceMetric;
+  const xMin = useFixedRange ? 0 : whisker_low - (whisker_high - whisker_low) * 0.1;
+  const xMax = useFixedRange ? 1 : whisker_high + (whisker_high - whisker_low) * 0.1;
+
   boxplotChart = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -2413,7 +2443,7 @@ function drawBoxplot(metricInfo, boxplotData) {
       maintainAspectRatio: false,
       indexAxis: 'y',
       scales: {
-        x: { stacked: true, min: whisker_low - (whisker_high - whisker_low) * 0.1, max: whisker_high + (whisker_high - whisker_low) * 0.1, title: { display: true, text: metricInfo.label } },
+        x: { stacked: true, min: xMin, max: xMax, title: { display: true, text: metricInfo.label } },
         y: { stacked: true, display: false }
       },
       plugins: { legend: { display: false }, tooltip: { enabled: false } }
@@ -3614,7 +3644,15 @@ async function loadPdbeByIndex(idx) {
 
   currentPdbeEntry = entry;
   currentPdbeIndex = idx;
-  
+
+  // Update button text with gene name
+  const sourceAcc = entry.source_acc || entry.sourceAcc || '';
+  const geneName = getGeneNameForAccession(sourceAcc);
+  const proteinNameSpan = document.getElementById('pdbeProteinName');
+  if (proteinNameSpan) {
+    proteinNameSpan.textContent = geneName || 'Protein';
+  }
+
   updatePdbeInfoBox(entry);
   updatePdbeLegend(`Loading structure...`);
 
@@ -3623,29 +3661,42 @@ async function loadPdbeByIndex(idx) {
   const pdbId = (entry.pdb_id || entry.pdbId || '').toLowerCase();
 
   let loaded = false;
-  
+
   if (b64 && b64.length > 100) {
     console.log(`Loading PDBe structure ${pdbId} from base64 (format: ${format})`);
     loaded = await loadPdbeStructureFromBase64(b64, format);
   }
-  
+
   if (!loaded && pdbId) {
     console.log(`Fetching PDBe structure ${pdbId} from remote`);
     loaded = await fetchAndLoadPdbeStructure(pdbId);
   }
 
   if (loaded) {
-    updatePdbeLegend(`Complex shown in <strong>grey</strong>. Click buttons to highlight protein of interest (<span style="color:#43a047">green</span>) or ligands (<span style="color:#e91e63">pink</span>).`);
+    updatePdbeLegend(`Complex shown in <strong>grey</strong>. <strong>${geneName || 'Protein'}</strong> highlighted in <span style="color:#43a047">green</span>.`);
+    // Auto-highlight the protein of interest
+    setTimeout(async () => {
+      await highlightProteinChains(entry);
+    }, 300);
   } else {
     console.error('Failed to load structure for entry:', entry);
     updatePdbeLegend(`<strong>Error:</strong> Failed to load structure.`);
   }
 }
 
+// Helper to get gene name for a UniProt accession
+function getGeneNameForAccession(acc) {
+  if (!SUMMARY || !acc) return null;
+  const acc1 = SUMMARY.gene1?.uniprot;
+  const acc2 = SUMMARY.gene2?.uniprot;
+  if (acc === acc1) return SUMMARY.gene1?.symbol;
+  if (acc === acc2) return SUMMARY.gene2?.symbol;
+  return null;
+}
+
 function setupPdbeControls() {
   const structSelect = document.getElementById('pdbeStructSelect');
   const highlightProteinBtn = document.getElementById('pdbeHighlightProtein');
-  const highlightLigandsBtn = document.getElementById('pdbeHighlightLigands');
   const clearBtn = document.getElementById('pdbeClearHighlight');
   const syncBtn = document.getElementById('pdbeSyncCamera');
   const centerBtn = document.getElementById('pdbeCenter');
@@ -3661,14 +3712,12 @@ function setupPdbeControls() {
     structSelect.appendChild(opt);
     structSelect.disabled = true;
     if (highlightProteinBtn) highlightProteinBtn.disabled = true;
-    if (highlightLigandsBtn) highlightLigandsBtn.disabled = true;
     updatePdbeInfoBox(null);
     return;
   }
 
   structSelect.disabled = false;
   if (highlightProteinBtn) highlightProteinBtn.disabled = false;
-  if (highlightLigandsBtn) highlightLigandsBtn.disabled = false;
 
   PDBe_COMPLEXES.forEach((entry, idx) => {
     const pdbId = (entry.pdb_id || entry.pdbId || '').toUpperCase();
@@ -3706,12 +3755,6 @@ function setupPdbeControls() {
       if (currentPdbeEntry) {
         await highlightProteinChains(currentPdbeEntry);
       }
-    }, { passive: true });
-  }
-
-  if (highlightLigandsBtn) {
-    highlightLigandsBtn.addEventListener('click', async () => {
-      await highlightLigands();
     }, { passive: true });
   }
 
