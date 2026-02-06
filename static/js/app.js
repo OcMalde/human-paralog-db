@@ -1201,16 +1201,70 @@ function renderConservationList() {
 let simSearchRadarChart = null;
 let famFeatRadarChart = null;
 
+const DESC_TRUNCATE_LENGTH = 200; // Characters before truncation
+
+function setupDescriptionToggle(funcEl, toggleBtn, fullText) {
+  if (!funcEl || !toggleBtn || !fullText) return;
+
+  if (fullText.length > DESC_TRUNCATE_LENGTH) {
+    // Truncate at a word boundary
+    let truncated = fullText.slice(0, DESC_TRUNCATE_LENGTH);
+    const lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > DESC_TRUNCATE_LENGTH - 50) {
+      truncated = truncated.slice(0, lastSpace);
+    }
+    truncated += '...';
+
+    funcEl.textContent = truncated;
+    funcEl.classList.add('truncated');
+    funcEl.dataset.fullText = fullText;
+    funcEl.dataset.truncatedText = truncated;
+    toggleBtn.style.display = 'inline-block';
+    toggleBtn.textContent = 'Show more';
+
+    toggleBtn.addEventListener('click', () => {
+      const isExpanded = funcEl.classList.contains('expanded');
+      if (isExpanded) {
+        funcEl.textContent = funcEl.dataset.truncatedText;
+        funcEl.classList.remove('expanded');
+        funcEl.classList.add('truncated');
+        toggleBtn.textContent = 'Show more';
+      } else {
+        funcEl.textContent = funcEl.dataset.fullText;
+        funcEl.classList.remove('truncated');
+        funcEl.classList.add('expanded');
+        toggleBtn.textContent = 'Show less';
+      }
+    }, { passive: true });
+  } else {
+    funcEl.textContent = fullText;
+    toggleBtn.style.display = 'none';
+  }
+}
+
 function initProteinDescriptions() {
   const gene1 = SUMMARY.gene1 || {};
   const gene2 = SUMMARY.gene2 || {};
+  const a1 = DATA.a1 || '';
+  const a2 = DATA.a2 || '';
 
   // Gene 1 description
   const desc1 = gene1.description || {};
   const gene1DescEl = document.getElementById('gene1Desc');
   if (gene1DescEl && (desc1.name || desc1.function)) {
     document.getElementById('gene1DescTitle').textContent = desc1.name || 'Unknown protein';
-    document.getElementById('gene1DescFunc').textContent = desc1.function || 'Function not available';
+
+    const funcEl = document.getElementById('gene1DescFunc');
+    const toggleBtn = document.getElementById('gene1DescToggle');
+    const fullText = desc1.function || 'Function not available';
+    setupDescriptionToggle(funcEl, toggleBtn, fullText);
+
+    // Set UniProt source link
+    const sourceLink = document.getElementById('gene1DescSource');
+    if (sourceLink && a1) {
+      sourceLink.href = `https://www.uniprot.org/uniprotkb/${a1}`;
+    }
+
     gene1DescEl.style.display = 'block';
   }
 
@@ -1219,7 +1273,18 @@ function initProteinDescriptions() {
   const gene2DescEl = document.getElementById('gene2Desc');
   if (gene2DescEl && (desc2.name || desc2.function)) {
     document.getElementById('gene2DescTitle').textContent = desc2.name || 'Unknown protein';
-    document.getElementById('gene2DescFunc').textContent = desc2.function || 'Function not available';
+
+    const funcEl = document.getElementById('gene2DescFunc');
+    const toggleBtn = document.getElementById('gene2DescToggle');
+    const fullText = desc2.function || 'Function not available';
+    setupDescriptionToggle(funcEl, toggleBtn, fullText);
+
+    // Set UniProt source link
+    const sourceLink = document.getElementById('gene2DescSource');
+    if (sourceLink && a2) {
+      sourceLink.href = `https://www.uniprot.org/uniprotkb/${a2}`;
+    }
+
     gene2DescEl.style.display = 'block';
   }
 }
@@ -1671,9 +1736,14 @@ function renderPpiSection(pair, gene1, gene2) {
   if (!shared.length && !hasUnique) {
     const svg = document.getElementById('ppiNetwork');
     if (svg) svg.innerHTML = '';
+    const vennSvg = document.getElementById('ppiVenn');
+    if (vennSvg) vennSvg.innerHTML = '';
     const note = document.getElementById('ppiGraphNote');
-    if (note) note.textContent = 'PPI network unavailable for this pair.';
+    if (note) note.textContent = 'PPI data unavailable for this pair.';
+    const vennStats = document.getElementById('ppiVennStats');
+    if (vennStats) vennStats.style.display = 'none';
     PPI_GRAPH_DATA = null;
+    setupPpiViewModeSwitch();
     return;
   }
 
@@ -1685,6 +1755,9 @@ function renderPpiSection(pair, gene1, gene2) {
     unique2: uniqueB
   };
   drawPpiGraph(PPI_GRAPH_DATA, showUniquePpis);
+  drawPpiVenn(PPI_GRAPH_DATA);
+  setupPpiViewModeSwitch();
+  updatePpiView();
 }
 
 function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
@@ -1959,6 +2032,266 @@ function drawPpiGraph(data, showUnique = true) {
       counts.push('unique partners hidden');
     }
     note.textContent = counts.length ? counts.join(' • ') + (totalPartners > 15 ? ' (hover for labels)' : '') : 'No PPI data available.';
+  }
+}
+
+// PPI View mode switching
+let currentPpiViewMode = 'venn';
+
+function setupPpiViewModeSwitch() {
+  const viewModeSelect = document.getElementById('ppiViewMode');
+  const vennWrapper = document.getElementById('ppiVennWrapper');
+  const networkWrapper = document.getElementById('ppiNetworkWrapper');
+
+  if (!viewModeSelect || !vennWrapper || !networkWrapper) return;
+
+  viewModeSelect.addEventListener('change', (e) => {
+    currentPpiViewMode = e.target.value;
+    updatePpiView();
+  }, { passive: true });
+}
+
+function updatePpiView() {
+  const vennWrapper = document.getElementById('ppiVennWrapper');
+  const networkWrapper = document.getElementById('ppiNetworkWrapper');
+
+  if (!vennWrapper || !networkWrapper) return;
+
+  if (currentPpiViewMode === 'venn') {
+    vennWrapper.style.display = 'block';
+    networkWrapper.style.display = 'none';
+  } else {
+    vennWrapper.style.display = 'none';
+    networkWrapper.style.display = 'block';
+  }
+}
+
+// Hypergeometric test for PPI overlap significance
+function logFactorial(n) {
+  // Stirling's approximation for large n, exact for small n
+  if (n < 0) return 0;
+  if (n <= 1) return 0;
+  if (n <= 20) {
+    let result = 0;
+    for (let i = 2; i <= n; i++) {
+      result += Math.log(i);
+    }
+    return result;
+  }
+  // Stirling's approximation
+  return n * Math.log(n) - n + 0.5 * Math.log(2 * Math.PI * n) + 1 / (12 * n);
+}
+
+function logHypergeomPMF(k, N, K, n) {
+  // P(X = k) = C(K,k) * C(N-K, n-k) / C(N, n)
+  // In log form: log(C(K,k)) + log(C(N-K, n-k)) - log(C(N,n))
+  // log(C(a,b)) = logFactorial(a) - logFactorial(b) - logFactorial(a-b)
+
+  const logBinom = (a, b) => {
+    if (b < 0 || b > a) return -Infinity;
+    return logFactorial(a) - logFactorial(b) - logFactorial(a - b);
+  };
+
+  return logBinom(K, k) + logBinom(N - K, n - k) - logBinom(N, n);
+}
+
+function hypergeomPvalue(k, N, K, n) {
+  // P(X >= k) - one-tailed test for enrichment
+  // k = number of shared partners (successes in sample)
+  // N = total population (estimate: all unique human proteins ~20000)
+  // K = total partners of gene A (successes in population)
+  // n = total partners of gene B (sample size)
+
+  let pValue = 0;
+  const maxK = Math.min(K, n);
+
+  for (let i = k; i <= maxK; i++) {
+    const logP = logHypergeomPMF(i, N, K, n);
+    if (logP > -700) { // Avoid underflow
+      pValue += Math.exp(logP);
+    }
+  }
+
+  return Math.min(pValue, 1);
+}
+
+function calculateOddsRatio(a, b, c, d) {
+  // 2x2 contingency table:
+  //                Interacts with B | Does not interact with B
+  // Interacts with A:       a       |           b
+  // Does not interact:      c       |           d
+  //
+  // OR = (a * d) / (b * c)
+
+  if (b === 0 || c === 0) {
+    return Infinity;
+  }
+  if (a === 0 || d === 0) {
+    return 0;
+  }
+  return (a * d) / (b * c);
+}
+
+function drawPpiVenn(data) {
+  const svg = document.getElementById('ppiVenn');
+  const statsContainer = document.getElementById('ppiVennStats');
+
+  if (!svg || !data) {
+    if (svg) svg.innerHTML = '';
+    if (statsContainer) statsContainer.style.display = 'none';
+    return;
+  }
+
+  // Show stats container
+  if (statsContainer) statsContainer.style.display = 'flex';
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+
+  const width = 420;
+  const height = 280;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const shared = Array.isArray(data.shared) ? data.shared : [];
+  const unique1 = Array.isArray(data.unique1) ? data.unique1 : [];
+  const unique2 = Array.isArray(data.unique2) ? data.unique2 : [];
+
+  const countA = unique1.length + shared.length;
+  const countB = unique2.length + shared.length;
+  const countShared = shared.length;
+  const countUniqueA = unique1.length;
+  const countUniqueB = unique2.length;
+
+  // Draw Venn diagram circles
+  const centerY = 130;
+  const circleRadius = 80;
+  const overlap = 50; // How much circles overlap
+
+  const circle1X = width / 2 - overlap / 2;
+  const circle2X = width / 2 + overlap / 2;
+
+  // Circle for gene A (left)
+  const circle1 = document.createElementNS(svgNS, 'circle');
+  circle1.setAttribute('cx', circle1X);
+  circle1.setAttribute('cy', centerY);
+  circle1.setAttribute('r', circleRadius);
+  circle1.setAttribute('fill', 'rgba(67, 160, 71, 0.3)');
+  circle1.setAttribute('stroke', '#43a047');
+  circle1.setAttribute('stroke-width', '2');
+  svg.appendChild(circle1);
+
+  // Circle for gene B (right)
+  const circle2 = document.createElementNS(svgNS, 'circle');
+  circle2.setAttribute('cx', circle2X);
+  circle2.setAttribute('cy', centerY);
+  circle2.setAttribute('r', circleRadius);
+  circle2.setAttribute('fill', 'rgba(251, 140, 0, 0.3)');
+  circle2.setAttribute('stroke', '#fb8c00');
+  circle2.setAttribute('stroke-width', '2');
+  svg.appendChild(circle2);
+
+  // Labels
+  const addText = (x, y, text, fontSize = '14px', fontWeight = 'normal', fill = '#333') => {
+    const el = document.createElementNS(svgNS, 'text');
+    el.setAttribute('x', x);
+    el.setAttribute('y', y);
+    el.setAttribute('text-anchor', 'middle');
+    el.setAttribute('font-size', fontSize);
+    el.setAttribute('font-weight', fontWeight);
+    el.setAttribute('fill', fill);
+    el.textContent = text;
+    svg.appendChild(el);
+  };
+
+  // Gene names at top
+  addText(circle1X - 40, 30, data.gene1, '14px', '600', '#2e7d32');
+  addText(circle2X + 40, 30, data.gene2, '14px', '600', '#e65100');
+
+  // Counts in circles
+  addText(circle1X - 40, centerY + 5, countUniqueA.toString(), '20px', '700', '#2e7d32');
+  addText(width / 2, centerY + 5, countShared.toString(), '20px', '700', '#5d4037');
+  addText(circle2X + 40, centerY + 5, countUniqueB.toString(), '20px', '700', '#e65100');
+
+  // Labels below counts
+  addText(circle1X - 40, centerY + 25, 'unique', '11px', 'normal', '#666');
+  addText(width / 2, centerY + 25, 'shared', '11px', 'normal', '#666');
+  addText(circle2X + 40, centerY + 25, 'unique', '11px', 'normal', '#666');
+
+  // Total counts at bottom of circles
+  addText(circle1X - 40, centerY + 70, `Total: ${countA}`, '11px', 'normal', '#888');
+  addText(circle2X + 40, centerY + 70, `Total: ${countB}`, '11px', 'normal', '#888');
+
+  // Calculate hypergeometric test
+  // Estimate total human interactome size
+  const TOTAL_PROTEINS = 20000; // Approximate number of human proteins
+
+  // For hypergeometric test:
+  // N = total population size
+  // K = number of successes in population (gene A's partners)
+  // n = number of draws (gene B's partners)
+  // k = number of observed successes (shared partners)
+
+  if (countA > 0 && countB > 0) {
+    const pValue = hypergeomPvalue(countShared, TOTAL_PROTEINS, countA, countB);
+
+    // Calculate odds ratio
+    // a = shared, b = unique to A, c = unique to B, d = not interacting with either
+    const a = countShared;
+    const b = countUniqueA;
+    const c = countUniqueB;
+    const d = TOTAL_PROTEINS - countA - c; // Approximation
+
+    const oddsRatio = calculateOddsRatio(a, b, c, d);
+
+    // Update stats display
+    const orEl = document.getElementById('vennOR');
+    const pEl = document.getElementById('vennPvalue');
+    const noteEl = document.getElementById('vennStatNote');
+
+    if (orEl) {
+      if (oddsRatio === Infinity) {
+        orEl.textContent = '∞';
+      } else if (oddsRatio === 0) {
+        orEl.textContent = '0';
+      } else {
+        orEl.textContent = oddsRatio.toFixed(2);
+      }
+    }
+
+    if (pEl) {
+      if (pValue < 0.001) {
+        pEl.textContent = pValue.toExponential(2);
+      } else {
+        pEl.textContent = pValue.toFixed(4);
+      }
+
+      // Color based on significance
+      if (pValue < 0.05) {
+        pEl.style.color = '#2e7d32'; // Green for significant
+      } else {
+        pEl.style.color = '#888';
+      }
+    }
+
+    if (noteEl) {
+      if (pValue < 0.001) {
+        noteEl.textContent = 'Highly significant overlap (p < 0.001)';
+      } else if (pValue < 0.01) {
+        noteEl.textContent = 'Very significant overlap (p < 0.01)';
+      } else if (pValue < 0.05) {
+        noteEl.textContent = 'Significant overlap (p < 0.05)';
+      } else {
+        noteEl.textContent = 'Overlap not statistically significant';
+      }
+    }
+  } else {
+    // No data for test
+    const orEl = document.getElementById('vennOR');
+    const pEl = document.getElementById('vennPvalue');
+    const noteEl = document.getElementById('vennStatNote');
+    if (orEl) orEl.textContent = '–';
+    if (pEl) { pEl.textContent = '–'; pEl.style.color = ''; }
+    if (noteEl) noteEl.textContent = 'Insufficient data for statistical test';
   }
 }
 
@@ -3649,9 +3982,132 @@ function setupPdbeCollapse(){
   btn.addEventListener('click', () => {
     const collapsed = body.classList.toggle('collapsed');
     btn.setAttribute('aria-expanded', (!collapsed).toString());
-    btn.textContent = collapsed ? 'Expand section' : 'Collapse section';
+    btn.textContent = collapsed ? 'Expand' : 'Collapse';
     if (card) card.classList.toggle('is-collapsed', collapsed);
   }, {passive:true});
+}
+
+// Generic collapsible section setup
+function setupCollapsibleSection(btnId, bodyId, sectionId) {
+  const btn = document.getElementById(btnId);
+  const body = document.getElementById(bodyId);
+  const section = sectionId ? document.getElementById(sectionId) : null;
+  if (!btn || !body) return;
+  btn.addEventListener('click', () => {
+    const collapsed = body.classList.toggle('collapsed');
+    btn.setAttribute('aria-expanded', (!collapsed).toString());
+    btn.textContent = collapsed ? 'Expand' : 'Collapse';
+    if (section) section.classList.toggle('is-collapsed', collapsed);
+  }, {passive:true});
+}
+
+// Hide section if it has no data
+function hideSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (section) {
+    section.classList.add('section-hidden');
+  }
+}
+
+// Show section
+function showSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (section) {
+    section.classList.remove('section-hidden');
+  }
+}
+
+// Setup all collapsible sections
+function setupAllCollapsibleSections() {
+  // Family nav
+  setupCollapsibleSection('familyNavCollapseBtn', 'familyNavBody', 'familyNav');
+  // Family features
+  setupCollapsibleSection('familyFeaturesCollapseBtn', 'familyFeaturesBody', 'familyFeaturesSection');
+  // Summary
+  setupCollapsibleSection('summaryCollapseBtn', 'summaryBody', 'summarySection');
+  // Similarity search
+  setupCollapsibleSection('simSearchCollapseBtn', 'simSearchBody', 'similaritySearchSection');
+  // Structure
+  setupCollapsibleSection('structureCollapseBtn', 'structureBody', 'structureSection');
+  // Alignment
+  setupCollapsibleSection('alignmentCollapseBtn', 'alignmentBody', 'alignmentSection');
+  // Domains
+  setupCollapsibleSection('domainsCollapseBtn', 'domainsBody', 'domainsSection');
+  // Domain pairs
+  setupCollapsibleSection('domainPairsCollapseBtn', 'domainPairsBody', 'domainPairsSection');
+}
+
+// Check data availability and hide empty sections
+function updateSectionVisibility() {
+  // PDBe section - hide if no experimental structures
+  if (!PDBe_COMPLEXES || PDBe_COMPLEXES.length === 0) {
+    hideSection('pdbeCard');
+  } else {
+    showSection('pdbeCard');
+  }
+
+  // Structure section - hide if no PDB data
+  if (!PDB64_FULL) {
+    hideSection('structureSection');
+    hideSection('alignmentSection');
+  } else {
+    showSection('structureSection');
+    showSection('alignmentSection');
+  }
+
+  // Domains section - hide if no domains
+  const hasDomainsA = DATA && DATA.domainsA && DATA.domainsA.length > 0;
+  const hasDomainsB = DATA && DATA.domainsB && DATA.domainsB.length > 0;
+  if (!hasDomainsA && !hasDomainsB) {
+    hideSection('domainsSection');
+  } else {
+    showSection('domainsSection');
+  }
+
+  // Domain pairs section - hide if no domain pairs
+  const hasDomainPairs = DATA && DATA.domPairs && DATA.domPairs.length > 0;
+  if (!hasDomainPairs) {
+    hideSection('domainPairsSection');
+  } else {
+    showSection('domainPairsSection');
+  }
+
+  // Family features section - hide if no family features data
+  const hasFamilyFeatures = SUMMARY && SUMMARY.family_features && Object.keys(SUMMARY.family_features).length > 0;
+  if (!hasFamilyFeatures) {
+    hideSection('familyFeaturesSection');
+  } else {
+    showSection('familyFeaturesSection');
+  }
+
+  // Similarity search section - hide if no similarity search data
+  const hasSimilaritySearch = SUMMARY && SUMMARY.similarity_search && Object.keys(SUMMARY.similarity_search).length > 0;
+  if (!hasSimilaritySearch) {
+    hideSection('similaritySearchSection');
+  } else {
+    showSection('similaritySearchSection');
+  }
+
+  // Update sidebar navigation to match
+  updateSidebarVisibility();
+}
+
+// Update sidebar links visibility based on section visibility
+function updateSidebarVisibility() {
+  const sidebarLinks = document.querySelectorAll('.sidebar-nav a[data-section]');
+  sidebarLinks.forEach(link => {
+    const sectionId = link.dataset.section;
+    const section = document.getElementById(sectionId);
+    const listItem = link.closest('li');
+    if (section && listItem) {
+      if (section.classList.contains('section-hidden') ||
+          (section.style.display === 'none' && !section.classList.contains('section-hidden'))) {
+        listItem.style.display = 'none';
+      } else {
+        listItem.style.display = '';
+      }
+    }
+  });
 }
 
 function shouldShowDomain(d) {
@@ -4446,6 +4902,8 @@ async function main(){
 
   setupPdbeCollapse();
   setupPdbeControls();
+  setupAllCollapsibleSections();
+  updateSectionVisibility();
 
   document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
   document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); }}, {passive:true});

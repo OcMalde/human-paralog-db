@@ -30,6 +30,17 @@
   .collapse-toggle{background:#f5f1e6;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:999px;font-size:11px;padding:4px 12px;cursor:pointer}
   .collapse-toggle:hover{background:#ebe2cf}
   .card.collapsible .body.collapsed{display:none}
+  .section-hidden{display:none !important}
+  .new-section.collapsible{padding:0}
+  .new-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
+  .new-section.collapsible .section-header h2{margin:0;padding:0;border-bottom:none}
+  .new-section.collapsible .section-body{padding:22px}
+  .new-section.collapsible .section-body.collapsed{display:none}
+  .summary-section.collapsible{padding:0}
+  .summary-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
+  .summary-section.collapsible .section-header h2{margin:0;padding:0;border-bottom:none}
+  .summary-section.collapsible .section-body{padding:22px}
+  .summary-section.collapsible .section-body.collapsed{display:none}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   select,button{font-size:13px;padding:6px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer}
   button:hover{background:#f0f0f0}
@@ -133,6 +144,15 @@
  .ppi-note.clickable{color:#5a3300;cursor:pointer;text-decoration:underline}
  .ppi-note.clickable:hover{color:#3d2200}
  .ppi-graph-wrapper{margin-top:18px;padding:12px;border:1px dashed #efd8af;border-radius:12px;background:#fffdf5}
+ .ppi-view-controls{margin-bottom:12px}
+ .ppi-view-controls select{padding:4px 8px;border-radius:6px;border:1px solid #e0d7c2;background:#fff;font-size:12px}
+ .ppi-venn-wrapper{text-align:center}
+ #ppiVenn{width:100%;height:220px;display:block}
+ .ppi-venn-stats{display:flex;justify-content:center;gap:24px;margin-top:12px;flex-wrap:wrap}
+ .venn-stat{background:#fff;border:1px solid #f0e8d8;border-radius:8px;padding:8px 16px;font-size:13px}
+ .venn-stat-label{color:#666;margin-right:6px}
+ .venn-stat span:last-child{font-weight:600;color:#2f2614}
+ .venn-stat-note{width:100%;text-align:center;font-size:11px;color:#888;margin-top:4px}
  #ppiNetwork{width:100%;height:230px;display:block}
  #ppiNetwork text{font-size:10px;fill:#3a3225;pointer-events:none}
  #ppiNetwork .gene-node circle{fill:#5c4433;stroke:#f9f6ef;stroke-width:2}
@@ -284,6 +304,15 @@
   .screen-list .screen-item:last-child{border-bottom:none}
   .protein-desc{margin-top:10px;font-size:13px;color:#555;line-height:1.5;background:#fafafa;border-radius:8px;padding:10px;border:1px dashed #e8e8e8}
   .protein-desc .desc-title{font-weight:600;color:#333;margin-bottom:4px}
+  .desc-func-wrapper{position:relative}
+  .desc-func-text{overflow:hidden;transition:max-height 0.3s ease}
+  .desc-func-text.truncated{max-height:60px}
+  .desc-func-text.expanded{max-height:none}
+  .desc-toggle{background:none;border:none;color:#5f4d2f;font-size:12px;cursor:pointer;padding:4px 0;margin-top:4px;text-decoration:underline}
+  .desc-toggle:hover{color:#3d2200}
+  .desc-source{margin-top:8px;font-size:11px;color:#888;font-style:italic}
+  .desc-source a{color:#735c29;text-decoration:none}
+  .desc-source a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -306,8 +335,8 @@
       <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
       <li><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
       <li><a href="#similaritySearchSection" data-section="similaritySearchSection">Similarity Searches</a></li>
-      <li><a href="#structureSection" data-section="structureSection">3D Structure</a></li>
       <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
+      <li><a href="#structureSection" data-section="structureSection">3D Structure</a></li>
       <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Alignment</a></li>
       <li><a href="#domainsSection" data-section="domainsSection">Domains</a></li>
       <li><a href="#domainPairsSection" data-section="domainPairsSection">Domain × Domain</a></li>
@@ -318,12 +347,15 @@
   <div class="main-content">
     <div id="wrap">
   <!-- Paralog Family -->
-  <section class="card" id="familyNav" style="display:none;">
+  <section class="card collapsible" id="familyNav" style="display:none;">
     <div class="card-header">
       <h2>Paralog Family</h2>
-      <span class="small" id="familySubtitle">Click genes to explore pairs · Orbits show sequence identity distance</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="small" id="familySubtitle">Click genes to explore pairs · Orbits show sequence identity distance</span>
+        <button class="collapse-toggle" id="familyNavCollapseBtn" aria-expanded="true">Collapse</button>
+      </div>
     </div>
-    <div class="body" style="padding:15px;">
+    <div class="body" id="familyNavBody" style="padding:15px;">
       <div id="constellationContainer" style="display:flex;justify-content:center;">
         <canvas id="familyNetworkCanvas" width="1200" height="560" style="border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;max-width:100%;"></canvas>
       </div>
@@ -335,10 +367,14 @@
   </section>
 
   <!-- Family Features Section -->
-  <section class="card new-section" id="familyFeaturesSection">
-    <h2>Family Features</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Click radar points to see distributions.</p>
-    <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
+  <section class="card new-section collapsible" id="familyFeaturesSection">
+    <div class="section-header">
+      <h2>Family Features</h2>
+      <button class="collapse-toggle" id="familyFeaturesCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="section-body" id="familyFeaturesBody">
+      <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Click radar points to see distributions.</p>
+      <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
       <div class="radar-plot" id="famFeatRadarWrapper">
         <canvas id="famFeatRadar"></canvas>
       </div>
@@ -356,12 +392,17 @@
         </div>
       </div>
     </div>
+    </div>
   </section>
 
   <!-- Summary section -->
-  <section class="card summary-section" id="summarySection">
-    <h2>Pair Summary – Quick Overview</h2>
-    <div class="summary-grid">
+  <section class="card summary-section collapsible" id="summarySection">
+    <div class="section-header">
+      <h2>Pair Summary – Quick Overview</h2>
+      <button class="collapse-toggle" id="summaryCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="section-body" id="summaryBody">
+      <div class="summary-grid">
       <div class="protein-card">
         <h3><span class="gene-symbol" id="gene1Symbol">–</span><span id="sum-essential1" class="not-essential-badge">Not Essential</span></h3>
         <div class="protein-links">
@@ -371,7 +412,11 @@
         <div class="chr-info"><strong>UniProt:</strong> <span id="acc1Display">–</span><br><span id="chr-loc1">Loading chromosome info...</span></div>
         <div class="protein-desc" id="gene1Desc" style="display:none;">
           <div class="desc-title" id="gene1DescTitle">–</div>
-          <div id="gene1DescFunc">–</div>
+          <div class="desc-func-wrapper">
+            <div class="desc-func-text" id="gene1DescFunc">–</div>
+            <button class="desc-toggle" id="gene1DescToggle" style="display:none;">Show more</button>
+          </div>
+          <div class="desc-source">Source: <a href="#" id="gene1DescSource" target="_blank">UniProt</a></div>
         </div>
       </div>
       <div class="protein-card">
@@ -383,7 +428,11 @@
         <div class="chr-info"><strong>UniProt:</strong> <span id="acc2Display">–</span><br><span id="chr-loc2">Loading chromosome info...</span></div>
         <div class="protein-desc" id="gene2Desc" style="display:none;">
           <div class="desc-title" id="gene2DescTitle">–</div>
-          <div id="gene2DescFunc">–</div>
+          <div class="desc-func-wrapper">
+            <div class="desc-func-text" id="gene2DescFunc">–</div>
+            <button class="desc-toggle" id="gene2DescToggle" style="display:none;">Show more</button>
+          </div>
+          <div class="desc-source">Source: <a href="#" id="gene2DescSource" target="_blank">UniProt</a></div>
         </div>
       </div>
     </div>
@@ -428,7 +477,25 @@
         </div>
       </div>
       <div class="ppi-graph-wrapper">
-        <svg id="ppiNetwork" role="img" aria-label="Mini PPI network" viewBox="0 0 420 240"></svg>
+        <div class="ppi-view-controls">
+          <label>View:
+            <select id="ppiViewMode">
+              <option value="venn" selected>Venn Diagram</option>
+              <option value="network">Network Graph</option>
+            </select>
+          </label>
+        </div>
+        <div id="ppiVennWrapper" class="ppi-venn-wrapper">
+          <svg id="ppiVenn" role="img" aria-label="PPI Venn diagram" viewBox="0 0 420 280"></svg>
+          <div class="ppi-venn-stats" id="ppiVennStats">
+            <div class="venn-stat"><span class="venn-stat-label">Odds Ratio:</span> <span id="vennOR">–</span></div>
+            <div class="venn-stat"><span class="venn-stat-label">P-value:</span> <span id="vennPvalue">–</span></div>
+            <div class="venn-stat-note" id="vennStatNote"></div>
+          </div>
+        </div>
+        <div id="ppiNetworkWrapper" style="display:none;">
+          <svg id="ppiNetwork" role="img" aria-label="Mini PPI network" viewBox="0 0 420 240"></svg>
+        </div>
         <div class="ppi-graph-note" id="ppiGraphNote"></div>
       </div>
     </div>
@@ -488,66 +555,36 @@
       </div>
       <div id="conservationList" class="conservation-list"></div>
     </div>
-  </section>
-
-  <!-- Similarity Searches Section -->
-  <section class="card new-section" id="similaritySearchSection">
-    <h2>Similarity Searches</h2>
-    <p class="small" style="color:#666;margin-bottom:16px;">Structure (Foldseek) and sequence (BLAST) similarity search metrics. Click radar points to see distributions.</p>
-    <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
-      <div class="radar-plot" id="simSearchRadarWrapper">
-        <canvas id="simSearchRadar"></canvas>
-      </div>
-      <div class="boxplot-panel" id="simSearchBoxplotPanel">
-        <div class="boxplot-header">
-          <h4 id="simSearchBoxplotTitle">Select a Metric</h4>
-          <button type="button" class="reset-metric-btn" id="resetSimSearchView" style="display:none;">Back to overview</button>
-        </div>
-        <div id="simSearchBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
-        <div class="metric-details" id="simSearchMetricDetails" style="display:none;">
-          <div class="stat-row"><span>This pair's value:</span><strong id="simSearch-detail-value">–</strong></div>
-          <div class="stat-row"><span>Percentile:</span><strong id="simSearch-detail-percentile">–</strong></div>
-          <div class="stat-row"><span>Interpretation:</span><span id="simSearch-detail-interp">–</span></div>
-          <div class="stat-row"><span>Direction:</span><span id="simSearch-detail-direction">–</span></div>
-          <div class="percentile-bar"><div class="percentile-fill" id="simSearch-percentile-fill" style="width:0%"></div></div>
-        </div>
-      </div>
     </div>
   </section>
 
-  <!-- Structure card -->
-  <section class="card" id="structureSection">
-    <h2>
-      <span id="contextTitle">Full Alignment</span>
-      <span class="small" style="margin-left:10px">
-        <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
-        <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
-      </span>
-    </h2>
-    <div class="body">
-      <div class="row">
-        <label>Color by:
-          <select id="colorBy">
-            <option value="uniform">Uniform</option>
-            <option value="plddt">pLDDT (confidence)</option>
-            <option value="am">AlphaMissense (bins)</option>
-            <option value="aligned">Aligned vs Gap</option>
-            <option value="dam">Δ AlphaMissense (aligned)</option>
-            <option value="domains">Domains</option>
-          </select>
-        </label>
-        <label class="chain-toggle">
-          <input type="checkbox" id="showChainA" checked> Show <span id="chainALabel">Chain A</span>
-        </label>
-        <label class="chain-toggle">
-          <input type="checkbox" id="showChainB" checked> Show <span id="chainBLabel">Chain B</span>
-        </label>
-        <button id="center">Center</button>
-        <button id="backFull">Back to full</button>
-        <button id="lockViewer" title="Lock hover to keep chain B highlights visible">Lock Hover</button>
-        <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+  <!-- Similarity Searches Section -->
+  <section class="card new-section collapsible" id="similaritySearchSection">
+    <div class="section-header">
+      <h2>Similarity Searches</h2>
+      <button class="collapse-toggle" id="simSearchCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="section-body" id="simSearchBody">
+      <p class="small" style="color:#666;margin-bottom:16px;">Structure (Foldseek) and sequence (BLAST) similarity search metrics. Click radar points to see distributions.</p>
+      <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
+        <div class="radar-plot" id="simSearchRadarWrapper">
+          <canvas id="simSearchRadar"></canvas>
+        </div>
+        <div class="boxplot-panel" id="simSearchBoxplotPanel">
+          <div class="boxplot-header">
+            <h4 id="simSearchBoxplotTitle">Select a Metric</h4>
+            <button type="button" class="reset-metric-btn" id="resetSimSearchView" style="display:none;">Back to overview</button>
+          </div>
+          <div id="simSearchBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
+          <div class="metric-details" id="simSearchMetricDetails" style="display:none;">
+            <div class="stat-row"><span>This pair's value:</span><strong id="simSearch-detail-value">–</strong></div>
+            <div class="stat-row"><span>Percentile:</span><strong id="simSearch-detail-percentile">–</strong></div>
+            <div class="stat-row"><span>Interpretation:</span><span id="simSearch-detail-interp">–</span></div>
+            <div class="stat-row"><span>Direction:</span><span id="simSearch-detail-direction">–</span></div>
+            <div class="percentile-bar"><div class="percentile-fill" id="simSearch-percentile-fill" style="width:0%"></div></div>
+          </div>
+        </div>
       </div>
-      <div id="viewer"></div>
     </div>
   </section>
 
@@ -584,9 +621,51 @@
       </div>
     </div>
   </section>
-  <section class="card" id="alignmentSection">
-    <h2>Alignment-axis sequences, domains &amp; secondary structure</h2>
-    <div class="body">
+
+  <!-- Structure card -->
+  <section class="card collapsible" id="structureSection">
+    <div class="card-header">
+      <h2>
+        <span id="contextTitle">Full Alignment</span>
+        <span class="small" style="margin-left:10px">
+          <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
+          <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
+        </span>
+      </h2>
+      <button class="collapse-toggle" id="structureCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="body" id="structureBody">
+      <div class="row">
+        <label>Color by:
+          <select id="colorBy">
+            <option value="uniform">Uniform</option>
+            <option value="plddt">pLDDT (confidence)</option>
+            <option value="am">AlphaMissense (bins)</option>
+            <option value="aligned">Aligned vs Gap</option>
+            <option value="dam">Δ AlphaMissense (aligned)</option>
+            <option value="domains">Domains</option>
+          </select>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainA" checked> Show <span id="chainALabel">Chain A</span>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainB" checked> Show <span id="chainBLabel">Chain B</span>
+        </label>
+        <button id="center">Center</button>
+        <button id="backFull">Back to full</button>
+        <button id="lockViewer" title="Lock hover to keep chain B highlights visible">Lock Hover</button>
+        <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+      </div>
+      <div id="viewer"></div>
+    </div>
+  </section>
+  <section class="card collapsible" id="alignmentSection">
+    <div class="card-header">
+      <h2>Alignment-axis sequences, domains &amp; secondary structure</h2>
+      <button class="collapse-toggle" id="alignmentCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="body" id="alignmentBody">
       <div class="row" id="amModeRow">
         <label>Druggability filter:
           <select id="druggabilityFilter">
@@ -613,9 +692,12 @@
   </section>
 
   <!-- Domain tables -->
-  <section class="card" id="domainsSection">
-    <h2>Domains (filtered)</h2>
-    <div class="body" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
+  <section class="card collapsible" id="domainsSection">
+    <div class="card-header">
+      <h2>Domains (filtered)</h2>
+      <button class="collapse-toggle" id="domainsCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="body" id="domainsBody" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
       <div>
         <table id="domA">
           <thead>
@@ -646,9 +728,12 @@
   </section>
 
   <!-- Domain × Domain sub-alignments -->
-  <section class="card" id="domainPairsSection">
-    <h2>Domain × Domain sub-alignments (Foldseek)</h2>
-    <div class="body">
+  <section class="card collapsible" id="domainPairsSection">
+    <div class="card-header">
+      <h2>Domain × Domain sub-alignments (Foldseek)</h2>
+      <button class="collapse-toggle" id="domainPairsCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="body" id="domainPairsBody">
       <table id="domPairs"><thead><tr><th id="dxdHA">Gene A domain</th><th id="dxdHB">Gene B domain</th><th>fident</th><th>TM</th><th>ΔAM%</th></tr></thead><tbody></tbody></table>
       <div class="small">Click a row to load the sub-alignment into the viewer. Use "Back to full" to restore.</div>
     </div>
