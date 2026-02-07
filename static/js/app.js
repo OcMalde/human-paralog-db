@@ -1323,17 +1323,17 @@ function drawSimSearchRankViz(mode) {
   const ctx = canvas.getContext('2d');
   const dpr = Math.max(2, window.devicePixelRatio || 1);
 
-  // Set canvas size for HiDPI - more compact
-  const displayWidth = 600;
-  const displayHeight = 200;
+  // Set canvas size for HiDPI - compact but readable
+  const displayWidth = 640;
+  const displayHeight = 240;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
   ctx.scale(dpr, dpr);
 
-  // Clear canvas with white background
-  ctx.fillStyle = '#ffffff';
+  // Clear canvas with background matching page
+  ctx.fillStyle = '#fefefe';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
   const simSearch = SUMMARY.similarity_search || {};
@@ -1358,27 +1358,28 @@ function drawSimSearchRankViz(mode) {
   const gene1 = SUMMARY.gene1?.symbol || 'A1';
   const gene2 = SUMMARY.gene2?.symbol || 'A2';
 
-  // Colors matching structure viewer
-  const geneAColor = '#4CAF50';  // Green for gene A
-  const geneBColor = '#FF9800';  // Orange for gene B
-  const dbBoxColor = '#e07a7a';  // Coral/pink for DB
-  const barBgColor = '#e0e0e0';
-  const barFillColor = '#666';
-  const barFillRelColor = '#999';
+  // Colors matching page style
+  const geneAColor = '#43a047';  // Modern green (matches page)
+  const geneBColor = '#ff7d45';  // Modern orange (matches page)
+  const dbBoxColor = '#fce4e4';  // Very light coral/pink for DB
+  const dbBoxStroke = '#e8b0b0';
+  const barBgColor = '#e8e8e8';
+  const barFillColor = '#777';
+  const barFillRelColor = '#aaa';
 
   // Layout - A on left, DB in center, B on right
   const centerY = displayHeight / 2;
-  const geneAx = 70;
-  const geneBx = displayWidth - 70;
+  const geneAx = 75;
+  const geneBx = displayWidth - 75;
   const dbCenterX = displayWidth / 2;
-  const geneRadius = 28;
+  const geneRadius = 32;
 
-  // Database box dimensions
-  const dbBoxWidth = 180;
-  const dbBoxHeight = 140;
+  // Database box dimensions - larger for readability
+  const dbBoxWidth = 220;
+  const dbBoxHeight = 180;
   const dbBoxLeft = dbCenterX - dbBoxWidth / 2;
   const dbBoxTop = centerY - dbBoxHeight / 2;
-  const dbBoxRadius = 12;
+  const dbBoxRadius = 16;
 
   // Helper: draw rounded rectangle
   function roundRect(x, y, w, h, r) {
@@ -1399,31 +1400,31 @@ function drawSimSearchRankViz(mode) {
   function drawPercentileBar(x, y, width, height, pct) {
     // Background
     ctx.fillStyle = barBgColor;
-    roundRect(x, y, width, height, 2);
+    roundRect(x, y, width, height, 4);
     ctx.fill();
     // Fill based on percentile
     if (pct > 0) {
       const fillWidth = (pct / 100) * width;
       ctx.fillStyle = barFillColor;
-      roundRect(x, y, fillWidth, height, 2);
+      roundRect(x, y, fillWidth, height, 4);
       ctx.fill();
     }
   }
 
   // Helper: draw split percentile bar (for selfSP and taxid)
   function drawSplitPercentileBar(x, y, width, pctTop, pctBottom) {
-    const barHeight = 5;
-    const gap = 2;
+    const barHeight = 10;
+    const gap = 4;
     // Top bar (overall)
     drawPercentileBar(x, y, width, barHeight, pctTop);
     // Bottom bar (rank-relative) - slightly lighter
     ctx.fillStyle = barBgColor;
-    roundRect(x, y + barHeight + gap, width, barHeight, 2);
+    roundRect(x, y + barHeight + gap, width, barHeight, 4);
     ctx.fill();
     if (pctBottom > 0) {
       const fillWidth = (pctBottom / 100) * width;
       ctx.fillStyle = barFillRelColor;
-      roundRect(x, y + barHeight + gap, fillWidth, barHeight, 2);
+      roundRect(x, y + barHeight + gap, fillWidth, barHeight, 4);
       ctx.fill();
     }
   }
@@ -1433,12 +1434,12 @@ function drawSimSearchRankViz(mode) {
   ctx.arc(geneAx, centerY, geneRadius, 0, Math.PI * 2);
   ctx.fillStyle = geneAColor;
   ctx.fill();
-  ctx.strokeStyle = '#388E3C';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#2e7d32';
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   // Gene A label
-  ctx.font = 'bold 13px sans-serif';
+  ctx.font = 'bold 14px sans-serif';
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1449,19 +1450,19 @@ function drawSimSearchRankViz(mode) {
   ctx.arc(geneBx, centerY, geneRadius, 0, Math.PI * 2);
   ctx.fillStyle = geneBColor;
   ctx.fill();
-  ctx.strokeStyle = '#F57C00';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#e55a1b';
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   // Gene B label
-  ctx.font = 'bold 13px sans-serif';
+  ctx.font = 'bold 14px sans-serif';
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(gene2, geneBx, centerY);
 
   // Draw connecting lines A <---- DB ----> B
-  ctx.strokeStyle = '#888';
+  ctx.strokeStyle = '#bbb';
   ctx.lineWidth = 2;
 
   // Line from A to DB
@@ -1476,61 +1477,61 @@ function drawSimSearchRankViz(mode) {
   ctx.lineTo(geneBx - geneRadius - 5, centerY);
   ctx.stroke();
 
-  // Draw database box (coral rounded rectangle)
+  // Draw database box (light coral rounded rectangle)
   roundRect(dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight, dbBoxRadius);
   ctx.fillStyle = dbBoxColor;
   ctx.fill();
-  ctx.strokeStyle = '#c05050';
+  ctx.strokeStyle = dbBoxStroke;
   ctx.lineWidth = 2;
   ctx.stroke();
 
   // Database name at top of box
-  ctx.font = 'bold 12px sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillStyle = '#666';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(dbFullName, dbCenterX, dbBoxTop + 10);
+  ctx.fillText(dbFullName, dbCenterX, dbBoxTop + 12);
 
   // Draw metrics inside DB box
-  const metricStartY = dbBoxTop + 35;
-  const metricSpacing = 34;
-  const labelX = dbBoxLeft + 15;
-  const valueX = dbBoxLeft + 70;
-  const barX = dbBoxLeft + 95;
-  const barWidth = 70;
+  const metricStartY = dbBoxTop + 45;
+  const metricSpacing = 44;
+  const labelX = dbBoxLeft + 18;
+  const valueX = dbBoxLeft + 80;
+  const barX = dbBoxLeft + 110;
+  const barWidth = 95;
 
   // Rank row (single bar)
-  ctx.font = '11px sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#555';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText('rank:', labelX, metricStartY);
-  ctx.font = 'bold 12px sans-serif';
+  ctx.font = 'bold 15px sans-serif';
   ctx.fillText(rank !== null ? rank.toString() : '-', valueX, metricStartY);
   if (rank !== null) {
-    drawPercentileBar(barX, metricStartY - 4, barWidth, 8, rankPct);
+    drawPercentileBar(barX, metricStartY - 7, barWidth, 14, rankPct);
   }
 
   // selfSP row (split bar)
   const selfSPY = metricStartY + metricSpacing;
-  ctx.font = '11px sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#555';
   ctx.fillText('selfSP:', labelX, selfSPY);
-  ctx.font = 'bold 12px sans-serif';
+  ctx.font = 'bold 15px sans-serif';
   ctx.fillText(selfSP !== null ? selfSP.toString() : '-', valueX, selfSPY);
   if (selfSP !== null) {
-    drawSplitPercentileBar(barX, selfSPY - 6, barWidth, selfSPPct, selfSPPctRel);
+    drawSplitPercentileBar(barX, selfSPY - 12, barWidth, selfSPPct, selfSPPctRel);
   }
 
   // taxid row (split bar)
   const taxidY = metricStartY + metricSpacing * 2;
-  ctx.font = '11px sans-serif';
-  ctx.fillStyle = '#fff';
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = '#555';
   ctx.fillText('taxid:', labelX, taxidY);
-  ctx.font = 'bold 12px sans-serif';
+  ctx.font = 'bold 15px sans-serif';
   ctx.fillText(taxid !== null ? taxid.toString() : '-', valueX, taxidY);
   if (taxid !== null) {
-    drawSplitPercentileBar(barX, taxidY - 6, barWidth, taxidPct, taxidPctRel);
+    drawSplitPercentileBar(barX, taxidY - 12, barWidth, taxidPct, taxidPctRel);
   }
 
   // Update legend
