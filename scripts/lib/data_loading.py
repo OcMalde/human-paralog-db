@@ -297,13 +297,50 @@ def enrich_partner_ids(partners: Set[str]) -> List[Dict[str, Optional[str]]]:
     return result
 
 
+def compute_rank_relative_percentile(
+    value: float,
+    target_rank: float,
+    df: pd.DataFrame,
+    metric_col: str,
+    rank_col: str,
+    bucket_size: int = 10
+) -> float:
+    """Compute percentile of a metric within pairs of similar rank.
+
+    Uses a bucket approach: pairs where rank is within ±bucket_size of target_rank.
+    """
+    if pd.isna(value) or pd.isna(target_rank) or df.empty:
+        return 50.0
+
+    if metric_col not in df.columns or rank_col not in df.columns:
+        return 50.0
+
+    # Filter to pairs with similar rank (±bucket_size)
+    rank_min = max(0, target_rank - bucket_size)
+    rank_max = target_rank + bucket_size
+
+    similar_rank_mask = (df[rank_col] >= rank_min) & (df[rank_col] <= rank_max)
+    similar_df = df[similar_rank_mask]
+
+    if similar_df.empty or len(similar_df) < 5:
+        # Fall back to overall percentile if bucket too small
+        return compute_percentile(value, df[metric_col])
+
+    return compute_percentile(value, similar_df[metric_col])
+
+
 def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str, Dict[str, Any]]:
-    """Get similarity search metrics with percentiles for radar chart.
+    """Get similarity search metrics with percentiles for visualization.
 
     All 6 metrics (3 structure + 3 sequence) are pair-level comparisons.
-    - rank: Position in search results (lower = more similar, so invert for display)
-    - selfSP: Self-score percentage (higher = better)
-    - taxid: Number of taxonomic groups hit (higher = more conserved across species)
+    - rank: Position in search results (lower = more similar)
+    - selfSP: Number of human proteins between A and B (lower = closer)
+    - taxid: Number of species between A and B (lower = closer)
+
+    For selfSP and taxid, also computes rank-relative percentiles
+    (comparing against pairs with similar rank).
+
+    Percentile interpretation: low value = empty bar (close paralogs)
     """
     df = load_features_df()
     if df.empty or pair_row is None:
@@ -311,31 +348,66 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
 
     results = {}
 
-    # All 6 metrics - use exact column names as labels
-    metrics = {
-        'rank_struct': {'higher_is_better': False},
-        'selfSP_struct': {'higher_is_better': True},
-        'taxid_struct': {'higher_is_better': True},
-        'rank_seq': {'higher_is_better': False},
-        'selfSP_seq': {'higher_is_better': True},
-        'taxid_seq': {'higher_is_better': True},
-    }
+    # Process each suffix (struct and seq)
+    for suffix in ['_struct', '_seq']:
+        rank_col = 'rank' + suffix
+        selfsp_col = 'selfSP' + suffix
+        taxid_col = 'taxid' + suffix
 
-    for col, info in metrics.items():
-        if col in pair_row.index and col in df.columns:
-            val = pair_row[col]
-            pct = compute_percentile(val, df[col])
-            # For "higher is better" metrics, higher percentile = better
-            # For "lower is better" metrics (like rank), invert so higher percentile = better rank
-            display_pct = float(pct) if info['higher_is_better'] else float(100 - pct)
-            display_pct = max(0.0, min(100.0, display_pct))
-            results[col] = {
+        # Get rank value for this pair (needed for rank-relative percentiles)
+        rank_val = pair_row.get(rank_col) if rank_col in pair_row.index else None
+
+        # Process rank metric
+        if rank_col in pair_row.index and rank_col in df.columns:
+            val = pair_row[rank_col]
+            pct = compute_percentile(val, df[rank_col])
+            # For rank: low value = good (close paralogs), so percentile shows position
+            # Low rank = low percentile (empty bar = close)
+            results[rank_col] = {
                 'value': float(val) if pd.notna(val) else None,
-                'percentile': display_pct,
+                'percentile': float(pct),  # Low value = low percentile = empty bar
                 'raw_percentile': float(pct),
-                'label': col,  # Use exact column name
-                'higher_is_better': info['higher_is_better'],
-                'radar_value': display_pct,
+                'label': rank_col,
+                'higher_is_better': False,
+                'radar_value': float(100 - pct),  # Inverted for radar (higher = better)
+            }
+
+        # Process selfSP metric (with rank-relative percentile)
+        if selfsp_col in pair_row.index and selfsp_col in df.columns:
+            val = pair_row[selfsp_col]
+            pct_overall = compute_percentile(val, df[selfsp_col])
+            pct_rank_rel = compute_rank_relative_percentile(
+                val, rank_val, df, selfsp_col, rank_col
+            ) if pd.notna(rank_val) else pct_overall
+
+            # For selfSP: low value = good (fewer humans between), low percentile = empty bar
+            results[selfsp_col] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': float(pct_overall),  # Overall percentile
+                'percentile_rank_relative': float(pct_rank_rel),  # Vs similar rank pairs
+                'raw_percentile': float(pct_overall),
+                'label': selfsp_col,
+                'higher_is_better': False,  # Lower = closer paralogs
+                'radar_value': float(100 - pct_overall),  # Inverted for radar
+            }
+
+        # Process taxid metric (with rank-relative percentile)
+        if taxid_col in pair_row.index and taxid_col in df.columns:
+            val = pair_row[taxid_col]
+            pct_overall = compute_percentile(val, df[taxid_col])
+            pct_rank_rel = compute_rank_relative_percentile(
+                val, rank_val, df, taxid_col, rank_col
+            ) if pd.notna(rank_val) else pct_overall
+
+            # For taxid: low value = good (fewer species between), low percentile = empty bar
+            results[taxid_col] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': float(pct_overall),  # Overall percentile
+                'percentile_rank_relative': float(pct_rank_rel),  # Vs similar rank pairs
+                'raw_percentile': float(pct_overall),
+                'label': taxid_col,
+                'higher_is_better': False,  # Lower = closer paralogs
+                'radar_value': float(100 - pct_overall),  # Inverted for radar
             }
 
     return results

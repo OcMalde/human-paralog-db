@@ -1323,9 +1323,9 @@ function drawSimSearchRankViz(mode) {
   const ctx = canvas.getContext('2d');
   const dpr = Math.max(2, window.devicePixelRatio || 1);
 
-  // Set canvas size for HiDPI
-  const displayWidth = 700;
-  const displayHeight = 340;
+  // Set canvas size for HiDPI - more compact
+  const displayWidth = 600;
+  const displayHeight = 200;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
@@ -1338,7 +1338,7 @@ function drawSimSearchRankViz(mode) {
 
   const simSearch = SUMMARY.similarity_search || {};
   const suffix = mode === 'struct' ? '_struct' : '_seq';
-  const dbFullName = mode === 'struct' ? 'AlphaFold DB (Foldseek)' : 'UniProt (MMseqs2)';
+  const dbFullName = mode === 'struct' ? 'AlphaFold DB' : 'UniProt';
 
   const rankInfo = simSearch['rank' + suffix];
   const selfSPInfo = simSearch['selfSP' + suffix];
@@ -1348,26 +1348,37 @@ function drawSimSearchRankViz(mode) {
   const selfSP = selfSPInfo?.value ?? null;
   const taxid = taxidInfo?.value ?? null;
 
+  // Percentiles (low value = low percentile = empty bar)
+  const rankPct = rankInfo?.percentile ?? 50;
+  const selfSPPct = selfSPInfo?.percentile ?? 50;
+  const selfSPPctRel = selfSPInfo?.percentile_rank_relative ?? selfSPPct;
+  const taxidPct = taxidInfo?.percentile ?? 50;
+  const taxidPctRel = taxidInfo?.percentile_rank_relative ?? taxidPct;
+
   const gene1 = SUMMARY.gene1?.symbol || 'A1';
   const gene2 = SUMMARY.gene2?.symbol || 'A2';
 
-  // Colors
-  const coralColor = '#e07a7a';
-  const grayProtein = '#b8b8b8';
-  const pinkProtein = '#e8a0a0';
+  // Colors matching structure viewer
+  const geneAColor = '#4CAF50';  // Green for gene A
+  const geneBColor = '#FF9800';  // Orange for gene B
+  const dbBoxColor = '#e07a7a';  // Coral/pink for DB
+  const barBgColor = '#e0e0e0';
+  const barFillColor = '#666';
+  const barFillRelColor = '#999';
 
-  // Layout - A on left, DB in center, B on right (horizontally aligned)
-  const centerY = 160;
-  const geneAx = 85;
-  const geneBx = displayWidth - 85;
+  // Layout - A on left, DB in center, B on right
+  const centerY = displayHeight / 2;
+  const geneAx = 70;
+  const geneBx = displayWidth - 70;
   const dbCenterX = displayWidth / 2;
+  const geneRadius = 28;
 
-  // Database box dimensions (rounded rectangle)
+  // Database box dimensions
   const dbBoxWidth = 180;
-  const dbBoxHeight = 240;
+  const dbBoxHeight = 140;
   const dbBoxLeft = dbCenterX - dbBoxWidth / 2;
-  const dbBoxTop = centerY - dbBoxHeight / 2 + 10;
-  const dbBoxRadius = 40;
+  const dbBoxTop = centerY - dbBoxHeight / 2;
+  const dbBoxRadius = 12;
 
   // Helper: draw rounded rectangle
   function roundRect(x, y, w, h, r) {
@@ -1384,221 +1395,155 @@ function drawSimSearchRankViz(mode) {
     ctx.closePath();
   }
 
-  // Helper: draw protein cluster (blob of circles)
-  function drawProteinCluster(cx, cy, size, color, highlightColor = null, highlightCount = 0) {
-    const baseR = size * 0.18;
-    // Create cluster pattern
-    const positions = [
-      {x: 0, y: -0.3}, {x: -0.25, y: -0.1}, {x: 0.25, y: -0.1},
-      {x: -0.35, y: 0.15}, {x: 0, y: 0.1}, {x: 0.35, y: 0.15},
-      {x: -0.2, y: 0.35}, {x: 0.15, y: 0.35}, {x: 0.4, y: 0.35},
-      {x: -0.4, y: 0.5}, {x: -0.1, y: 0.55}, {x: 0.25, y: 0.5}
-    ];
-
-    positions.forEach((p, i) => {
-      const x = cx + p.x * size;
-      const y = cy + p.y * size;
-      const r = baseR * (0.85 + Math.random() * 0.3);
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      if (highlightColor && i >= positions.length - highlightCount) {
-        ctx.fillStyle = highlightColor;
-      } else {
-        ctx.fillStyle = color;
-      }
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-  }
-
-  // Helper: draw small icon
-  function drawHumanIcon(x, y, size) {
-    ctx.fillStyle = '#333';
-    // Head
-    ctx.beginPath();
-    ctx.arc(x, y - size * 0.35, size * 0.15, 0, Math.PI * 2);
+  // Helper: draw percentile bar (single)
+  function drawPercentileBar(x, y, width, height, pct) {
+    // Background
+    ctx.fillStyle = barBgColor;
+    roundRect(x, y, width, height, 2);
     ctx.fill();
-    // Body
-    ctx.beginPath();
-    ctx.moveTo(x, y - size * 0.2);
-    ctx.lineTo(x, y + size * 0.15);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    // Arms
-    ctx.beginPath();
-    ctx.moveTo(x - size * 0.2, y - size * 0.05);
-    ctx.lineTo(x + size * 0.2, y - size * 0.05);
-    ctx.stroke();
-    // Legs
-    ctx.beginPath();
-    ctx.moveTo(x, y + size * 0.15);
-    ctx.lineTo(x - size * 0.12, y + size * 0.35);
-    ctx.moveTo(x, y + size * 0.15);
-    ctx.lineTo(x + size * 0.12, y + size * 0.35);
-    ctx.stroke();
+    // Fill based on percentile
+    if (pct > 0) {
+      const fillWidth = (pct / 100) * width;
+      ctx.fillStyle = barFillColor;
+      roundRect(x, y, fillWidth, height, 2);
+      ctx.fill();
+    }
   }
 
-  // Draw Gene A (left side) - protein cluster with human icon
-  drawProteinCluster(geneAx, centerY, 65, grayProtein);
-  ctx.font = 'bold 22px sans-serif';
-  ctx.fillStyle = '#333';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(gene1, geneAx, centerY - 55);
-  drawHumanIcon(geneAx + 30, centerY - 70, 25);
+  // Helper: draw split percentile bar (for selfSP and taxid)
+  function drawSplitPercentileBar(x, y, width, pctTop, pctBottom) {
+    const barHeight = 5;
+    const gap = 2;
+    // Top bar (overall)
+    drawPercentileBar(x, y, width, barHeight, pctTop);
+    // Bottom bar (rank-relative) - slightly lighter
+    ctx.fillStyle = barBgColor;
+    roundRect(x, y + barHeight + gap, width, barHeight, 2);
+    ctx.fill();
+    if (pctBottom > 0) {
+      const fillWidth = (pctBottom / 100) * width;
+      ctx.fillStyle = barFillRelColor;
+      roundRect(x, y + barHeight + gap, fillWidth, barHeight, 2);
+      ctx.fill();
+    }
+  }
 
-  // Draw Gene B (right side) - protein cluster with highlights and human icon
-  drawProteinCluster(geneBx, centerY, 65, grayProtein, pinkProtein, 4);
-  ctx.font = 'bold 22px sans-serif';
-  ctx.fillStyle = '#333';
+  // Draw Gene A circle (green)
+  ctx.beginPath();
+  ctx.arc(geneAx, centerY, geneRadius, 0, Math.PI * 2);
+  ctx.fillStyle = geneAColor;
+  ctx.fill();
+  ctx.strokeStyle = '#388E3C';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Gene A label
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(gene2, geneBx, centerY - 55);
-  drawHumanIcon(geneBx + 30, centerY - 70, 25);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(gene1, geneAx, centerY);
+
+  // Draw Gene B circle (orange)
+  ctx.beginPath();
+  ctx.arc(geneBx, centerY, geneRadius, 0, Math.PI * 2);
+  ctx.fillStyle = geneBColor;
+  ctx.fill();
+  ctx.strokeStyle = '#F57C00';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Gene B label
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(gene2, geneBx, centerY);
+
+  // Draw connecting lines A <---- DB ----> B
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 2;
+
+  // Line from A to DB
+  ctx.beginPath();
+  ctx.moveTo(geneAx + geneRadius + 5, centerY);
+  ctx.lineTo(dbBoxLeft - 5, centerY);
+  ctx.stroke();
+
+  // Line from DB to B
+  ctx.beginPath();
+  ctx.moveTo(dbBoxLeft + dbBoxWidth + 5, centerY);
+  ctx.lineTo(geneBx - geneRadius - 5, centerY);
+  ctx.stroke();
 
   // Draw database box (coral rounded rectangle)
   roundRect(dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight, dbBoxRadius);
-  ctx.fillStyle = coralColor;
+  ctx.fillStyle = dbBoxColor;
   ctx.fill();
-
-  // Draw arrows between genes and DB
-  ctx.strokeStyle = '#555';
+  ctx.strokeStyle = '#c05050';
   ctx.lineWidth = 2;
-
-  // Arrow from A to DB
-  const arrowY1 = centerY - 15;
-  ctx.beginPath();
-  ctx.moveTo(geneAx + 45, arrowY1);
-  ctx.lineTo(dbBoxLeft - 10, arrowY1);
   ctx.stroke();
-  // Arrowhead
-  ctx.beginPath();
-  ctx.moveTo(dbBoxLeft - 10, arrowY1);
-  ctx.lineTo(dbBoxLeft - 18, arrowY1 - 5);
-  ctx.lineTo(dbBoxLeft - 18, arrowY1 + 5);
-  ctx.closePath();
-  ctx.fillStyle = '#555';
-  ctx.fill();
 
-  // Arrow from DB to B
-  const arrowY2 = centerY + 15;
-  ctx.beginPath();
-  ctx.moveTo(dbBoxLeft + dbBoxWidth + 10, arrowY2);
-  ctx.lineTo(geneBx - 45, arrowY2);
-  ctx.stroke();
-  // Arrowhead
-  ctx.beginPath();
-  ctx.moveTo(geneBx - 45, arrowY2);
-  ctx.lineTo(geneBx - 37, arrowY2 - 5);
-  ctx.lineTo(geneBx - 37, arrowY2 + 5);
-  ctx.closePath();
-  ctx.fill();
-
-  // Arrow labels
-  ctx.font = 'italic 13px sans-serif';
-  ctx.fillStyle = '#555';
+  // Database name at top of box
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
-  ctx.fillText(`${gene1} vs db`, (geneAx + 45 + dbBoxLeft) / 2, arrowY1 - 8);
-  ctx.fillText(`${gene2} vs db`, (dbBoxLeft + dbBoxWidth + geneBx - 45) / 2, arrowY2 - 8);
+  ctx.textBaseline = 'top';
+  ctx.fillText(dbFullName, dbCenterX, dbBoxTop + 10);
 
-  // Draw content inside DB box
-  const dbContentTop = dbBoxTop + 25;
-  const dbContentCenterX = dbBoxLeft + dbBoxWidth / 2;
+  // Draw metrics inside DB box
+  const metricStartY = dbBoxTop + 35;
+  const metricSpacing = 34;
+  const labelX = dbBoxLeft + 15;
+  const valueX = dbBoxLeft + 70;
+  const barX = dbBoxLeft + 95;
+  const barWidth = 70;
 
+  // Rank row (single bar)
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('rank:', labelX, metricStartY);
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(rank !== null ? rank.toString() : '-', valueX, metricStartY);
   if (rank !== null) {
-    // Draw protein clusters inside DB representing hits
-    // Human proteins cluster (top)
-    if (selfSP !== null && selfSP > 0) {
-      drawProteinCluster(dbContentCenterX, dbContentTop + 45, 45, grayProtein);
-      drawHumanIcon(dbContentCenterX + 25, dbContentTop + 25, 18);
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.fillText(selfSP.toString(), dbContentCenterX, dbContentTop + 48);
-    }
-
-    // Other species cluster (middle) - smaller
-    if (taxid !== null && taxid > 1) {
-      drawProteinCluster(dbContentCenterX - 20, dbContentTop + 110, 35, grayProtein);
-      // Cat-like icon
-      ctx.font = '16px sans-serif';
-      ctx.fillText('🐱', dbContentCenterX + 15, dbContentTop + 95);
-    }
-
-    // Another species cluster (bottom) - even smaller
-    if (rank > 10) {
-      drawProteinCluster(dbContentCenterX + 10, dbContentTop + 165, 30, grayProtein);
-      // Worm-like icon
-      ctx.font = '14px sans-serif';
-      ctx.fillText('🪱', dbContentCenterX - 20, dbContentTop + 155);
-    }
-
-    // Stats at bottom of DB box
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    roundRect(dbBoxLeft + 15, dbBoxTop + dbBoxHeight - 65, dbBoxWidth - 30, 50, 8);
-    ctx.fill();
-
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillStyle = '#c05050';
-    ctx.textAlign = 'center';
-    ctx.fillText(`Rank: ${rank}`, dbContentCenterX, dbBoxTop + dbBoxHeight - 38);
-
-    ctx.font = '11px sans-serif';
-    ctx.fillStyle = '#666';
-    let statsText = '';
-    if (selfSP !== null) statsText += `${selfSP} human`;
-    if (selfSP !== null && taxid !== null) statsText += ' · ';
-    if (taxid !== null) statsText += `${taxid} species`;
-    ctx.fillText(statsText, dbContentCenterX, dbBoxTop + dbBoxHeight - 22);
-
-  } else if (rank === 0) {
-    // Top match - show checkmark
-    ctx.font = 'bold 48px sans-serif';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText('✓', dbContentCenterX, dbContentTop + 80);
-    ctx.font = 'bold 14px sans-serif';
-    ctx.fillText('Top Match!', dbContentCenterX, dbContentTop + 110);
-    ctx.font = '12px sans-serif';
-    ctx.fillText('No proteins between', dbContentCenterX, dbContentTop + 130);
-  } else {
-    // No data
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText('No rank data', dbContentCenterX, dbContentTop + 80);
+    drawPercentileBar(barX, metricStartY - 4, barWidth, 8, rankPct);
   }
 
-  // Database name below the box
-  ctx.font = 'italic 16px serif';
-  ctx.fillStyle = '#666';
-  ctx.textAlign = 'center';
-  ctx.fillText(dbFullName, dbContentCenterX, dbBoxTop + dbBoxHeight + 25);
+  // selfSP row (split bar)
+  const selfSPY = metricStartY + metricSpacing;
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('selfSP:', labelX, selfSPY);
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(selfSP !== null ? selfSP.toString() : '-', valueX, selfSPY);
+  if (selfSP !== null) {
+    drawSplitPercentileBar(barX, selfSPY - 6, barWidth, selfSPPct, selfSPPctRel);
+  }
+
+  // taxid row (split bar)
+  const taxidY = metricStartY + metricSpacing * 2;
+  ctx.font = '11px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('taxid:', labelX, taxidY);
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(taxid !== null ? taxid.toString() : '-', valueX, taxidY);
+  if (taxid !== null) {
+    drawSplitPercentileBar(barX, taxidY - 6, barWidth, taxidPct, taxidPctRel);
+  }
 
   // Update legend
   if (legendEl) {
     let legendHTML = '';
     if (rank !== null) {
       if (rank === 0) {
-        legendHTML = `<strong style="color:#2e7d32">Direct match!</strong> ${gene2} is the top hit when searching ${dbFullName} with ${gene1}. These paralogs are extremely similar.`;
+        legendHTML = `<strong style="color:#2e7d32">Direct match!</strong> ${gene2} is the top hit when searching ${dbFullName} with ${gene1}.`;
       } else {
-        legendHTML = `<strong>${rank.toLocaleString()}</strong> proteins separate ${gene1} from ${gene2} in ${dbFullName}.`;
-        if (selfSP !== null && selfSP > 0) {
-          legendHTML += ` <strong>${selfSP}</strong> are human proteins.`;
-        }
-        if (taxid !== null && taxid > 1) {
-          legendHTML += ` Hits span <strong>${taxid}</strong> species.`;
-        }
-        if (rank <= 10) {
-          legendHTML += ` <span style="color:#2e7d32">Very similar paralogs.</span>`;
-        } else if (rank <= 50) {
-          legendHTML += ` <span style="color:#5d8aa8">Moderately similar.</span>`;
-        } else {
-          legendHTML += ` <span style="color:#b87333">Divergent paralogs.</span>`;
-        }
+        legendHTML = `<strong>${rank}</strong> proteins between ${gene1} and ${gene2}.`;
+        if (selfSP !== null) legendHTML += ` <strong>${selfSP}</strong> human.`;
+        if (taxid !== null) legendHTML += ` <strong>${taxid}</strong> species.`;
+        legendHTML += '<br><small style="color:#666">Bars: empty = close paralogs, filled = distant. Split bars: top = overall, bottom = vs similar rank.</small>';
       }
     } else {
       legendHTML = 'Rank data not available for this pair.';
