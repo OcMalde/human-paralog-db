@@ -375,8 +375,8 @@
     </div>
     <div class="section-body" id="familyFeaturesBody">
       <p class="small" style="color:#666;margin-bottom:12px;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
-      <div style="position:relative;">
-        <canvas id="plmaAlignCanvas" width="900" height="400" style="max-width:100%;border-radius:10px;"></canvas>
+      <div style="position:relative;overflow-y:auto;max-height:600px;border:1px solid #eee;border-radius:10px;">
+        <canvas id="plmaAlignCanvas" width="900" height="400" style="max-width:100%;display:block;"></canvas>
         <div id="plmaTooltip" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;padding:6px 10px;font-size:12px;color:#333;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.12);z-index:100;max-width:300px;"></div>
       </div>
       <div id="plmaLegend" style="margin-top:10px;padding:10px 14px;background:#f9f7f2;border-radius:8px;font-size:12px;color:#555;display:flex;flex-wrap:wrap;gap:14px;align-items:center;"></div>
