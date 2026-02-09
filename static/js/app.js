@@ -1988,15 +1988,15 @@ function drawPlmaAlignment() {
 
   // Category colors
   const catColors = {
-    shared_with_family: '#b8a882',
-    pair_exclusive:     '#8b6f3a',
+    shared_with_family: '#8b6f3a',
+    pair_exclusive:     '#43a047',
     specific_a:         '#d97706',
     specific_b:         '#7c3aed',
     family_only:        '#d4cfc5',
   };
   const catBorders = {
-    shared_with_family: '#7a6842',
-    pair_exclusive:     '#5f4d2f',
+    shared_with_family: '#5f4d2f',
+    pair_exclusive:     '#2e7d32',
     specific_a:         '#92400e',
     specific_b:         '#5b21b6',
     family_only:        '#a8a298',
