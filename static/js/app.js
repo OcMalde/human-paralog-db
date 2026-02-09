@@ -1987,6 +1987,9 @@ function drawPlmaAlignment() {
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
+  // Ensure the inner wrapper expands so the scroll container works
+  const inner = document.getElementById('plmaCanvasInner');
+  if (inner) inner.style.minWidth = displayWidth + 'px';
   ctx.scale(dpr, dpr);
 
   ctx.fillStyle = '#fafafa';
