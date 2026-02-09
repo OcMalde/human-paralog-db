@@ -1294,16 +1294,22 @@ function initProteinDescriptions() {
 // Boxplot chart instances for new sections
 let famFeatBoxplotChart = null;
 
-// Current similarity search mode (struct or seq)
+// Current similarity search mode (struct or seq) and view (0=overview, 1=scale)
 let simSearchMode = 'struct';
+let simSearchView = 0;
+// Store hit-test regions for hover tooltips
+let simSearchHitRegions = [];
+let simSearchBarHitRegions = [];
 
 function initSimilaritySearchSection() {
   const canvas = document.getElementById('simSearchRankCanvas');
+  const barCanvas = document.getElementById('simSearchBarCanvas');
   const modeSelect = document.getElementById('simSearchModeSelect');
   if (!canvas) return;
 
   // Initial draw
   drawSimSearchRankViz(simSearchMode);
+  drawSimSearchBarViz(simSearchMode);
 
   // Mode switch handler
   if (modeSelect && !modeSelect.dataset.bound) {
@@ -1311,10 +1317,131 @@ function initSimilaritySearchSection() {
     modeSelect.addEventListener('change', (e) => {
       simSearchMode = e.target.value;
       drawSimSearchRankViz(simSearchMode);
+      drawSimSearchBarViz(simSearchMode);
     });
+  }
+
+  // View toggle buttons
+  const btn0 = document.getElementById('simSearchViewBtn0');
+  const btn1 = document.getElementById('simSearchViewBtn1');
+  const scroll = document.getElementById('simSearchScroll');
+  function setView(idx) {
+    simSearchView = idx;
+    if (scroll) scroll.style.transform = `translateX(-${idx * 50}%)`;
+    if (btn0) btn0.style.background = idx === 0 ? '#e8e4ff' : '';
+    if (btn0) btn0.style.color = idx === 0 ? '#4f46e5' : '';
+    if (btn0) btn0.style.fontWeight = idx === 0 ? '600' : '';
+    if (btn1) btn1.style.background = idx === 1 ? '#e8e4ff' : '';
+    if (btn1) btn1.style.color = idx === 1 ? '#4f46e5' : '';
+    if (btn1) btn1.style.fontWeight = idx === 1 ? '600' : '';
+  }
+  if (btn0) btn0.addEventListener('click', () => setView(0));
+  if (btn1) btn1.addEventListener('click', () => setView(1));
+  setView(0);
+
+  // Hover tooltip for overview canvas
+  const tooltip = document.getElementById('simSearchTooltip');
+  if (canvas && tooltip) {
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (canvas.width / (rect.width * (Math.max(2, window.devicePixelRatio || 1))));
+      const y = (e.clientY - rect.top) * (canvas.height / (rect.height * (Math.max(2, window.devicePixelRatio || 1))));
+      let hit = null;
+      for (const region of simSearchHitRegions) {
+        if (x >= region.x && x <= region.x + region.w && y >= region.y && y <= region.y + region.h) {
+          hit = region;
+          break;
+        }
+      }
+      if (hit) {
+        tooltip.innerHTML = hit.tooltip;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY - 8) + 'px';
+        tooltip.style.position = 'fixed';
+        canvas.style.cursor = 'default';
+      } else {
+        tooltip.style.display = 'none';
+        canvas.style.cursor = 'default';
+      }
+    });
+    canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  }
+
+  // Hover tooltip for scale bar canvas
+  if (barCanvas && tooltip) {
+    barCanvas.addEventListener('mousemove', (e) => {
+      const rect = barCanvas.getBoundingClientRect();
+      const dpr = Math.max(2, window.devicePixelRatio || 1);
+      const x = (e.clientX - rect.left) * (barCanvas.width / (rect.width * dpr));
+      const y = (e.clientY - rect.top) * (barCanvas.height / (rect.height * dpr));
+      let hit = null;
+      for (const region of simSearchBarHitRegions) {
+        if (x >= region.x && x <= region.x + region.w && y >= region.y && y <= region.y + region.h) {
+          hit = region;
+          break;
+        }
+      }
+      if (hit) {
+        tooltip.innerHTML = hit.tooltip;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 12) + 'px';
+        tooltip.style.top = (e.clientY - 8) + 'px';
+        tooltip.style.position = 'fixed';
+        barCanvas.style.cursor = 'default';
+      } else {
+        tooltip.style.display = 'none';
+        barCanvas.style.cursor = 'default';
+      }
+    });
+    barCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
   }
 }
 
+// Helper: format number with commas
+function formatNum(n) {
+  if (n == null) return '-';
+  return Number(n).toLocaleString('en-US');
+}
+
+// Shared helpers for both canvases
+function ssRoundRect(ctx, x, y, w, h, r) {
+  if (w <= 0) return;
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function ssGetMetrics(mode) {
+  const simSearch = SUMMARY?.similarity_search || {};
+  const suffix = mode === 'struct' ? '_struct' : '_seq';
+  return {
+    suffix,
+    dbFullName: mode === 'struct' ? 'AlphaFold DB' : 'UniProt',
+    rankInfo: simSearch['rank' + suffix],
+    selfSPInfo: simSearch['selfSP' + suffix],
+    taxidInfo: simSearch['taxid' + suffix],
+    gene1: SUMMARY?.gene1?.symbol || 'A',
+    gene2: SUMMARY?.gene2?.symbol || 'B',
+  };
+}
+
+// Compute bar fill % for rank: linear scale capped at p95
+function rankLinearPct(value, p95) {
+  if (value == null || p95 == null || p95 <= 0) return 0;
+  return Math.min(100, (value / p95) * 100);
+}
+
+// ====== VIEW 1: Overview (A - DB - B) ======
 function drawSimSearchRankViz(mode) {
   const canvas = document.getElementById('simSearchRankCanvas');
   const legendEl = document.getElementById('simSearchLegend');
@@ -1322,216 +1449,233 @@ function drawSimSearchRankViz(mode) {
 
   const ctx = canvas.getContext('2d');
   const dpr = Math.max(2, window.devicePixelRatio || 1);
+  simSearchHitRegions = [];
 
-  // Set canvas size for HiDPI - compact but readable
-  const displayWidth = 640;
-  const displayHeight = 240;
+  const displayWidth = 680;
+  const displayHeight = 280;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
   ctx.scale(dpr, dpr);
 
-  // Clear canvas with background matching page
-  ctx.fillStyle = '#fefefe';
+  // Background matching page
+  ctx.fillStyle = '#fafafa';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-  const simSearch = SUMMARY.similarity_search || {};
-  const suffix = mode === 'struct' ? '_struct' : '_seq';
-  const dbFullName = mode === 'struct' ? 'AlphaFold DB' : 'UniProt';
+  const m = ssGetMetrics(mode);
+  const rank = m.rankInfo?.value ?? null;
+  const selfSP = m.selfSPInfo?.value ?? null;
+  const taxid = m.taxidInfo?.value ?? null;
 
-  const rankInfo = simSearch['rank' + suffix];
-  const selfSPInfo = simSearch['selfSP' + suffix];
-  const taxidInfo = simSearch['taxid' + suffix];
+  // Linear scale for rank (value / p95_cap)
+  const rankP95 = m.rankInfo?.p95_value ?? 500;
+  const rankFillPct = rankLinearPct(rank, rankP95);
 
-  const rank = rankInfo?.value ?? null;
-  const selfSP = selfSPInfo?.value ?? null;
-  const taxid = taxidInfo?.value ?? null;
+  // Percentiles for selfSP and taxid
+  const selfSPPct = m.selfSPInfo?.percentile ?? 50;
+  const selfSPPctRel = m.selfSPInfo?.percentile_rank_relative ?? selfSPPct;
+  const taxidPct = m.taxidInfo?.percentile ?? 50;
+  const taxidPctRel = m.taxidInfo?.percentile_rank_relative ?? taxidPct;
 
-  // Percentiles (low value = low percentile = empty bar)
-  const rankPct = rankInfo?.percentile ?? 50;
-  const selfSPPct = selfSPInfo?.percentile ?? 50;
-  const selfSPPctRel = selfSPInfo?.percentile_rank_relative ?? selfSPPct;
-  const taxidPct = taxidInfo?.percentile ?? 50;
-  const taxidPctRel = taxidInfo?.percentile_rank_relative ?? taxidPct;
+  // Total pairs for tooltip
+  const totalPairs = m.rankInfo?.total_pairs ?? 105107;
 
-  const gene1 = SUMMARY.gene1?.symbol || 'A1';
-  const gene2 = SUMMARY.gene2?.symbol || 'A2';
+  // PPI network-unified colors
+  const geneAColor = '#d97706';   // Amber (PPI center gene)
+  const geneAStroke = '#92400e';
+  const geneBColor = '#7c3aed';   // Purple (PPI partner)
+  const geneBStroke = '#5b21b6';
+  // Page-matching box colors (cream/grey, no coral)
+  const dbBoxColor = '#f5f1e6';
+  const dbBoxStroke = '#e0d7c2';
+  const barBgColor = '#eae6dc';
+  const barFillColor = '#5f4d2f';
+  const barFillRelColor = '#8b7a5e';
+  const barBorderColor = '#333';
 
-  // Colors matching page style
-  const geneAColor = '#43a047';  // Modern green (matches page)
-  const geneBColor = '#ff7d45';  // Modern orange (matches page)
-  const dbBoxColor = '#fce4e4';  // Very light coral/pink for DB
-  const dbBoxStroke = '#e8b0b0';
-  const barBgColor = '#e8e8e8';
-  const barFillColor = '#777';
-  const barFillRelColor = '#aaa';
-
-  // Layout - A on left, DB in center, B on right
+  // Layout
   const centerY = displayHeight / 2;
-  const geneAx = 75;
-  const geneBx = displayWidth - 75;
+  const geneAx = 80;
+  const geneBx = displayWidth - 80;
   const dbCenterX = displayWidth / 2;
-  const geneRadius = 32;
+  const geneRadius = 14;  // PPI network size
 
-  // Database box dimensions - larger for readability
-  const dbBoxWidth = 220;
-  const dbBoxHeight = 180;
+  // Database box
+  const dbBoxWidth = 260;
+  const dbBoxHeight = 210;
   const dbBoxLeft = dbCenterX - dbBoxWidth / 2;
   const dbBoxTop = centerY - dbBoxHeight / 2;
-  const dbBoxRadius = 16;
+  const dbBoxRadius = 12;
 
-  // Helper: draw rounded rectangle
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  }
-
-  // Helper: draw percentile bar (single)
-  function drawPercentileBar(x, y, width, height, pct) {
-    // Background
+  // Helper: draw bar with black border
+  function drawBar(x, y, width, height, fillPct, fillColor, r) {
+    r = r || 5;
+    // Full background
+    ssRoundRect(ctx, x, y, width, height, r);
     ctx.fillStyle = barBgColor;
-    roundRect(x, y, width, height, 4);
     ctx.fill();
-    // Fill based on percentile
-    if (pct > 0) {
-      const fillWidth = (pct / 100) * width;
-      ctx.fillStyle = barFillColor;
-      roundRect(x, y, fillWidth, height, 4);
+    ctx.strokeStyle = barBorderColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Fill
+    if (fillPct > 0) {
+      const fw = Math.max(2, (fillPct / 100) * width);
+      ssRoundRect(ctx, x, y, fw, height, r);
+      ctx.fillStyle = fillColor;
       ctx.fill();
+      ctx.strokeStyle = barBorderColor;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
   }
 
-  // Helper: draw split percentile bar (for selfSP and taxid)
-  function drawSplitPercentileBar(x, y, width, pctTop, pctBottom) {
-    const barHeight = 10;
-    const gap = 4;
-    // Top bar (overall)
-    drawPercentileBar(x, y, width, barHeight, pctTop);
-    // Bottom bar (rank-relative) - slightly lighter
-    ctx.fillStyle = barBgColor;
-    roundRect(x, y + barHeight + gap, width, barHeight, 4);
-    ctx.fill();
-    if (pctBottom > 0) {
-      const fillWidth = (pctBottom / 100) * width;
-      ctx.fillStyle = barFillRelColor;
-      roundRect(x, y + barHeight + gap, fillWidth, barHeight, 4);
-      ctx.fill();
-    }
+  // Helper: draw split bar (top + bottom with gap)
+  function drawSplitBar(x, y, width, pctTop, pctBottom) {
+    const bh = 12;
+    const gap = 3;
+    drawBar(x, y, width, bh, pctTop, barFillColor, 4);
+    drawBar(x, y + bh + gap, width, bh, pctBottom, barFillRelColor, 4);
   }
 
-  // Draw Gene A circle (green)
+  // Gene A circle (PPI style: glow + circle + label below)
+  ctx.beginPath();
+  ctx.arc(geneAx, centerY, geneRadius + 6, 0, Math.PI * 2);
+  ctx.fillStyle = geneAColor + '30';
+  ctx.fill();
   ctx.beginPath();
   ctx.arc(geneAx, centerY, geneRadius, 0, Math.PI * 2);
   ctx.fillStyle = geneAColor;
   ctx.fill();
-  ctx.strokeStyle = '#2e7d32';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = geneAStroke;
+  ctx.lineWidth = 2;
   ctx.stroke();
-
-  // Gene A label
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillStyle = '#fff';
+  // Label below circle
+  ctx.font = 'bold 12px -apple-system, sans-serif';
+  ctx.fillStyle = geneAStroke;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(gene1, geneAx, centerY);
+  ctx.textBaseline = 'top';
+  ctx.fillText(m.gene1, geneAx, centerY + geneRadius + 8);
 
-  // Draw Gene B circle (orange)
+  // Gene B circle (PPI style)
+  ctx.beginPath();
+  ctx.arc(geneBx, centerY, geneRadius + 6, 0, Math.PI * 2);
+  ctx.fillStyle = geneBColor + '30';
+  ctx.fill();
   ctx.beginPath();
   ctx.arc(geneBx, centerY, geneRadius, 0, Math.PI * 2);
   ctx.fillStyle = geneBColor;
   ctx.fill();
-  ctx.strokeStyle = '#e55a1b';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // Gene B label
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(gene2, geneBx, centerY);
-
-  // Draw connecting lines A <---- DB ----> B
-  ctx.strokeStyle = '#bbb';
+  ctx.strokeStyle = geneBStroke;
   ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.font = 'bold 12px -apple-system, sans-serif';
+  ctx.fillStyle = geneBStroke;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(m.gene2, geneBx, centerY + geneRadius + 8);
 
-  // Line from A to DB
+  // Connecting lines A <--- DB ---> B
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(geneAx + geneRadius + 5, centerY);
-  ctx.lineTo(dbBoxLeft - 5, centerY);
+  ctx.moveTo(geneAx + geneRadius + 8, centerY);
+  ctx.lineTo(dbBoxLeft - 6, centerY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(dbBoxLeft + dbBoxWidth + 6, centerY);
+  ctx.lineTo(geneBx - geneRadius - 8, centerY);
   ctx.stroke();
 
-  // Line from DB to B
-  ctx.beginPath();
-  ctx.moveTo(dbBoxLeft + dbBoxWidth + 5, centerY);
-  ctx.lineTo(geneBx - geneRadius - 5, centerY);
-  ctx.stroke();
-
-  // Draw database box (light coral rounded rectangle)
-  roundRect(dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight, dbBoxRadius);
+  // Database box (cream, no coral)
+  ssRoundRect(ctx, dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight, dbBoxRadius);
   ctx.fillStyle = dbBoxColor;
   ctx.fill();
   ctx.strokeStyle = dbBoxStroke;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Database name at top of box
-  ctx.font = 'bold 15px sans-serif';
-  ctx.fillStyle = '#666';
+  // DB name at top
+  ctx.font = 'bold 14px -apple-system, sans-serif';
+  ctx.fillStyle = '#5f4d2f';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(dbFullName, dbCenterX, dbBoxTop + 12);
+  ctx.fillText(m.dbFullName, dbCenterX, dbBoxTop + 12);
 
-  // Draw metrics inside DB box
-  const metricStartY = dbBoxTop + 45;
-  const metricSpacing = 44;
-  const labelX = dbBoxLeft + 18;
-  const valueX = dbBoxLeft + 80;
-  const barX = dbBoxLeft + 110;
-  const barWidth = 95;
+  // Metrics inside DB box
+  const metricStartY = dbBoxTop + 42;
+  const metricSpacing = 56;
+  const labelX = dbBoxLeft + 14;
+  const barX = dbBoxLeft + 14;
+  const barWidth = dbBoxWidth - 28;
 
-  // Rank row (single bar)
-  ctx.font = '13px sans-serif';
-  ctx.fillStyle = '#555';
+  const metricLabels = [
+    'Rank of the paralog',
+    'Human proteins ranking better',
+    'Species with proteins ranking better',
+  ];
+  const metricValues = [rank, selfSP, taxid];
+
+  // --- Rank row ---
+  const ry = metricStartY;
+  ctx.font = '12px -apple-system, sans-serif';
+  ctx.fillStyle = '#666';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText('rank:', labelX, metricStartY);
-  ctx.font = 'bold 15px sans-serif';
-  ctx.fillText(rank !== null ? rank.toString() : '-', valueX, metricStartY);
+  ctx.fillText(metricLabels[0], labelX, ry);
+  ctx.font = 'bold 14px -apple-system, sans-serif';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'right';
+  ctx.fillText(rank !== null ? formatNum(rank) : '-', barX + barWidth, ry);
   if (rank !== null) {
-    drawPercentileBar(barX, metricStartY - 7, barWidth, 14, rankPct);
+    drawBar(barX, ry + 8, barWidth, 14, rankFillPct, barFillColor, 5);
+    const rPos = m.rankInfo?.rank_position ?? null;
+    simSearchHitRegions.push({
+      x: barX, y: ry + 8, w: barWidth, h: 14,
+      tooltip: rPos != null ? `Rank ${formatNum(rank)}: ${formatNum(rPos)} of ${formatNum(totalPairs)} paralog pairs have a rank ≤ ${formatNum(rank)}` : `Rank: ${formatNum(rank)}`,
+    });
   }
 
-  // selfSP row (split bar)
-  const selfSPY = metricStartY + metricSpacing;
-  ctx.font = '13px sans-serif';
-  ctx.fillStyle = '#555';
-  ctx.fillText('selfSP:', labelX, selfSPY);
-  ctx.font = 'bold 15px sans-serif';
-  ctx.fillText(selfSP !== null ? selfSP.toString() : '-', valueX, selfSPY);
+  // --- selfSP row (split bar) ---
+  const sy = metricStartY + metricSpacing;
+  ctx.font = '12px -apple-system, sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'left';
+  ctx.fillText(metricLabels[1], labelX, sy);
+  ctx.font = 'bold 14px -apple-system, sans-serif';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'right';
+  ctx.fillText(selfSP !== null ? formatNum(selfSP) : '-', barX + barWidth, sy);
   if (selfSP !== null) {
-    drawSplitPercentileBar(barX, selfSPY - 12, barWidth, selfSPPct, selfSPPctRel);
+    drawSplitBar(barX, sy + 8, barWidth, selfSPPct, selfSPPctRel);
+    const sPos = m.selfSPInfo?.rank_position ?? null;
+    simSearchHitRegions.push({
+      x: barX, y: sy + 8, w: barWidth, h: 27,
+      tooltip: sPos != null
+        ? `${formatNum(selfSP)} human proteins rank better: ${formatNum(sPos)} of ${formatNum(totalPairs)} pairs have ≤ ${formatNum(selfSP)}<br><small>Top: vs all pairs · Bottom: vs pairs with similar rank</small>`
+        : `selfSP: ${formatNum(selfSP)}`,
+    });
   }
 
-  // taxid row (split bar)
-  const taxidY = metricStartY + metricSpacing * 2;
-  ctx.font = '13px sans-serif';
-  ctx.fillStyle = '#555';
-  ctx.fillText('taxid:', labelX, taxidY);
-  ctx.font = 'bold 15px sans-serif';
-  ctx.fillText(taxid !== null ? taxid.toString() : '-', valueX, taxidY);
+  // --- taxid row (split bar) ---
+  const ty = metricStartY + metricSpacing * 2;
+  ctx.font = '12px -apple-system, sans-serif';
+  ctx.fillStyle = '#666';
+  ctx.textAlign = 'left';
+  ctx.fillText(metricLabels[2], labelX, ty);
+  ctx.font = 'bold 14px -apple-system, sans-serif';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'right';
+  ctx.fillText(taxid !== null ? formatNum(taxid) : '-', barX + barWidth, ty);
   if (taxid !== null) {
-    drawSplitPercentileBar(barX, taxidY - 12, barWidth, taxidPct, taxidPctRel);
+    drawSplitBar(barX, ty + 8, barWidth, taxidPct, taxidPctRel);
+    const tPos = m.taxidInfo?.rank_position ?? null;
+    simSearchHitRegions.push({
+      x: barX, y: ty + 8, w: barWidth, h: 27,
+      tooltip: tPos != null
+        ? `${formatNum(taxid)} species rank better: ${formatNum(tPos)} of ${formatNum(totalPairs)} pairs have ≤ ${formatNum(taxid)}<br><small>Top: vs all pairs · Bottom: vs pairs with similar rank</small>`
+        : `taxid: ${formatNum(taxid)}`,
+    });
   }
 
   // Update legend
@@ -1539,17 +1683,169 @@ function drawSimSearchRankViz(mode) {
     let legendHTML = '';
     if (rank !== null) {
       if (rank === 0) {
-        legendHTML = `<strong style="color:#2e7d32">Direct match!</strong> ${gene2} is the top hit when searching ${dbFullName} with ${gene1}.`;
+        legendHTML = `<strong style="color:#2e7d32">Direct match!</strong> ${m.gene2} is the top hit when searching ${m.dbFullName} with ${m.gene1}.`;
       } else {
-        legendHTML = `<strong>${rank}</strong> proteins between ${gene1} and ${gene2}.`;
-        if (selfSP !== null) legendHTML += ` <strong>${selfSP}</strong> human.`;
-        if (taxid !== null) legendHTML += ` <strong>${taxid}</strong> species.`;
-        legendHTML += '<br><small style="color:#666">Bars: empty = close paralogs, filled = distant. Split bars: top = overall, bottom = vs similar rank.</small>';
+        legendHTML = `<strong>${formatNum(rank)}</strong> proteins between ${m.gene1} and ${m.gene2}.`;
+        if (selfSP !== null) legendHTML += ` <strong>${formatNum(selfSP)}</strong> human.`;
+        if (taxid !== null) legendHTML += ` <strong>${formatNum(taxid)}</strong> species.`;
+        legendHTML += '<br><span style="color:#888">Bars: empty = close paralogs, filled = distant. Split bars: top = vs all pairs, bottom = vs similar rank.</span>';
       }
     } else {
       legendHTML = 'Rank data not available for this pair.';
     }
     legendEl.innerHTML = legendHTML;
+  }
+}
+
+// ====== VIEW 2: Scale bars (A====B - - - - z) ======
+function drawSimSearchBarViz(mode) {
+  const canvas = document.getElementById('simSearchBarCanvas');
+  if (!canvas || !SUMMARY) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.max(2, window.devicePixelRatio || 1);
+  simSearchBarHitRegions = [];
+
+  const displayWidth = 680;
+  const displayHeight = 220;
+  canvas.width = displayWidth * dpr;
+  canvas.height = displayHeight * dpr;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+  const m = ssGetMetrics(mode);
+  const rank = m.rankInfo?.value ?? null;
+  const selfSP = m.selfSPInfo?.value ?? null;
+  const taxid = m.taxidInfo?.value ?? null;
+
+  // Use max values from data for the full bar width
+  const rankMax = m.rankInfo?.max_value ?? 1;
+  const selfSPMax = m.selfSPInfo?.max_value ?? 1;
+  const taxidMax = m.taxidInfo?.max_value ?? 1;
+  const totalPairs = m.rankInfo?.total_pairs ?? 105107;
+
+  // PPI colors
+  const geneAColor = '#d97706';
+  const geneAStroke = '#92400e';
+  const geneBColor = '#7c3aed';
+  const geneBStroke = '#5b21b6';
+  const filledColor = '#e8dcc8';
+  const filledBorder = '#333';
+  const emptyBorder = '#999';
+
+  const barLabels = [
+    'Rank of the paralog',
+    'Human proteins ranking better',
+    'Species with proteins ranking better',
+  ];
+  const values = [rank, selfSP, taxid];
+  const maxValues = [rankMax, selfSPMax, taxidMax];
+  const infos = [m.rankInfo, m.selfSPInfo, m.taxidInfo];
+
+  const padLeft = 24;
+  const padRight = 24;
+  const barTotalWidth = displayWidth - padLeft - padRight;
+  const barHeight = 28;
+  const barSpacing = 62;
+  const startY = 28;
+  const circleR = 12;
+
+  for (let i = 0; i < 3; i++) {
+    const val = values[i];
+    const maxVal = maxValues[i];
+    const info = infos[i];
+    const by = startY + i * barSpacing;
+
+    // Label above bar
+    ctx.font = '12px -apple-system, sans-serif';
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(barLabels[i], padLeft, by - 3);
+    // Value text right-aligned
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#888';
+    ctx.fillText(val != null ? `${formatNum(val)} / ${formatNum(maxVal)}` : '-', displayWidth - padRight, by - 3);
+
+    if (val == null || maxVal <= 0) continue;
+
+    const fillFrac = Math.min(1, val / maxVal);
+    const fillW = Math.max(0, fillFrac * barTotalWidth);
+    const emptyW = barTotalWidth - fillW;
+
+    // Filled portion (A====B)
+    if (fillW > 0) {
+      ssRoundRect(ctx, padLeft, by, fillW, barHeight, 5);
+      ctx.fillStyle = filledColor;
+      ctx.fill();
+      ctx.strokeStyle = filledBorder;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // Empty portion (- - - z) with dashed border
+    if (emptyW > 2) {
+      ssRoundRect(ctx, padLeft + fillW, by, emptyW, barHeight, 5);
+      ctx.fillStyle = '#fafafa';
+      ctx.fill();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = emptyBorder;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Gene A circle at start
+    const ax = padLeft;
+    const cy = by + barHeight / 2;
+    ctx.beginPath();
+    ctx.arc(ax, cy, circleR, 0, Math.PI * 2);
+    ctx.fillStyle = geneAColor;
+    ctx.fill();
+    ctx.strokeStyle = geneAStroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = 'bold 9px -apple-system, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.gene1, ax, cy);
+
+    // Gene B circle at fill boundary
+    const bx = padLeft + fillW;
+    ctx.beginPath();
+    ctx.arc(bx, cy, circleR, 0, Math.PI * 2);
+    ctx.fillStyle = geneBColor;
+    ctx.fill();
+    ctx.strokeStyle = geneBStroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = 'bold 9px -apple-system, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.gene2, bx, cy);
+
+    // "max" label at end
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillStyle = '#999';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('max', displayWidth - padRight - 4, cy);
+
+    // Hit region for tooltip
+    const rPos = info?.rank_position ?? null;
+    const pctStr = (fillFrac * 100).toFixed(1);
+    simSearchBarHitRegions.push({
+      x: padLeft, y: by, w: barTotalWidth, h: barHeight,
+      tooltip: rPos != null
+        ? `${formatNum(val)} out of max ${formatNum(maxVal)} (${pctStr}%)<br>${formatNum(rPos)} of ${formatNum(totalPairs)} pairs have ≤ ${formatNum(val)}`
+        : `${formatNum(val)} out of max ${formatNum(maxVal)} (${pctStr}%)`,
+    });
   }
 }
 

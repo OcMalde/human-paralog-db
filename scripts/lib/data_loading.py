@@ -340,13 +340,15 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
     For selfSP and taxid, also computes rank-relative percentiles
     (comparing against pairs with similar rank).
 
-    Percentile interpretation: low value = empty bar (close paralogs)
+    Rank uses linear scale (value / p95_cap) for intuitive visualization.
+    selfSP and taxid use percentiles for relative comparison.
     """
     df = load_features_df()
     if df.empty or pair_row is None:
         return {}
 
     results = {}
+    total_pairs = len(df)
 
     # Process each suffix (struct and seq)
     for suffix in ['_struct', '_seq']:
@@ -354,22 +356,41 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
         selfsp_col = 'selfSP' + suffix
         taxid_col = 'taxid' + suffix
 
+        # Compute global stats (max, p95) for bar scaling
+        def col_stats(col):
+            s = df[col].dropna() if col in df.columns else pd.Series(dtype=float)
+            if s.empty:
+                return {'max': 1.0, 'p95': 1.0, 'count': 0}
+            return {
+                'max': float(s.max()),
+                'p95': float(np.percentile(s, 95)),
+                'count': int(len(s)),
+            }
+
+        rank_stats = col_stats(rank_col)
+        selfsp_stats = col_stats(selfsp_col)
+        taxid_stats = col_stats(taxid_col)
+
         # Get rank value for this pair (needed for rank-relative percentiles)
         rank_val = pair_row.get(rank_col) if rank_col in pair_row.index else None
 
-        # Process rank metric
+        # Process rank metric - use linear scale, not percentile
         if rank_col in pair_row.index and rank_col in df.columns:
             val = pair_row[rank_col]
             pct = compute_percentile(val, df[rank_col])
-            # For rank: low value = good (close paralogs), so percentile shows position
-            # Low rank = low percentile (empty bar = close)
+            # Rank position: how many pairs have a lower rank value
+            rank_position = int(np.sum(df[rank_col].dropna() <= val)) if pd.notna(val) else None
             results[rank_col] = {
                 'value': float(val) if pd.notna(val) else None,
-                'percentile': float(pct),  # Low value = low percentile = empty bar
+                'percentile': float(pct),
                 'raw_percentile': float(pct),
                 'label': rank_col,
                 'higher_is_better': False,
-                'radar_value': float(100 - pct),  # Inverted for radar (higher = better)
+                'radar_value': float(100 - pct),
+                'rank_position': rank_position,
+                'max_value': rank_stats['max'],
+                'p95_value': rank_stats['p95'],
+                'total_pairs': total_pairs,
             }
 
         # Process selfSP metric (with rank-relative percentile)
@@ -379,16 +400,21 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
             pct_rank_rel = compute_rank_relative_percentile(
                 val, rank_val, df, selfsp_col, rank_col
             ) if pd.notna(rank_val) else pct_overall
+            # Position: how many pairs have a lower selfSP value
+            selfsp_position = int(np.sum(df[selfsp_col].dropna() <= val)) if pd.notna(val) else None
 
-            # For selfSP: low value = good (fewer humans between), low percentile = empty bar
             results[selfsp_col] = {
                 'value': float(val) if pd.notna(val) else None,
-                'percentile': float(pct_overall),  # Overall percentile
-                'percentile_rank_relative': float(pct_rank_rel),  # Vs similar rank pairs
+                'percentile': float(pct_overall),
+                'percentile_rank_relative': float(pct_rank_rel),
                 'raw_percentile': float(pct_overall),
                 'label': selfsp_col,
-                'higher_is_better': False,  # Lower = closer paralogs
-                'radar_value': float(100 - pct_overall),  # Inverted for radar
+                'higher_is_better': False,
+                'radar_value': float(100 - pct_overall),
+                'rank_position': selfsp_position,
+                'max_value': selfsp_stats['max'],
+                'p95_value': selfsp_stats['p95'],
+                'total_pairs': total_pairs,
             }
 
         # Process taxid metric (with rank-relative percentile)
@@ -398,16 +424,21 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
             pct_rank_rel = compute_rank_relative_percentile(
                 val, rank_val, df, taxid_col, rank_col
             ) if pd.notna(rank_val) else pct_overall
+            # Position: how many pairs have a lower taxid value
+            taxid_position = int(np.sum(df[taxid_col].dropna() <= val)) if pd.notna(val) else None
 
-            # For taxid: low value = good (fewer species between), low percentile = empty bar
             results[taxid_col] = {
                 'value': float(val) if pd.notna(val) else None,
-                'percentile': float(pct_overall),  # Overall percentile
-                'percentile_rank_relative': float(pct_rank_rel),  # Vs similar rank pairs
+                'percentile': float(pct_overall),
+                'percentile_rank_relative': float(pct_rank_rel),
                 'raw_percentile': float(pct_overall),
                 'label': taxid_col,
-                'higher_is_better': False,  # Lower = closer paralogs
-                'radar_value': float(100 - pct_overall),  # Inverted for radar
+                'higher_is_better': False,
+                'radar_value': float(100 - pct_overall),
+                'rank_position': taxid_position,
+                'max_value': taxid_stats['max'],
+                'p95_value': taxid_stats['p95'],
+                'total_pairs': total_pairs,
             }
 
     return results
