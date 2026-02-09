@@ -235,7 +235,7 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
     # Categorize blocks
     categorized = categorize_blocks(blocks, gene_a_seq, gene_b_seq)
 
-    # Simplify block data for JSON (just positions and category, no raw sequences)
+    # Build block data for JSON, including AA sequences
     blocks_json = []
     for block in categorized:
         b = {
@@ -249,19 +249,15 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
                 'start': info['start'],
                 'end': info['end'],
                 'length': info['length'],
+                'seq': info.get('seq', ''),
             }
         blocks_json.append(b)
 
-    # Sort blocks by the position in gene_a (or gene_b if A not in block)
+    # Sort blocks by PLMA order (B1, B2, B3...) which is the alignment order
     def block_sort_key(b):
-        if gene_a_seq in b['positions']:
-            return b['positions'][gene_a_seq]['start']
-        if gene_b_seq in b['positions']:
-            return b['positions'][gene_b_seq]['start']
-        # For family-only blocks, use first available sequence
-        for pos in b['positions'].values():
-            return pos['start']
-        return 0
+        # Extract numeric part from block id (e.g., "B12" -> 12)
+        m = re.match(r'B(\d+)', b['id'])
+        return int(m.group(1)) if m else 0
 
     blocks_json.sort(key=block_sort_key)
 

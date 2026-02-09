@@ -1928,22 +1928,53 @@ function drawPlmaAlignment() {
     if (s.num !== geneASeq && s.num !== geneBSeq) orderedSeqs.push(s);
   }
 
-  // Find max sequence length for scaling
-  const maxLen = Math.max(...orderedSeqs.map(s => s.length || 1));
-
-  // Layout
   const nSeqs = orderedSeqs.length;
+  const nBlocks = blocks.length;
+
+  // === Column-based layout ===
+  // Each block gets a column proportional to its max length.
+  // Between blocks: a gap column with dashed connectors.
   const labelWidth = 90;
-  const padRight = 30;
+  const padRight = 16;
   const padTop = 20;
   const trackHeight = nSeqs <= 6 ? 22 : (nSeqs <= 15 ? 14 : 10);
   const trackGap = nSeqs <= 6 ? 10 : (nSeqs <= 15 ? 6 : 3);
-  const pairTrackHeight = trackHeight + 6; // Pair tracks slightly taller
-  const legendSpace = 0;
+  const pairTrackHeight = trackHeight + 6;
 
   const displayWidth = Math.max(700, canvas.parentElement?.clientWidth || 700);
+  const trackAreaWidth = displayWidth - labelWidth - padRight;
+
+  // Compute max length per block (across all seqs in that block)
+  const blockMaxLen = blocks.map(b => {
+    let mx = 0;
+    for (const pos of Object.values(b.positions)) mx = Math.max(mx, pos.length || 0);
+    return mx;
+  });
+  const totalBlockAA = blockMaxLen.reduce((a, b) => a + b, 0) || 1;
+
+  // Gap width: fixed per gap, but adapt to available space
+  const nGaps = Math.max(0, nBlocks - 1);
+  const gapWidthBase = nBlocks <= 10 ? 14 : (nBlocks <= 50 ? 8 : 4);
+  const totalGapWidth = nGaps * gapWidthBase;
+  const blockAreaWidth = Math.max(trackAreaWidth - totalGapWidth, trackAreaWidth * 0.5);
+  const gapWidth = nGaps > 0 ? (trackAreaWidth - blockAreaWidth) / nGaps : 0;
+  const minBlockPx = 3;
+
+  // Column x positions (start of each block column)
+  const blockColX = [];
+  const blockColW = [];
+  let curX = labelWidth;
+  for (let bi = 0; bi < nBlocks; bi++) {
+    blockColX.push(curX);
+    const w = Math.max(minBlockPx, (blockMaxLen[bi] / totalBlockAA) * blockAreaWidth);
+    blockColW.push(w);
+    curX += w;
+    if (bi < nBlocks - 1) curX += gapWidth; // gap between blocks
+  }
+
+  // Canvas height
   const totalTrackHeight = pairTrackHeight * 2 + (trackGap * 2) +
-    (nSeqs - 2) * (trackHeight + trackGap) + padTop + 30 + legendSpace;
+    Math.max(0, nSeqs - 2) * (trackHeight + trackGap) + padTop + 30;
   const displayHeight = Math.max(180, totalTrackHeight);
 
   canvas.width = displayWidth * dpr;
@@ -1952,19 +1983,16 @@ function drawPlmaAlignment() {
   canvas.style.height = displayHeight + 'px';
   ctx.scale(dpr, dpr);
 
-  // Background
   ctx.fillStyle = '#fafafa';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-  const trackAreaWidth = displayWidth - labelWidth - padRight;
-
-  // Category colors matching page style
+  // Category colors
   const catColors = {
-    shared_with_family: '#b8a882',  // Warm muted tan (page cream accent)
-    pair_exclusive:     '#8b6f3a',  // Rich brown-gold
-    specific_a:         '#d97706',  // Amber (gene A - PPI style)
-    specific_b:         '#7c3aed',  // Purple (gene B - PPI style)
-    family_only:        '#d4cfc5',  // Very light warm grey
+    shared_with_family: '#b8a882',
+    pair_exclusive:     '#8b6f3a',
+    specific_a:         '#d97706',
+    specific_b:         '#7c3aed',
+    family_only:        '#d4cfc5',
   };
   const catBorders = {
     shared_with_family: '#7a6842',
@@ -1981,7 +2009,12 @@ function drawPlmaAlignment() {
     family_only:        'Other family members only',
   };
 
-  // Draw each sequence track
+  // For each sequence, build a list of which block indices it participates in
+  const seqBlockIndices = orderedSeqs.map(seq =>
+    blocks.map((b, i) => b.positions[seq.num] ? i : -1).filter(i => i >= 0)
+  );
+
+  // Draw tracks
   let yPos = padTop;
 
   for (let si = 0; si < orderedSeqs.length; si++) {
@@ -1990,7 +2023,7 @@ function drawPlmaAlignment() {
     const isPairB = seq.num === geneBSeq;
     const isPair = isPairA || isPairB;
     const th = isPair ? pairTrackHeight : trackHeight;
-    const seqLen = seq.length || 1;
+    const myBlockIndices = seqBlockIndices[si];
 
     // Track label
     ctx.font = isPair ? 'bold 12px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
@@ -2000,25 +2033,33 @@ function drawPlmaAlignment() {
     const label = seq.gene || seq.uniprot || `Seq ${seq.num}`;
     ctx.fillText(label, labelWidth - 8, yPos + th / 2);
 
-    // Draw sequence background track (full length)
-    const trackX = labelWidth;
-    const trackW = (seqLen / maxLen) * trackAreaWidth;
+    // Draw gap connectors (dashed lines between consecutive blocks this seq has)
+    const cy = yPos + th / 2;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = isPair ? '#c0b69e' : '#d5d5d5';
+    ctx.lineWidth = isPair ? 1.2 : 0.8;
 
-    ctx.fillStyle = isPair ? '#f0ebe0' : '#eee';
-    plmaRoundRect(ctx, trackX, yPos, trackW, th, 3);
-    ctx.fill();
-    ctx.strokeStyle = isPair ? '#d0c8b0' : '#ddd';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    for (let k = 0; k < myBlockIndices.length - 1; k++) {
+      const biLeft = myBlockIndices[k];
+      const biRight = myBlockIndices[k + 1];
+      const x1 = blockColX[biLeft] + blockColW[biLeft]; // right edge of left block
+      const x2 = blockColX[biRight]; // left edge of right block
+      if (x2 > x1 + 1) {
+        ctx.beginPath();
+        ctx.moveTo(x1, cy);
+        ctx.lineTo(x2, cy);
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
 
-    // Draw blocks on this track
-    for (const block of blocks) {
+    // Draw blocks at their aligned column positions
+    for (const bi of myBlockIndices) {
+      const block = blocks[bi];
       const pos = block.positions[seq.num];
-      if (!pos) continue;
-
       const cat = block.category;
-      const bx = trackX + ((pos.start - 1) / maxLen) * trackAreaWidth;
-      const bw = Math.max(2, (pos.length / maxLen) * trackAreaWidth);
+      const bx = blockColX[bi];
+      const bw = blockColW[bi];
 
       ctx.fillStyle = catColors[cat] || '#ccc';
       plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
@@ -2027,21 +2068,23 @@ function drawPlmaAlignment() {
       ctx.lineWidth = isPair ? 1.2 : 0.8;
       ctx.stroke();
 
-      // Hit region for tooltip
+      // AA sequence for tooltip (wrap long sequences)
+      const aaSeq = pos.seq || '';
+      let aaHtml = '';
+      if (aaSeq.length > 0) {
+        // Wrap every 40 chars
+        const wrapped = aaSeq.match(/.{1,40}/g) || [aaSeq];
+        aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
+      }
+
       plmaHitRegions.push({
         x: bx, y: yPos, w: bw, h: th,
         tooltip: `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
           + `${label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
-          + `<span style="color:#888">${block.n_seqs} of ${nSeqs} family members in this block</span>`,
+          + `<span style="color:#888">${block.n_seqs} of ${nSeqs} family members</span>`
+          + aaHtml,
       });
     }
-
-    // Length annotation at end of track
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.fillStyle = '#aaa';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`${seqLen} aa`, trackX + trackW + 4, yPos + th / 2);
 
     // Separator after pair tracks
     if (si === 1 && nSeqs > 2) {
@@ -2059,7 +2102,7 @@ function drawPlmaAlignment() {
     }
   }
 
-  // Update legend
+  // Legend
   if (legendEl) {
     const usedCats = new Set(blocks.map(b => b.category));
     let html = '';
@@ -2069,10 +2112,14 @@ function drawPlmaAlignment() {
         + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:${catColors[cat]};border:1px solid ${catBorders[cat]}"></span>`
         + `<span>${label}</span></span>`;
     }
+    // Add gap connector to legend
+    html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+      + `<span style="display:inline-block;width:14px;border-top:1.5px dashed #b0a890;height:0;"></span>`
+      + `<span>Gap between blocks</span></span>`;
     legendEl.innerHTML = html;
   }
 
-  // Update summary
+  // Summary
   if (summaryEl) {
     const s = plma.summary || {};
     const parts = [];
