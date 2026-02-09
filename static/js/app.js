@@ -599,7 +599,7 @@ function renderFamilyConstellation() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   // Light background matching rest of page
-  ctx.fillStyle = '#fafafa';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
 
   // Draw orbit circles (identity thresholds) - including 0%
@@ -1467,7 +1467,7 @@ function drawSimSearchRankViz(mode) {
   ctx.scale(dpr, dpr);
 
   // Background matching page
-  ctx.fillStyle = '#fafafa';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
   const m = ssGetMetrics(mode);
@@ -1714,14 +1714,14 @@ function drawSimSearchBarViz(mode) {
   simSearchBarHitRegions = [];
 
   const displayWidth = 680;
-  const displayHeight = 260;
+  const displayHeight = 290;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
   ctx.scale(dpr, dpr);
 
-  ctx.fillStyle = '#fafafa';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
   const m = ssGetMetrics(mode);
@@ -1757,10 +1757,10 @@ function drawSimSearchBarViz(mode) {
   const padRight = 24;
   const barTotalWidth = displayWidth - padLeft - padRight;
   const barHeight = 28;
-  const barSpacing = 72;
+  const barSpacing = 78;
   const startY = 28;
   const circleR = 12;
-  const fixedGap = circleR * 2 + 8; // minimum px between A and B centers
+  const fixedGap = circleR * 4 + 16; // minimum px between A and B centers so labels never overlap
 
   for (let i = 0; i < 3; i++) {
     const val = values[i];
@@ -1800,7 +1800,7 @@ function drawSimSearchBarViz(mode) {
     // Empty portion (- - - z) with dashed border
     if (emptyW > 2) {
       ssRoundRect(ctx, padLeft + fillW, by, emptyW, barHeight, 5);
-      ctx.fillStyle = '#fafafa';
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = emptyBorder;
@@ -1999,7 +1999,7 @@ function drawPlmaAlignment() {
   if (inner) inner.style.minWidth = displayWidth + 'px';
   ctx.scale(dpr, dpr);
 
-  ctx.fillStyle = '#fafafa';
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
   // Category colors
