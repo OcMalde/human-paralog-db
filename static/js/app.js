@@ -1941,8 +1941,7 @@ function drawPlmaAlignment() {
   const trackGap = nSeqs <= 6 ? 10 : (nSeqs <= 15 ? 6 : 3);
   const pairTrackHeight = trackHeight + 6;
 
-  const displayWidth = Math.max(700, canvas.parentElement?.clientWidth || 700);
-  const trackAreaWidth = displayWidth - labelWidth - padRight;
+  const containerWidth = Math.max(700, canvas.parentElement?.clientWidth || 700);
 
   // Compute max length per block (across all seqs in that block)
   const blockMaxLen = blocks.map(b => {
@@ -1952,9 +1951,16 @@ function drawPlmaAlignment() {
   });
   const totalBlockAA = blockMaxLen.reduce((a, b) => a + b, 0) || 1;
 
-  // Gap width: fixed per gap, but adapt to available space
+  // Ensure a minimum pixel-per-AA so blocks remain readable.
+  // If needed, the canvas expands beyond the container (horizontal scroll).
   const nGaps = Math.max(0, nBlocks - 1);
   const gapWidthBase = nBlocks <= 10 ? 14 : (nBlocks <= 50 ? 8 : 4);
+  const minPxPerAA = 0.6;
+  const minBlockArea = totalBlockAA * minPxPerAA;
+  const minNeededWidth = labelWidth + padRight + minBlockArea + nGaps * gapWidthBase;
+  const displayWidth = Math.max(containerWidth, minNeededWidth);
+  const trackAreaWidth = displayWidth - labelWidth - padRight;
+
   const totalGapWidth = nGaps * gapWidthBase;
   const blockAreaWidth = Math.max(trackAreaWidth - totalGapWidth, trackAreaWidth * 0.5);
   const gapWidth = nGaps > 0 ? (trackAreaWidth - blockAreaWidth) / nGaps : 0;
