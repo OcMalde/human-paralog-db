@@ -1344,7 +1344,7 @@ function initSimilaritySearchSection() {
   }
   if (btn0) btn0.addEventListener('click', () => setView(0));
   if (btn1) btn1.addEventListener('click', () => setView(1));
-  setView(0);
+  setView(1);
 
   // Hover tooltip for overview canvas
   const tooltip = document.getElementById('simSearchTooltip');
@@ -1714,7 +1714,7 @@ function drawSimSearchBarViz(mode) {
   simSearchBarHitRegions = [];
 
   const displayWidth = 680;
-  const displayHeight = 220;
+  const displayHeight = 260;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
@@ -1757,9 +1757,10 @@ function drawSimSearchBarViz(mode) {
   const padRight = 24;
   const barTotalWidth = displayWidth - padLeft - padRight;
   const barHeight = 28;
-  const barSpacing = 62;
+  const barSpacing = 72;
   const startY = 28;
   const circleR = 12;
+  const fixedGap = circleR * 2 + 8; // minimum px between A and B centers
 
   for (let i = 0; i < 3; i++) {
     const val = values[i];
@@ -1781,7 +1782,9 @@ function drawSimSearchBarViz(mode) {
     if (val == null || maxVal <= 0) continue;
 
     const fillFrac = Math.min(1, val / maxVal);
-    const fillW = Math.max(0, fillFrac * barTotalWidth);
+    // Usable bar width after reserving the fixed gap
+    const usableWidth = barTotalWidth - fixedGap;
+    const fillW = fixedGap + Math.max(0, fillFrac * usableWidth);
     const emptyW = barTotalWidth - fillW;
 
     // Filled portion (A====B)
@@ -1816,11 +1819,6 @@ function drawSimSearchBarViz(mode) {
     ctx.strokeStyle = geneAStroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.font = 'bold 9px -apple-system, sans-serif';
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(m.gene1, ax, cy);
 
     // Gene B circle at fill boundary
     const bx = padLeft + fillW;
@@ -1831,11 +1829,19 @@ function drawSimSearchBarViz(mode) {
     ctx.strokeStyle = geneBStroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    ctx.font = 'bold 9px -apple-system, sans-serif';
-    ctx.fillStyle = '#fff';
+
+    // Gene A label below circle (black, like overview)
+    ctx.font = 'bold 11px -apple-system, sans-serif';
+    ctx.fillStyle = geneAStroke;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(m.gene2, bx, cy);
+    ctx.textBaseline = 'top';
+    ctx.fillText(m.gene1, ax, cy + circleR + 3);
+
+    // Gene B label below circle (black, like overview)
+    ctx.fillStyle = geneBStroke;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(m.gene2, bx, cy + circleR + 3);
 
     // "max" label at end
     ctx.font = '10px -apple-system, sans-serif';
