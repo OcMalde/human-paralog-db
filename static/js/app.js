@@ -1714,7 +1714,7 @@ function drawSimSearchBarViz(mode) {
   simSearchBarHitRegions = [];
 
   const displayWidth = 680;
-  const displayHeight = 290;
+  const displayHeight = 310;
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
@@ -1753,14 +1753,21 @@ function drawSimSearchBarViz(mode) {
   const maxValues = [rankMax, selfSPMax, taxidMax];
   const infos = [m.rankInfo, m.selfSPInfo, m.taxidInfo];
 
-  const padLeft = 24;
+  // Measure gene label widths to compute proper spacing
+  ctx.font = 'bold 11px -apple-system, sans-serif';
+  const labelAWidth = ctx.measureText(m.gene1 || '').width;
+  const labelBWidth = ctx.measureText(m.gene2 || '').width;
+
+  const circleR = 12;
+  // padLeft must be enough so the A label (left-aligned from circle center) doesn't clip
+  const padLeft = Math.max(24, circleR + 4);
   const padRight = 24;
   const barTotalWidth = displayWidth - padLeft - padRight;
   const barHeight = 28;
-  const barSpacing = 78;
+  const barSpacing = 82;
   const startY = 28;
-  const circleR = 12;
-  const fixedGap = circleR * 4 + 16; // minimum px between A and B centers so labels never overlap
+  // Fixed gap = enough so the two below-circle labels never overlap
+  const fixedGap = Math.max(80, labelAWidth / 2 + labelBWidth / 2 + 20);
 
   for (let i = 0; i < 3; i++) {
     const val = values[i];
@@ -1830,18 +1837,18 @@ function drawSimSearchBarViz(mode) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Gene A label below circle (black, like overview)
+    // Gene A label below circle
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.fillStyle = geneAStroke;
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(m.gene1, ax, cy + circleR + 3);
+    ctx.fillText(m.gene1, Math.max(2, ax - labelAWidth / 2), cy + circleR + 4);
 
-    // Gene B label below circle (black, like overview)
+    // Gene B label below circle
     ctx.fillStyle = geneBStroke;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(m.gene2, bx, cy + circleR + 3);
+    ctx.fillText(m.gene2, bx, cy + circleR + 4);
 
     // "max" label at end
     ctx.font = '10px -apple-system, sans-serif';
