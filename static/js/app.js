@@ -21,6 +21,7 @@ let FAMILY_INDEX = null;
 let DATA = null;
 let SUMMARY = null;
 let PDB64_FULL = "";
+let PLMA_DATA = null;
 
 // PDBe highlight state
 let isProteinHighlighted = false;
@@ -96,6 +97,12 @@ async function loadDataAndInit() {
         document.title = `${DATA.g1} vs ${DATA.g2}`;
         document.getElementById('titleMain').textContent = `${DATA.g1} ↔ ${DATA.g2}`;
         document.getElementById('titleSub').textContent = `Paralog pair ${DATA.PAIR}`;
+
+        // Load PLMA alignment data
+        try {
+            const plmaResp = await fetch(`${DATA_BASE}/pairs/${PAIR_ID}/plma.json`);
+            if (plmaResp.ok) PLMA_DATA = await plmaResp.json();
+        } catch(e) { console.warn('PLMA data not available:', e); }
 
         // Load family data
         await loadFamilyData();
@@ -1201,7 +1208,7 @@ function renderConservationList() {
 /* ========== NEW SECTION FUNCTIONS ========== */
 
 // Charts for new sections
-let famFeatRadarChart = null;
+// (radar chart removed - replaced by PLMA alignment)
 
 const DESC_TRUNCATE_LENGTH = 200; // Characters before truncation
 
@@ -1292,7 +1299,7 @@ function initProteinDescriptions() {
 }
 
 // Boxplot chart instances for new sections
-let famFeatBoxplotChart = null;
+// (boxplot chart removed - replaced by PLMA alignment)
 
 // Current similarity search mode (struct or seq) and view (0=overview, 1=scale)
 let simSearchMode = 'struct';
@@ -1849,145 +1856,250 @@ function drawSimSearchBarViz(mode) {
   }
 }
 
+// ========== PLMA ALIGNMENT VISUALIZATION ==========
+let plmaHitRegions = [];
+
 function initFamilyFeaturesSection() {
-  const famFeat = SUMMARY.family_features || {};
-  const wrapper = document.getElementById('famFeatRadarWrapper');
-  if (!wrapper) return;
-
-  // All ratio metrics for radar - use exact column names
-  const allMetrics = [
-    'rmean_shared_aa_withFamily',
-    'rmean_shared_aa_pairExclusive',
-    'rmean_shared_aa_onlyWithFamily',
-    'clustalo_r_shared_aa_withFamily',
-    'clustalo_r_shared_aa_pairExclusive',
-    'clustalo_r_shared_aa_onlyWithFamily',
-    'clustalo_r_sum_specific'
-  ];
-
-  const metricKeys = [];
-  const labels = [];
-  const values = [];
-
-  for (const key of allMetrics) {
-    const info = famFeat[key];
-    if (info) {
-      metricKeys.push(key);
-      labels.push(info.label || key);
-      values.push(info.radar_value ?? 50);
+  const canvas = document.getElementById('plmaAlignCanvas');
+  if (!canvas || !PLMA_DATA) {
+    const body = document.getElementById('familyFeaturesBody');
+    if (body && !PLMA_DATA) {
+      body.innerHTML = '<p class="small" style="color:#888;">PLMA alignment data not available for this pair.</p>';
     }
-  }
-
-  if (labels.length === 0) {
-    wrapper.innerHTML = '<div class="boxplot-hint">Family feature data not available</div>';
     return;
   }
 
-  if (typeof Chart === 'undefined') {
-    wrapper.innerHTML = '<div class="boxplot-hint">Chart.js not loaded</div>';
-    return;
-  }
+  drawPlmaAlignment();
 
-  let canvas = wrapper.querySelector('canvas#famFeatRadar');
-  if (!canvas) {
-    canvas = document.createElement('canvas');
-    canvas.id = 'famFeatRadar';
-    wrapper.innerHTML = '';
-    wrapper.appendChild(canvas);
-  }
-
-  const ctx = canvas.getContext('2d');
-  if (famFeatRadarChart) {
-    famFeatRadarChart.destroy();
-  }
-
-  famFeatRadarChart = new Chart(ctx, {
-    type: 'radar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Family Feature Percentile',
-        data: values,
-        fill: true,
-        backgroundColor: 'rgba(255, 152, 0, 0.2)',
-        borderColor: 'rgba(255, 152, 0, 1)',
-        pointBackgroundColor: 'rgba(255, 152, 0, 1)',
-        pointBorderColor: '#fff',
-        pointRadius: 5,
-        pointHoverRadius: 7,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        r: {
-          angleLines: { display: true },
-          suggestedMin: 0,
-          suggestedMax: 100,
-          ticks: { stepSize: 25, callback: (v) => v + '%' }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => (((ctx.parsed && ctx.parsed.r) ?? 0).toFixed(1) + '% percentile') } }
-      },
-      onClick: (_, elements) => {
-        if (elements.length > 0) {
-          const idx = elements[0].index;
-          const metricKey = metricKeys[idx];
-          showFamFeatBoxplot(metricKey);
+  // Tooltip handling
+  const tooltip = document.getElementById('plmaTooltip');
+  if (tooltip) {
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.max(2, window.devicePixelRatio || 1);
+      const x = (e.clientX - rect.left) * (canvas.width / (rect.width * dpr));
+      const y = (e.clientY - rect.top) * (canvas.height / (rect.height * dpr));
+      let hit = null;
+      for (const region of plmaHitRegions) {
+        if (x >= region.x && x <= region.x + region.w && y >= region.y && y <= region.y + region.h) {
+          hit = region;
+          break;
         }
       }
+      if (hit) {
+        tooltip.innerHTML = hit.tooltip;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top = (e.clientY - 6) + 'px';
+        canvas.style.cursor = 'default';
+      } else {
+        tooltip.style.display = 'none';
+      }
+    });
+    canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  }
+}
+
+function drawPlmaAlignment() {
+  const canvas = document.getElementById('plmaAlignCanvas');
+  const legendEl = document.getElementById('plmaLegend');
+  const summaryEl = document.getElementById('plmaSummary');
+  if (!canvas || !PLMA_DATA) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.max(2, window.devicePixelRatio || 1);
+  plmaHitRegions = [];
+
+  const plma = PLMA_DATA;
+  const sequences = plma.sequences || [];
+  const blocks = plma.blocks || [];
+  const geneASeq = plma.gene_a_seq;
+  const geneBSeq = plma.gene_b_seq;
+  const geneA = plma.gene_a;
+  const geneB = plma.gene_b;
+
+  // Reorder: gene A first, gene B second, then others
+  const orderedSeqs = [];
+  const seqA = sequences.find(s => s.num === geneASeq);
+  const seqB = sequences.find(s => s.num === geneBSeq);
+  if (seqA) orderedSeqs.push(seqA);
+  if (seqB) orderedSeqs.push(seqB);
+  for (const s of sequences) {
+    if (s.num !== geneASeq && s.num !== geneBSeq) orderedSeqs.push(s);
+  }
+
+  // Find max sequence length for scaling
+  const maxLen = Math.max(...orderedSeqs.map(s => s.length || 1));
+
+  // Layout
+  const nSeqs = orderedSeqs.length;
+  const labelWidth = 90;
+  const padRight = 30;
+  const padTop = 20;
+  const trackHeight = nSeqs <= 6 ? 22 : (nSeqs <= 15 ? 14 : 10);
+  const trackGap = nSeqs <= 6 ? 10 : (nSeqs <= 15 ? 6 : 3);
+  const pairTrackHeight = trackHeight + 6; // Pair tracks slightly taller
+  const legendSpace = 0;
+
+  const displayWidth = Math.max(700, canvas.parentElement?.clientWidth || 700);
+  const totalTrackHeight = pairTrackHeight * 2 + (trackGap * 2) +
+    (nSeqs - 2) * (trackHeight + trackGap) + padTop + 30 + legendSpace;
+  const displayHeight = Math.max(180, totalTrackHeight);
+
+  canvas.width = displayWidth * dpr;
+  canvas.height = displayHeight * dpr;
+  canvas.style.width = displayWidth + 'px';
+  canvas.style.height = displayHeight + 'px';
+  ctx.scale(dpr, dpr);
+
+  // Background
+  ctx.fillStyle = '#fafafa';
+  ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+  const trackAreaWidth = displayWidth - labelWidth - padRight;
+
+  // Category colors matching page style
+  const catColors = {
+    shared_with_family: '#b8a882',  // Warm muted tan (page cream accent)
+    pair_exclusive:     '#8b6f3a',  // Rich brown-gold
+    specific_a:         '#d97706',  // Amber (gene A - PPI style)
+    specific_b:         '#7c3aed',  // Purple (gene B - PPI style)
+    family_only:        '#d4cfc5',  // Very light warm grey
+  };
+  const catBorders = {
+    shared_with_family: '#7a6842',
+    pair_exclusive:     '#5f4d2f',
+    specific_a:         '#92400e',
+    specific_b:         '#5b21b6',
+    family_only:        '#a8a298',
+  };
+  const catLabels = {
+    shared_with_family: 'Shared (pair + family)',
+    pair_exclusive:     'Pair exclusive',
+    specific_a:         `Specific to ${geneA}`,
+    specific_b:         `Specific to ${geneB}`,
+    family_only:        'Other family members only',
+  };
+
+  // Draw each sequence track
+  let yPos = padTop;
+
+  for (let si = 0; si < orderedSeqs.length; si++) {
+    const seq = orderedSeqs[si];
+    const isPairA = seq.num === geneASeq;
+    const isPairB = seq.num === geneBSeq;
+    const isPair = isPairA || isPairB;
+    const th = isPair ? pairTrackHeight : trackHeight;
+    const seqLen = seq.length || 1;
+
+    // Track label
+    ctx.font = isPair ? 'bold 12px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
+    ctx.fillStyle = isPairA ? '#92400e' : (isPairB ? '#5b21b6' : '#666');
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const label = seq.gene || seq.uniprot || `Seq ${seq.num}`;
+    ctx.fillText(label, labelWidth - 8, yPos + th / 2);
+
+    // Draw sequence background track (full length)
+    const trackX = labelWidth;
+    const trackW = (seqLen / maxLen) * trackAreaWidth;
+
+    ctx.fillStyle = isPair ? '#f0ebe0' : '#eee';
+    plmaRoundRect(ctx, trackX, yPos, trackW, th, 3);
+    ctx.fill();
+    ctx.strokeStyle = isPair ? '#d0c8b0' : '#ddd';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw blocks on this track
+    for (const block of blocks) {
+      const pos = block.positions[seq.num];
+      if (!pos) continue;
+
+      const cat = block.category;
+      const bx = trackX + ((pos.start - 1) / maxLen) * trackAreaWidth;
+      const bw = Math.max(2, (pos.length / maxLen) * trackAreaWidth);
+
+      ctx.fillStyle = catColors[cat] || '#ccc';
+      plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
+      ctx.fill();
+      ctx.strokeStyle = catBorders[cat] || '#999';
+      ctx.lineWidth = isPair ? 1.2 : 0.8;
+      ctx.stroke();
+
+      // Hit region for tooltip
+      plmaHitRegions.push({
+        x: bx, y: yPos, w: bw, h: th,
+        tooltip: `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
+          + `${label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
+          + `<span style="color:#888">${block.n_seqs} of ${nSeqs} family members in this block</span>`,
+      });
     }
-  });
 
-  // Setup reset button
-  const resetBtn = document.getElementById('resetFamFeatView');
-  if (resetBtn && !resetBtn.dataset.bound) {
-    resetBtn.dataset.bound = 'true';
-    resetBtn.addEventListener('click', resetFamFeatView);
+    // Length annotation at end of track
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${seqLen} aa`, trackX + trackW + 4, yPos + th / 2);
+
+    // Separator after pair tracks
+    if (si === 1 && nSeqs > 2) {
+      yPos += th + trackGap;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(labelWidth, yPos - trackGap / 2);
+      ctx.lineTo(displayWidth - padRight, yPos - trackGap / 2);
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      yPos += th + trackGap;
+    }
+  }
+
+  // Update legend
+  if (legendEl) {
+    const usedCats = new Set(blocks.map(b => b.category));
+    let html = '';
+    for (const [cat, label] of Object.entries(catLabels)) {
+      if (!usedCats.has(cat)) continue;
+      html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+        + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:${catColors[cat]};border:1px solid ${catBorders[cat]}"></span>`
+        + `<span>${label}</span></span>`;
+    }
+    legendEl.innerHTML = html;
+  }
+
+  // Update summary
+  if (summaryEl) {
+    const s = plma.summary || {};
+    const parts = [];
+    if (s.shared_with_family) parts.push(`${s.shared_with_family} aa shared with family`);
+    if (s.pair_exclusive) parts.push(`${s.pair_exclusive} aa pair-exclusive`);
+    if (s.specific_a) parts.push(`${s.specific_a} aa specific to ${geneA}`);
+    if (s.specific_b) parts.push(`${s.specific_b} aa specific to ${geneB}`);
+    if (s.family_only) parts.push(`${s.family_only} aa in other family members only`);
+    summaryEl.textContent = `${blocks.length} conserved blocks across ${nSeqs} family members` +
+      (parts.length ? ` · ${parts.join(' · ')}` : '');
   }
 }
 
-function showFamFeatBoxplot(metricKey) {
-  const famFeat = SUMMARY.family_features || {};
-  const boxplots = SUMMARY.boxplots || {};
-  const metricInfo = famFeat[metricKey];
-  const boxplotData = boxplots[metricKey];
-
-  if (!metricInfo || !boxplotData) {
-    document.getElementById('famFeatBoxplotContainer').innerHTML = '<div class="boxplot-hint">Data not available</div>';
-    return;
-  }
-
-  document.getElementById('famFeatBoxplotTitle').textContent = metricInfo.label || metricKey;
-  document.getElementById('famFeatMetricDetails').style.display = 'block';
-  document.getElementById('resetFamFeatView').style.display = 'inline-block';
-  document.getElementById('famFeat-detail-value').textContent = typeof metricInfo.value === 'number' ? metricInfo.value.toFixed(4) : '–';
-  const pctVal = typeof metricInfo.percentile === 'number' ? metricInfo.percentile : null;
-  document.getElementById('famFeat-detail-percentile').textContent = pctVal != null ? `${pctVal.toFixed(1)}%` : '–';
-  document.getElementById('famFeat-percentile-fill').style.width = pctVal != null ? `${pctVal}%` : '0%';
-
-  let interp = '';
-  if (pctVal >= 75) interp = '<span class="cons-high">Top 25%</span>';
-  else if (pctVal >= 50) interp = '<span class="cons-medium">Above average</span>';
-  else if (pctVal >= 25) interp = '<span class="cons-medium">Below average</span>';
-  else interp = '<span class="cons-low">Bottom 25%</span>';
-  document.getElementById('famFeat-detail-interp').innerHTML = interp;
-
-  drawGenericBoxplot('famFeatBoxplotContainer', metricInfo, boxplotData, famFeatBoxplotChart, (chart) => { famFeatBoxplotChart = chart; });
-}
-
-function resetFamFeatView() {
-  if (famFeatBoxplotChart) {
-    famFeatBoxplotChart.destroy();
-    famFeatBoxplotChart = null;
-  }
-  document.getElementById('famFeatBoxplotContainer').innerHTML = '<div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div>';
-  document.getElementById('famFeatMetricDetails').style.display = 'none';
-  document.getElementById('famFeatBoxplotTitle').textContent = 'Select a Metric';
-  document.getElementById('resetFamFeatView').style.display = 'none';
+function plmaRoundRect(ctx, x, y, w, h, r) {
+  if (w <= 0) return;
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 // Generic boxplot drawing function for reuse

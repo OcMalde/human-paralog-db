@@ -330,7 +330,7 @@
     <div class="nav-title">Sections</div>
     <ul>
       <li><a href="#familyNav" data-section="familyNav">Paralog Family</a></li>
-      <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Features</a></li>
+      <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Alignment</a></li>
       <li><a href="#summarySection" data-section="summarySection">Pair Summary</a></li>
       <li><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
       <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
@@ -367,32 +367,20 @@
     </div>
   </section>
 
-  <!-- Family Features Section -->
+  <!-- Family Features Section – PLMA Alignment -->
   <section class="card new-section collapsible" id="familyFeaturesSection">
     <div class="section-header">
-      <h2>Family Features</h2>
+      <h2>Family Alignment (PLMA)</h2>
       <button class="collapse-toggle" id="familyFeaturesCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="section-body" id="familyFeaturesBody">
-      <p class="small" style="color:#666;margin-bottom:16px;">Amino acid conservation patterns within the paralog family. Click radar points to see distributions.</p>
-      <div class="radar-boxplot-container" style="grid-template-columns:400px 1fr">
-      <div class="radar-plot" id="famFeatRadarWrapper">
-        <canvas id="famFeatRadar"></canvas>
+      <p class="small" style="color:#666;margin-bottom:12px;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
+      <div style="position:relative;">
+        <canvas id="plmaAlignCanvas" width="900" height="400" style="max-width:100%;border-radius:10px;"></canvas>
+        <div id="plmaTooltip" style="display:none;position:fixed;background:#fff;border:1px solid #ccc;border-radius:6px;padding:6px 10px;font-size:12px;color:#333;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,0.12);z-index:100;max-width:300px;"></div>
       </div>
-      <div class="boxplot-panel" id="famFeatBoxplotPanel">
-        <div class="boxplot-header">
-          <h4 id="famFeatBoxplotTitle">Select a Metric</h4>
-          <button type="button" class="reset-metric-btn" id="resetFamFeatView" style="display:none;">Back to overview</button>
-        </div>
-        <div id="famFeatBoxplotContainer"><div class="boxplot-hint">Click a radar point to compare this pair with the cohort</div></div>
-        <div class="metric-details" id="famFeatMetricDetails" style="display:none;">
-          <div class="stat-row"><span>This pair's value:</span><strong id="famFeat-detail-value">–</strong></div>
-          <div class="stat-row"><span>Percentile:</span><strong id="famFeat-detail-percentile">–</strong></div>
-          <div class="stat-row"><span>Interpretation:</span><span id="famFeat-detail-interp">–</span></div>
-          <div class="percentile-bar"><div class="percentile-fill" id="famFeat-percentile-fill" style="width:0%"></div></div>
-        </div>
-      </div>
-    </div>
+      <div id="plmaLegend" style="margin-top:10px;padding:10px 14px;background:#f9f7f2;border-radius:8px;font-size:12px;color:#555;display:flex;flex-wrap:wrap;gap:14px;align-items:center;"></div>
+      <div id="plmaSummary" style="margin-top:8px;font-size:12px;color:#666;"></div>
     </div>
   </section>
 
