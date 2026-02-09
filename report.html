@@ -21,7 +21,7 @@
   header{padding:18px 24px;background:#fff9f0;border-bottom:1px solid #efe2c3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
   header .title-main{margin:0;font-size:24px;font-weight:700;color:#2f2514}
   header .title-sub{margin-top:4px;font-size:13px;color:#7a6842;letter-spacing:0.08em;text-transform:uppercase}
-  #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto}
+  #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto;overflow:hidden}
   .card{background:var(--pane);border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .card h2{font-size:15px;margin:0;padding:10px 12px;border-bottom:1px solid #eee}
   .card .body{padding:12px}
@@ -272,7 +272,7 @@
   .family-pair-stat-value.low{color:#c62828}
 
   /* New section styles - Similarity Searches, Family Features, SL */
-  .new-section{background:#ffffff;border:1px solid #e8e4d7;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(51,41,16,0.04);margin-bottom:16px}
+  .new-section{background:#ffffff;border:1px solid #e8e4d7;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(51,41,16,0.04);margin-bottom:16px;overflow:hidden}
   .new-section h2{color:#1f1b16;border-bottom:1px solid #f2ece0;padding-bottom:12px;margin-bottom:18px;font-size:18px}
   .new-section h3{color:#2a2620;font-size:16px;margin:0 0 12px}
   .symmetric-radar-container{display:grid;grid-template-columns:1fr 340px 1fr;gap:16px;align-items:start}
@@ -375,7 +375,7 @@
     </div>
     <div class="section-body" id="familyFeaturesBody">
       <p class="small" style="color:#666;margin-bottom:12px;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
-      <div id="plmaScrollWrapper" style="position:relative;overflow:auto;max-height:600px;border:1px solid #eee;border-radius:10px;">
+      <div id="plmaScrollWrapper" style="position:relative;overflow:auto;max-height:600px;max-width:100%;border:1px solid #eee;border-radius:10px;">
         <div id="plmaCanvasInner" style="display:inline-block;">
           <canvas id="plmaAlignCanvas" width="900" height="400" style="display:block;"></canvas>
         </div>

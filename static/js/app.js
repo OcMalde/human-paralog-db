@@ -1941,7 +1941,8 @@ function drawPlmaAlignment() {
   const trackGap = nSeqs <= 6 ? 10 : (nSeqs <= 15 ? 6 : 3);
   const pairTrackHeight = trackHeight + 6;
 
-  const containerWidth = Math.max(700, canvas.parentElement?.clientWidth || 700);
+  const scrollWrapper = document.getElementById('plmaScrollWrapper');
+  const containerWidth = Math.max(700, scrollWrapper?.clientWidth || canvas.parentElement?.clientWidth || 700);
 
   // Compute max length per block (across all seqs in that block)
   const blockMaxLen = blocks.map(b => {
