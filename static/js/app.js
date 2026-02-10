@@ -5417,19 +5417,34 @@ function fillDrugHits(){
   document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
-  // Initialize SmilesDrawer if available
-  let smiDrawer = null;
-  if (typeof SmilesDrawer !== 'undefined' && SmilesDrawer.Drawer) {
-    smiDrawer = new SmilesDrawer.Drawer({ width: 200, height: 150, bondThickness: 1.2 });
+  // Initialize SmilesDrawer (SVG mode – more reliable than canvas)
+  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined' && SmilesDrawer.SvgDrawer;
+
+  let smiUid = 0;
+  function drawSmilesInto(container, smiles) {
+    if (!smiDrawerAvail || !smiles) return;
+    const id = 'smi-svg-' + (smiUid++);
+    container.id = id;
+    const svgd = new SmilesDrawer.SvgDrawer({ width: 200, height: 150, bondThickness: 1.2 });
+    setTimeout(() => {
+      try {
+        SmilesDrawer.parse(smiles, (tree) => {
+          svgd.draw(tree, id, 'light');
+        }, (err) => { console.warn('SMILES parse error:', err); });
+      } catch(e) { console.warn('SmilesDrawer error:', e); }
+    }, 30);
   }
 
-  function drawSmiles(canvas, smiles) {
-    if (!smiDrawer || !smiles) return;
-    try {
-      SmilesDrawer.parse(smiles, (tree) => {
-        smiDrawer.draw(tree, canvas, 'light');
-      }, (err) => { console.warn('SMILES parse error:', err); });
-    } catch(e) { console.warn('SmilesDrawer error:', e); }
+  // Build link to external drug database from oid
+  function drugDbLink(oid) {
+    if (!oid) return null;
+    if (oid.startsWith('ZINC')) return { url: `https://zinc.docking.org/substances/${oid}/`, label: 'ZINC' };
+    // Enamine REAL: PV- or Z + digits prefix (strip conformer suffix _1_T1)
+    if (/^(PV-|Z\d)/.test(oid)) {
+      const base = oid.replace(/_\d+(_T\d+)?$/, '');
+      return { url: `https://www.enaminestore.com/search/${encodeURIComponent(base)}`, label: 'Enamine' };
+    }
+    return null;
   }
 
   const buildPocketCards = (domains, container, chain) => {
@@ -5470,7 +5485,11 @@ function fillDrugHits(){
         const smiShort = smi.length > 35 ? smi.slice(0, 35) + '...' : smi;
         const oid = drug.oid || '';
         const oidShort = oid.length > 20 ? oid.slice(0, 20) + '...' : oid;
-        tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px" title="${oid}">${oidShort}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
+        const dbLnk = drugDbLink(oid);
+        const oidCell = dbLnk
+          ? `<a href="${dbLnk.url}" target="_blank" style="color:#c62828" title="${oid} (${dbLnk.label})" onclick="event.stopPropagation()">${oidShort}</a>`
+          : `<span title="${oid}">${oidShort}</span>`;
+        tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px">${oidCell}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
 
         // Expandable detail row
         const detailTr = document.createElement('tr');
@@ -5501,18 +5520,22 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure canvas
-              if (smiDrawer && smi) {
-                const cvs = document.createElement('canvas');
-                cvs.width = 200; cvs.height = 150;
-                cvs.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
-                wrap.append(cvs);
-                requestAnimationFrame(() => drawSmiles(cvs, smi));
+              // 2D structure (SVG)
+              if (smiDrawerAvail && smi) {
+                const svgBox = document.createElement('div');
+                svgBox.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0;overflow:hidden';
+                wrap.append(svgBox);
+                drawSmilesInto(svgBox, smi);
               }
               // Details
               const info = document.createElement('div');
               info.style.cssText = 'font-size:11px;min-width:0';
-              info.innerHTML = `<div style="margin-bottom:4px"><strong>Full SMILES:</strong></div><div style="font-family:monospace;font-size:10px;word-break:break-all;background:#fff;padding:4px 6px;border:1px solid #eee;border-radius:4px;margin-bottom:6px">${smi}</div><div><strong>ID:</strong> ${oid}</div><div><strong>Score:</strong> ${drug.score ? drug.score.toFixed(4) : '–'}</div>`;
+              // Database link
+              const dbLink = drugDbLink(oid);
+              const idHtml = dbLink
+                ? `<a href="${dbLink.url}" target="_blank" style="color:#c62828;text-decoration:underline">${oid}</a> <span style="color:#999">(${dbLink.label})</span>`
+                : oid;
+              info.innerHTML = `<div style="margin-bottom:4px"><strong>Full SMILES:</strong></div><div style="font-family:monospace;font-size:10px;word-break:break-all;background:#fff;padding:4px 6px;border:1px solid #eee;border-radius:4px;margin-bottom:6px">${smi}</div><div><strong>ID:</strong> ${idHtml}</div><div><strong>Score:</strong> ${drug.score ? drug.score.toFixed(4) : '–'}</div>`;
               // Highlight pocket button
               const hlBtn = document.createElement('button');
               hlBtn.style.cssText = 'margin-top:6px;background:#c62828;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px';
