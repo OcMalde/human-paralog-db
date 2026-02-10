@@ -45,6 +45,7 @@ from lib.domain_parsing import (
 )
 from lib.seq_align import needleman_wunsch, compute_identity, alignment_to_columns
 from lib.drugclip_parsing import load_drugclip_pockets
+from lib.opentargets import get_known_drugs_for_acc
 
 # Foldseek binary
 FOLDSEEK = os.environ.get("FOLDSEEK", "foldseek")
@@ -596,6 +597,13 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     gene2_info['description'] = gene_descriptions.get('gene_b', {})
     log(f"  {gene_a}: {gene1_info['description'].get('name', 'N/A')[:50]}...")
     log(f"  {gene_b}: {gene2_info['description'].get('name', 'N/A')[:50]}...")
+
+    # Get known drugs from OpenTargets
+    known_drugs_a = get_known_drugs_for_acc(acc_a)
+    known_drugs_b = get_known_drugs_for_acc(acc_b)
+    gene1_info['known_drugs'] = known_drugs_a
+    gene2_info['known_drugs'] = known_drugs_b
+    log(f"  Known drugs: {gene_a}={len(known_drugs_a)}, {gene_b}={len(known_drugs_b)}")
 
     # Generate boxplot data for all metrics (conservation, similarity search, family features)
     boxplots = {}

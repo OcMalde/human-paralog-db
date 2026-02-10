@@ -245,6 +245,18 @@ def fetch_pdbe_ligands(pdb_id: str) -> Tuple[Dict[str, int], str]:
     return counts, summary
 
 
+def fetch_pdbe_title(pdb_id: str) -> str:
+    """Fetch the title/description of a PDB entry from PDBe summary API."""
+    url = f"{PDBE_BASE}/pdb/entry/summary/{pdb_id.lower()}"
+    data = http_get_json(url)
+    if not data:
+        return ""
+    entry = data.get(pdb_id.lower(), [])
+    if entry and isinstance(entry, list) and len(entry) > 0:
+        return entry[0].get("title", "")
+    return ""
+
+
 def fetch_pdbe_complexes(acc_a: str, acc_b: str, max_per_protein: int = 3) -> List[Dict[str, Any]]:
     """Fetch PDBe complexes for both proteins. Caches downloaded structures."""
     global _pdbe_complex_cache
@@ -278,7 +290,8 @@ def fetch_pdbe_complexes(acc_a: str, acc_b: str, max_per_protein: int = 3) -> Li
             
             coord_fmt, coord_b64 = dl
             ligand_counts, ligand_summary = fetch_pdbe_ligands(pdb_id)
-            
+            title = fetch_pdbe_title(pdb_id)
+
             complex_entry = {
                 "source_acc": acc,
                 "pdb_id": pdb_id,
@@ -290,6 +303,7 @@ def fetch_pdbe_complexes(acc_a: str, acc_b: str, max_per_protein: int = 3) -> Li
                 "coordB64": coord_b64,
                 "ligandCounts": ligand_counts,
                 "ligandSummary": ligand_summary,
+                "title": title,
                 "uniprot_start": s["start"],
                 "uniprot_end": s["end"],
             }

@@ -602,8 +602,8 @@ function renderFamilyConstellation() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
 
-  // Draw orbit circles (identity thresholds) - including 0%
-  const thresholds = [0, 0.2, 0.4, 0.6, 0.8];
+  // Draw orbit circles (identity thresholds) - including 0% and 100%
+  const thresholds = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
   const minRadius = 40;
   thresholds.forEach(threshold => {
     const radius = minRadius + (1 - threshold) * (maxRadius - minRadius);
@@ -1212,6 +1212,13 @@ function renderConservationList() {
 
 const DESC_TRUNCATE_LENGTH = 200; // Characters before truncation
 
+// Convert PubMed IDs in text to clickable links
+function linkifyPubMed(text) {
+  // Match patterns like "PubMed:12345678" or "(PubMed:12345678)"
+  return text.replace(/PubMed:(\d+)/g,
+    '<a href="https://pubmed.ncbi.nlm.nih.gov/$1" target="_blank" style="color:#1565c0">PubMed:$1</a>');
+}
+
 function setupDescriptionToggle(funcEl, toggleBtn, fullText) {
   if (!funcEl || !toggleBtn || !fullText) return;
 
@@ -1224,7 +1231,7 @@ function setupDescriptionToggle(funcEl, toggleBtn, fullText) {
     }
     truncated += '...';
 
-    funcEl.textContent = truncated;
+    funcEl.innerHTML = linkifyPubMed(truncated);
     funcEl.classList.add('truncated');
     funcEl.dataset.fullText = fullText;
     funcEl.dataset.truncatedText = truncated;
@@ -1234,19 +1241,19 @@ function setupDescriptionToggle(funcEl, toggleBtn, fullText) {
     toggleBtn.addEventListener('click', () => {
       const isExpanded = funcEl.classList.contains('expanded');
       if (isExpanded) {
-        funcEl.textContent = funcEl.dataset.truncatedText;
+        funcEl.innerHTML = linkifyPubMed(funcEl.dataset.truncatedText);
         funcEl.classList.remove('expanded');
         funcEl.classList.add('truncated');
         toggleBtn.textContent = 'Show more';
       } else {
-        funcEl.textContent = funcEl.dataset.fullText;
+        funcEl.innerHTML = linkifyPubMed(funcEl.dataset.fullText);
         funcEl.classList.remove('truncated');
         funcEl.classList.add('expanded');
         toggleBtn.textContent = 'Show less';
       }
     }, { passive: true });
   } else {
-    funcEl.textContent = fullText;
+    funcEl.innerHTML = linkifyPubMed(fullText);
     toggleBtn.style.display = 'none';
   }
 }
@@ -1296,6 +1303,28 @@ function initProteinDescriptions() {
 
     gene2DescEl.style.display = 'block';
   }
+
+  // Known drugs (OpenTargets)
+  fillKnownDrugs('gene1DrugsList', gene1.known_drugs || []);
+  fillKnownDrugs('gene2DrugsList', gene2.known_drugs || []);
+}
+
+function fillKnownDrugs(elId, drugs) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!drugs || drugs.length === 0) {
+    el.textContent = 'None';
+    return;
+  }
+  el.innerHTML = drugs.map(d => {
+    const name = d.name || d.drugId || '?';
+    const phase = d.phase ? ` (Phase ${d.phase})` : '';
+    const moa = d.moa ? ` – ${d.moa}` : '';
+    const url = d.drugId ? `https://platform.opentargets.org/drug/${d.drugId}` : '';
+    return url
+      ? `<a href="${url}" target="_blank" style="color:#c62828">${name}</a>${phase}${moa}`
+      : `${name}${phase}${moa}`;
+  }).join('; ');
 }
 
 // Boxplot chart instances for new sections
@@ -2027,8 +2056,8 @@ function drawPlmaAlignment() {
   const catLabels = {
     shared_with_family: 'Shared (pair + family)',
     pair_exclusive:     'Pair exclusive',
-    specific_a:         `Specific to ${geneA}`,
-    specific_b:         `Specific to ${geneB}`,
+    specific_a:         `${geneA} + other family members`,
+    specific_b:         `${geneB} + other family members`,
     family_only:        'Other family members only',
   };
 
@@ -4207,6 +4236,8 @@ function updatePdbeInfoBox(entry) {
     document.getElementById('pdbeCoverage').textContent = '-';
     document.getElementById('pdbeResolution').textContent = '-';
     document.getElementById('pdbeLigands').textContent = '-';
+    const descEl = document.getElementById('pdbeDescription');
+    if (descEl) descEl.textContent = '-';
     return;
   }
 
@@ -4226,6 +4257,8 @@ function updatePdbeInfoBox(entry) {
   document.getElementById('pdbeResolution').textContent = 
     (typeof resolution === 'number') ? resolution.toFixed(2) + ' Å' : '-';
   document.getElementById('pdbeLigands').textContent = ligandSummary || 'None reported';
+  const descEl = document.getElementById('pdbeDescription');
+  if (descEl) descEl.textContent = entry.title || '-';
 }
 
 async function loadPdbeByIndex(idx) {
@@ -4340,9 +4373,11 @@ function setupPdbeControls() {
     const chains = entry.chains || entry.chain_id || '';
     const resolution = entry.resolution;
     const ligandSummary = entry.ligandSummary || entry.ligand_summary || '';
+    const geneName = getGeneNameForAccession(sourceAcc);
 
     let label = pdbId;
-    if (sourceAcc) label += ` [${sourceAcc}]`;
+    if (geneName) label += ` – ${geneName}`;
+    else if (sourceAcc) label += ` [${sourceAcc}]`;
     if (chains) {
       const chainStr = Array.isArray(chains) ? chains.join(',') : chains;
       label += ` ch:${chainStr}`;
@@ -5417,33 +5452,26 @@ function fillDrugHits(){
   document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
-  // Initialize SmilesDrawer (SVG mode – more reliable than canvas)
-  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined' && SmilesDrawer.SvgDrawer;
-
+  // SmilesDrawer availability check
+  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined';
   let smiUid = 0;
-  function drawSmilesInto(container, smiles) {
+
+  // Draw SMILES into a canvas using SmilesDrawer.apply (most reliable API)
+  function drawSmilesCanvas(canvasId, smiles) {
     if (!smiDrawerAvail || !smiles) return;
-    const id = 'smi-svg-' + (smiUid++);
-    container.id = id;
-    const svgd = new SmilesDrawer.SvgDrawer({ width: 200, height: 150, bondThickness: 1.2 });
     setTimeout(() => {
       try {
-        SmilesDrawer.parse(smiles, (tree) => {
-          svgd.draw(tree, id, 'light');
-        }, (err) => { console.warn('SMILES parse error:', err); });
+        // apply() finds elements with data-smiles and draws on them
+        SmilesDrawer.apply({ width: 200, height: 150, bondThickness: 1.2 }, '#' + canvasId, 'light',
+          (err) => { console.warn('SMILES draw error:', err); });
       } catch(e) { console.warn('SmilesDrawer error:', e); }
-    }, 30);
+    }, 80);
   }
 
-  // Build link to external drug database from oid
+  // Build link to external drug database from oid (only ZINC has reliable direct URLs)
   function drugDbLink(oid) {
     if (!oid) return null;
     if (oid.startsWith('ZINC')) return { url: `https://zinc.docking.org/substances/${oid}/`, label: 'ZINC' };
-    // Enamine REAL: PV- or Z + digits prefix (strip conformer suffix _1_T1)
-    if (/^(PV-|Z\d)/.test(oid)) {
-      const base = oid.replace(/_\d+(_T\d+)?$/, '');
-      return { url: `https://www.enaminestore.com/search/${encodeURIComponent(base)}`, label: 'Enamine' };
-    }
     return null;
   }
 
@@ -5520,12 +5548,16 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure (SVG)
+              // 2D structure (canvas with data-smiles for SmilesDrawer.apply)
               if (smiDrawerAvail && smi) {
-                const svgBox = document.createElement('div');
-                svgBox.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0;overflow:hidden';
-                wrap.append(svgBox);
-                drawSmilesInto(svgBox, smi);
+                const cvsId = 'smi-cvs-' + (smiUid++);
+                const cvs = document.createElement('canvas');
+                cvs.id = cvsId;
+                cvs.setAttribute('data-smiles', smi);
+                cvs.width = 200; cvs.height = 150;
+                cvs.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
+                wrap.append(cvs);
+                drawSmilesCanvas(cvsId, smi);
               }
               // Details
               const info = document.createElement('div');
