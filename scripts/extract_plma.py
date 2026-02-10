@@ -253,11 +253,18 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
             }
         blocks_json.append(b)
 
-    # Sort blocks by PLMA order (B1, B2, B3...) which is the alignment order
+    # Sort blocks by position on gene A sequence (or gene B if A absent),
+    # so they appear in the order they occur on the actual proteins.
     def block_sort_key(b):
-        # Extract numeric part from block id (e.g., "B12" -> 12)
+        pos_a = b['positions'].get(gene_a_seq)
+        pos_b = b['positions'].get(gene_b_seq)
+        if pos_a and pos_a.get('start') is not None:
+            return pos_a['start']
+        if pos_b and pos_b.get('start') is not None:
+            return pos_b['start']
+        # Fallback: use block number
         m = re.match(r'B(\d+)', b['id'])
-        return int(m.group(1)) if m else 0
+        return 100000 + (int(m.group(1)) if m else 0)
 
     blocks_json.sort(key=block_sort_key)
 

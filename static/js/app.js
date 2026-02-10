@@ -1305,14 +1305,17 @@ function initProteinDescriptions() {
   }
 
   // Known drugs (OpenTargets)
-  fillKnownDrugs('gene1DrugsList', gene1.known_drugs || []);
-  fillKnownDrugs('gene2DrugsList', gene2.known_drugs || []);
+  const drugsA = gene1.known_drugs || [];
+  const drugsB = gene2.known_drugs || [];
+  const sharedDrugIds = new Set(drugsA.filter(a => drugsB.some(b => b.drugId === a.drugId)).map(a => a.drugId));
+  fillKnownDrugs('gene1DrugsList', drugsA, sharedDrugIds);
+  fillKnownDrugs('gene2DrugsList', drugsB, sharedDrugIds);
 }
 
 // Track selected drug globally (by drugId)
 let _selectedDrugId = null;
 
-function fillKnownDrugs(elId, drugs) {
+function fillKnownDrugs(elId, drugs, sharedDrugIds) {
   const el = document.getElementById(elId);
   if (!el) return;
   if (!drugs || drugs.length === 0) {
@@ -1320,38 +1323,59 @@ function fillKnownDrugs(elId, drugs) {
     return;
   }
   el.innerHTML = '';
-  drugs.forEach((d, i) => {
-    if (i > 0) el.append('; ');
-    const name = d.name || d.drugId || '?';
-    const phase = d.phase ? ` (Phase ${d.phase})` : '';
-    const moa = d.moa ? ` – ${d.moa}` : '';
-    const span = document.createElement('span');
-    span.className = 'known-drug-chip';
-    span.dataset.drugId = d.drugId || '';
-    span.style.cssText = 'cursor:pointer;padding:1px 6px;border-radius:4px;transition:all 0.15s';
-    span.innerHTML = `<strong>${name}</strong>${phase}${moa}`;
-    span.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      toggleKnownDrug(d.drugId);
+
+  // Group by phase (descending), then "unknown" phase at end
+  const byPhase = {};
+  drugs.forEach(d => {
+    const p = d.phase || 0;
+    if (!byPhase[p]) byPhase[p] = [];
+    byPhase[p].push(d);
+  });
+  const phases = Object.keys(byPhase).map(Number).sort((a, b) => b - a);
+
+  phases.forEach((phase, pi) => {
+    // Phase header
+    const phaseLabel = document.createElement('div');
+    phaseLabel.style.cssText = 'font-size:10px;color:#999;margin-top:' + (pi > 0 ? '6px' : '0') + ';margin-bottom:2px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px';
+    phaseLabel.textContent = phase > 0 ? `Phase ${phase}` : 'Phase unknown';
+    el.append(phaseLabel);
+
+    // Drugs in this phase
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
+    byPhase[phase].forEach(d => {
+      const name = d.name || d.drugId || '?';
+      const moa = d.moa ? ` – ${d.moa}` : '';
+      const isShared = sharedDrugIds && sharedDrugIds.has(d.drugId);
+      const span = document.createElement('span');
+      span.className = 'known-drug-chip';
+      span.dataset.drugId = d.drugId || '';
+      span.style.cssText = 'cursor:pointer;padding:2px 8px;border-radius:4px;transition:all 0.15s;border:1.5px solid transparent;display:inline-flex;align-items:center;gap:3px';
+      span.innerHTML = `<strong>${name}</strong>${moa}${isShared ? '<span style="color:#1565c0;font-weight:700;margin-left:2px" title="Also targets the other gene">★</span>' : ''}`;
+      span.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        toggleKnownDrug(d.drugId);
+      });
+      line.append(span);
     });
-    el.append(span);
+    el.append(line);
   });
 }
 
 function toggleKnownDrug(drugId) {
   if (!drugId) return;
-  // Toggle: if already selected, deselect; otherwise select
   _selectedDrugId = (_selectedDrugId === drugId) ? null : drugId;
-  // Update all drug chips across both gene cards
   document.querySelectorAll('.known-drug-chip').forEach(chip => {
     if (chip.dataset.drugId === _selectedDrugId) {
-      chip.style.background = '#e3f2fd';
-      chip.style.color = '#1565c0';
-      chip.style.borderRadius = '4px';
-      chip.style.fontWeight = '';
+      chip.style.background = '#bbdefb';
+      chip.style.color = '#0d47a1';
+      chip.style.border = '1.5px solid #1976d2';
+      chip.style.fontWeight = '600';
     } else {
       chip.style.background = '';
       chip.style.color = '';
+      chip.style.border = '1.5px solid transparent';
+      chip.style.fontWeight = '';
     }
   });
 }
@@ -5482,22 +5506,24 @@ function fillDrugHits(){
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
   // SmilesDrawer availability check
-  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function' && typeof SmilesDrawer.parse === 'function';
-  let smiUid = 0;
+  const smiDrawerOk = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function' && typeof SmilesDrawer.parse === 'function';
+  if (!smiDrawerOk) console.warn('SmilesDrawer not available. typeof:', typeof SmilesDrawer, 'keys:', typeof SmilesDrawer === 'object' ? Object.keys(SmilesDrawer) : 'N/A');
 
-  // Draw SMILES onto a canvas element using Drawer+parse (direct API)
-  function drawSmilesOnCanvas(canvasEl, smiles) {
-    if (!smiDrawerAvail || !canvasEl || !smiles) return;
-    // Double rAF ensures element is rendered and has layout dimensions
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+  // Draw SMILES on a single canvas element
+  function drawSmilesOnCanvas(canvas, smiles) {
+    if (!smiDrawerOk || !smiles || !canvas) return;
+    requestAnimationFrame(() => {
       try {
-        const drawer = new SmilesDrawer.Drawer({ width: canvasEl.width, height: canvasEl.height, bondThickness: 1.2 });
-        SmilesDrawer.parse(smiles, (tree) => {
-          try { drawer.draw(tree, canvasEl, 'light'); }
-          catch(e) { console.warn('SMILES draw error:', e, smiles.slice(0,40)); }
-        }, (err) => { console.warn('SMILES parse error:', err); });
-      } catch(e) { console.warn('SmilesDrawer init error:', e); }
-    }));
+        const drawer = new SmilesDrawer.Drawer({ width: canvas.width, height: canvas.height, bondThickness: 1.2 });
+        SmilesDrawer.parse(smiles, function(tree) {
+          drawer.draw(tree, canvas, 'light');
+        }, function(err) {
+          console.warn('SMILES parse error:', err, smiles.slice(0, 60));
+        });
+      } catch(e) {
+        console.warn('SMILES draw exception:', e);
+      }
+    });
   }
 
   // Build link to external drug database from oid (only ZINC has reliable direct URLs)
@@ -5580,10 +5606,10 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure via SmilesDrawer Drawer+parse
-              if (smiDrawerAvail && smi) {
+              // 2D structure via SmilesDrawer
+              if (smiDrawerOk && smi) {
                 const cvs = document.createElement('canvas');
-                cvs.width = 200; cvs.height = 150;
+                cvs.width = 400; cvs.height = 300;
                 cvs.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
                 wrap.append(cvs);
                 drawSmilesOnCanvas(cvs, smi);
