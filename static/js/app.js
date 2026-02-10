@@ -4510,6 +4510,9 @@ function buildSeq(){
   const cavA = document.createElement('nightingale-track');
   addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
 
+  const dcA = document.createElement('nightingale-track');
+  addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
+
   const amA = document.createElement('nightingale-track');
   const amARow = addRow(tbl, 'AlphaMissense '+DATA.g1, amA, 18);
   amARow.row.classList.add('am-main-row');
@@ -4588,13 +4591,16 @@ function buildSeq(){
   const cavB = document.createElement('nightingale-track');
   addRow(tbl, 'Cavities '+DATA.g2, cavB, 16); trackRefs['cavB'] = cavB;
 
+  const dcB = document.createElement('nightingale-track');
+  addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
+
   requestAnimationFrame(()=>{
     const allTracks = [
       nav, seqA,
-      domA, disorderA, tedA, cavA,
+      domA, disorderA, tedA, cavA, dcA,
       amA, dam, amB,
       seqB,
-      domB, disorderB, tedB, cavB
+      domB, disorderB, tedB, cavB, dcB
     ];
     amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
     amMatrixTracksB.forEach(obj => allTracks.push(obj.track));
@@ -4613,7 +4619,7 @@ function buildSeq(){
     amB.setAttribute('shape','rectangle');
     dam.setAttribute('shape','rectangle');
 
-    [domA, disorderA, tedA, cavA, domB, disorderB, tedB, cavB].forEach(track => {
+    [domA, disorderA, tedA, cavA, dcA, domB, disorderB, tedB, cavB, dcB].forEach(track => {
       track.setAttribute('shape','roundRectangle');
       track.setAttribute('show-label','');
     });
@@ -4622,11 +4628,13 @@ function buildSeq(){
     disorderA.data  = sanitizeRects(DATA.disorderA_alnRects||[], alnLen);     disorderA._originalData = [...disorderA.data];
     tedA.data       = sanitizeRects(DATA.tedA_alnRects||[], alnLen);          tedA._originalData = [...tedA.data];
     cavA.data       = sanitizeRects(DATA.cavA_alnRects||[], alnLen);          cavA._originalData = [...cavA.data];
+    dcA.data        = sanitizeRects(DATA.dcA_alnRects||[], alnLen);           dcA._originalData = [...dcA.data];
 
     domB.data       = sanitizeRects(DATA.domB_alnRects||[], alnLen);          domB._originalData = [...domB.data];
     disorderB.data  = sanitizeRects(DATA.disorderB_alnRects||[], alnLen);     disorderB._originalData = [...disorderB.data];
     tedB.data       = sanitizeRects(DATA.tedB_alnRects||[], alnLen);          tedB._originalData = [...tedB.data];
     cavB.data       = sanitizeRects(DATA.cavB_alnRects||[], alnLen);          cavB._originalData = [...cavB.data];
+    dcB.data        = sanitizeRects(DATA.dcB_alnRects||[], alnLen);           dcB._originalData = [...dcB.data];
 
     applyAmMode(amMode);
     applyCavityFilter(); // Apply default druggability filter (medium+)
@@ -4647,10 +4655,12 @@ function buildSeq(){
   attachDomainClick(disorderA, chainIdA);
   attachDomainClick(tedA, chainIdA);
   attachDomainClick(cavA, chainIdA);
+  attachDomainClick(dcA, chainIdA);
   attachDomainClick(domB, chainIdB);
   attachDomainClick(disorderB, chainIdB);
   attachDomainClick(tedB, chainIdB);
   attachDomainClick(cavB, chainIdB);
+  attachDomainClick(dcB, chainIdB);
 }
 
 function setupPdbeCollapse(){
@@ -4714,6 +4724,8 @@ function setupAllCollapsibleSections() {
   setupCollapsibleSection('domainsCollapseBtn', 'domainsBody', 'domainsSection');
   // Domain pairs
   setupCollapsibleSection('domainPairsCollapseBtn', 'domainPairsBody', 'domainPairsSection');
+  // Drug Hits
+  setupCollapsibleSection('drugHitsCollapseBtn', 'drugHitsBody', 'drugHitsSection');
 }
 
 // Check data availability and hide empty sections
@@ -5092,21 +5104,25 @@ async function recalculateAlignmentTracks() {
     return rects;
   }
 
-  // Recalculate domain/disorder/cavity rectangles
+  // Recalculate domain/disorder/cavity/drugclip rectangles
   if (DATA.domainsA) {
-    const doms = DATA.domainsA.filter(d => d.type !== 'CAV' && d.type !== 'Cavity');
+    const doms = DATA.domainsA.filter(d => d.type !== 'CAV' && d.type !== 'Cavity' && d.type !== 'DrugCLIP');
     const cavs = DATA.domainsA.filter(d => d.type === 'CAV' || d.type === 'Cavity');
+    const dcs  = DATA.domainsA.filter(d => d.type === 'DrugCLIP');
 
     DATA.domA_alnRects = remapFeaturesToAlignment(doms, qposToCol, '#2ca02c');
     DATA.cavA_alnRects = remapFeaturesToAlignment(cavs, qposToCol, '#ff7d45');
+    DATA.dcA_alnRects  = remapFeaturesToAlignment(dcs,  qposToCol, '#1e88e5');
   }
 
   if (DATA.domainsB) {
-    const doms = DATA.domainsB.filter(d => d.type !== 'CAV' && d.type !== 'Cavity');
+    const doms = DATA.domainsB.filter(d => d.type !== 'CAV' && d.type !== 'Cavity' && d.type !== 'DrugCLIP');
     const cavs = DATA.domainsB.filter(d => d.type === 'CAV' || d.type === 'Cavity');
+    const dcs  = DATA.domainsB.filter(d => d.type === 'DrugCLIP');
 
     DATA.domB_alnRects = remapFeaturesToAlignment(doms, tposToCol, '#2ca02c');
     DATA.cavB_alnRects = remapFeaturesToAlignment(cavs, tposToCol, '#ff7d45');
+    DATA.dcB_alnRects  = remapFeaturesToAlignment(dcs,  tposToCol, '#1e88e5');
   }
 
   // Recalculate AM tracks if we have bfactors data
@@ -5291,7 +5307,45 @@ function fillDomainTables(){
     tdRange.textContent = `${d.start}-${d.end}`;
 
     const tdCav = document.createElement('td');
-    if (d.type === 'Cavity' || d.raw_type === 'Cavity') {
+    if (d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP') {
+      // DrugCLIP pocket: show expandable drug dropdown
+      const drugs = d.top_drugs || [];
+      const nTotal = d.n_total_hits || 0;
+      if (drugs.length > 0) {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative';
+        const btn = document.createElement('button');
+        btn.style.cssText = 'background:#1e88e5;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;white-space:nowrap';
+        btn.textContent = `${nTotal} hits ▼`;
+        const dropdown = document.createElement('div');
+        dropdown.style.cssText = 'display:none;position:absolute;right:0;top:100%;z-index:100;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:6px;min-width:260px;max-height:240px;overflow-y:auto;font-size:11px';
+        const dtbl = document.createElement('table');
+        dtbl.style.cssText = 'width:100%;border-collapse:collapse';
+        dtbl.innerHTML = '<thead><tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:2px 4px">#</th><th style="text-align:left;padding:2px 4px">SMILES</th><th style="text-align:left;padding:2px 4px">ID</th><th style="text-align:right;padding:2px 4px">Score</th></tr></thead>';
+        const dtbody = document.createElement('tbody');
+        drugs.forEach((drug, idx) => {
+          const dtr = document.createElement('tr');
+          dtr.style.cssText = 'border-bottom:1px solid #f5f5f5';
+          const smi = drug.smiles || '';
+          const smiShort = smi.length > 30 ? smi.slice(0, 30) + '...' : smi;
+          const oid = drug.oid || '';
+          const oidShort = oid.length > 18 ? oid.slice(0, 18) + '...' : oid;
+          dtr.innerHTML = `<td style="padding:2px 4px">${idx + 1}</td><td style="padding:2px 4px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:2px 4px;font-size:10px" title="${oid}">${oidShort}</td><td style="padding:2px 4px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
+          dtbody.append(dtr);
+        });
+        dtbl.append(dtbody);
+        dropdown.append(dtbl);
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+        wrap.append(btn, dropdown);
+        tdCav.append(wrap);
+      } else {
+        tdCav.textContent = 'No hits';
+      }
+    } else if (d.type === 'Cavity' || d.raw_type === 'Cavity') {
       const ds = d.drug_score || d.drugscore || '';
       const dg = d.druggability || '';
       tdCav.textContent = (ds || dg) ? `${ds || ''} ${dg || ''}`.trim() : '';
@@ -5344,6 +5398,76 @@ async function fillDomPairs(){
     }, {passive:true});
     tb.append(tr);
   });
+}
+
+function fillDrugHits(){
+  const dcDomainsA = (DATA.domainsA||[]).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP');
+  const dcDomainsB = (DATA.domainsB||[]).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP');
+
+  const section = document.getElementById('drugHitsSection');
+  if (!dcDomainsA.length && !dcDomainsB.length) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  if (section) section.style.display = '';
+
+  document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
+  document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
+
+  const buildPocketCards = (domains, container, chain) => {
+    container.innerHTML = '';
+    if (!domains.length) {
+      container.innerHTML = '<div class="small" style="color:#999">No DrugCLIP pockets found for this gene.</div>';
+      return;
+    }
+    domains.forEach(d => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid #e0e0e0;border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fafbfc';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:600;font-size:13px;color:#1e88e5';
+      title.textContent = d.label || 'Pocket';
+      const badge = document.createElement('span');
+      badge.style.cssText = 'background:#1e88e5;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px';
+      badge.textContent = `${d.n_total_hits || 0} hits`;
+      header.append(title, badge);
+
+      const meta = document.createElement('div');
+      meta.style.cssText = 'font-size:11px;color:#777;margin-bottom:6px';
+      meta.textContent = `Residues: ${d.start}-${d.end} (${(d.residues||[]).length} contact residues)`;
+      if (d.top_score) meta.textContent += ` | Top score: ${d.top_score.toFixed(2)}`;
+
+      const tbl = document.createElement('table');
+      tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:11px';
+      tbl.innerHTML = '<thead><tr style="border-bottom:1px solid #ddd;background:#f5f5f5"><th style="text-align:left;padding:3px 6px">#</th><th style="text-align:left;padding:3px 6px">SMILES</th><th style="text-align:left;padding:3px 6px">ID</th><th style="text-align:right;padding:3px 6px">Score</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+      (d.top_drugs || []).forEach((drug, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom:1px solid #f0f0f0;cursor:pointer';
+        tr.addEventListener('mouseenter', () => { tr.style.background = '#f0f7ff'; });
+        tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+        tr.addEventListener('click', () => {
+          // Select the pocket in the structure viewer
+          toggleFeature(d, chain);
+        });
+        const smi = drug.smiles || '';
+        const smiShort = smi.length > 35 ? smi.slice(0, 35) + '...' : smi;
+        const oid = drug.oid || '';
+        const oidShort = oid.length > 20 ? oid.slice(0, 20) + '...' : oid;
+        tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px" title="${oid}">${oidShort}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
+        tbody.append(tr);
+      });
+      tbl.append(tbody);
+
+      card.append(header, meta, tbl);
+      container.append(card);
+    });
+  };
+
+  buildPocketCards(dcDomainsA, document.getElementById('drugHitsAContent'), chainIdA);
+  buildPocketCards(dcDomainsB, document.getElementById('drugHitsBContent'), chainIdB);
 }
 
 let currentColorMode = 'uniform';
@@ -5578,6 +5702,7 @@ async function main(){
   buildSeq();
   fillDomainTables();
   await fillDomPairs();
+  fillDrugHits();
 
   setupPdbeCollapse();
   setupPdbeControls();

@@ -22,6 +22,9 @@ SL_DATA_CSV = Path("/Users/olivierdennler/Documents/data/SLI_2023/dataset_filter
 CAVITY_INDEX_PATH = INPUT_DIR / "AF-all_cavities" / "AF-all_cavities.idx"
 CAVITY_DATA_DIR = INPUT_DIR / "AF-all_cavities" / "all_cavities_data"
 
+# DrugCLIP/GenomeScreen data (extracted pocket predictions)
+DRUGCLIP_DIR = INPUT_DIR / "drugclip"
+
 # API endpoints
 PDBE_BASE = "https://www.ebi.ac.uk/pdbe/api"
 AM_HOTSPOT_API = "https://alphamissense.hegelab.org/hotspotapi"

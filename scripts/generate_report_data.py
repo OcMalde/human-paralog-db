@@ -44,6 +44,7 @@ from lib.domain_parsing import (
     rects_on_alignment, get_annotation_from_db, load_cavities_for_acc
 )
 from lib.seq_align import needleman_wunsch, compute_identity, alignment_to_columns
+from lib.drugclip_parsing import load_drugclip_pockets
 
 # Foldseek binary
 FOLDSEEK = os.environ.get("FOLDSEEK", "foldseek")
@@ -418,13 +419,17 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # Load cavities from local AF-all_cavities data (if available)
     cavities_a = load_cavities_for_acc(acc_a)
     cavities_b = load_cavities_for_acc(acc_b)
-    
+
+    # Load DrugCLIP/GenomeScreen pockets (if available)
+    drugclip_a = load_drugclip_pockets(acc_a)
+    drugclip_b = load_drugclip_pockets(acc_b)
+
     # Combine all domains for domain×domain alignments
-    domsA_all = doms_ebi_a + doms_ted_a + disorder_a + cavities_a
-    domsB_all = doms_ebi_b + doms_ted_b + disorder_b + cavities_b
-    
-    log(f"  Domains: {gene_a}={len(domsA_all)} (TED:{len(doms_ted_a)}, EBI:{len(doms_ebi_a)}, Cav:{len(cavities_a)})")
-    log(f"  Domains: {gene_b}={len(domsB_all)} (TED:{len(doms_ted_b)}, EBI:{len(doms_ebi_b)}, Cav:{len(cavities_b)})")
+    domsA_all = doms_ebi_a + doms_ted_a + disorder_a + cavities_a + drugclip_a
+    domsB_all = doms_ebi_b + doms_ted_b + disorder_b + cavities_b + drugclip_b
+
+    log(f"  Domains: {gene_a}={len(domsA_all)} (TED:{len(doms_ted_a)}, EBI:{len(doms_ebi_a)}, Cav:{len(cavities_a)}, DC:{len(drugclip_a)})")
+    log(f"  Domains: {gene_b}={len(domsB_all)} (TED:{len(doms_ted_b)}, EBI:{len(doms_ebi_b)}, Cav:{len(cavities_b)}, DC:{len(drugclip_b)})")
     
     # Compute alignment rects for domains
     # IMPORTANT: domA/B_rects should ONLY include EBI domains, NOT TED (TED has its own track)
@@ -438,6 +443,9 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # Cavities have their own track
     cavA_rects = rects_on_alignment(cavities_a, 'A', "#ff7d45", aligned_cols, alnLen)
     cavB_rects = rects_on_alignment(cavities_b, 'B', "#ff7d45", aligned_cols, alnLen)
+    # DrugCLIP pockets have their own track (blue)
+    dcA_rects = rects_on_alignment(drugclip_a, 'A', "#1e88e5", aligned_cols, alnLen)
+    dcB_rects = rects_on_alignment(drugclip_b, 'B', "#1e88e5", aligned_cols, alnLen)
     
     # Fetch AM hotspots for substitution matrix
     log(f"  Fetching AM hotspots...")
@@ -503,6 +511,8 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         "tedB_alnRects": tedB_rects,
         "cavA_alnRects": cavA_rects,
         "cavB_alnRects": cavB_rects,
+        "dcA_alnRects": dcA_rects,
+        "dcB_alnRects": dcB_rects,
         "qposByCol": qpos_by_col,
         "tposByCol": tpos_by_col,
         "amModes": AM_MODES,
