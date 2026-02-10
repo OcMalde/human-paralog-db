@@ -722,6 +722,10 @@
         </table>
       </div>
     </div>
+    <div class="small" style="padding:8px 16px 12px;color:#888;border-top:1px solid #f0f0f0">
+      <strong>Cavity data</strong> from <a href="https://bioserv.rpbs.univ-paris-diderot.fr/services/CavitySpace" target="_blank" style="color:#666">CavitySpace</a>:
+      Cavities are three-dimensional pockets on the protein surface, identified by scanning AlphaFold structures for shape and physicochemical properties. Each cavity is accompanied by a druggability score predicted from its geometric and physicochemical properties using a machine-learning model trained on known drug-binding sites.
+    </div>
   </section>
 
   <!-- Domain × Domain sub-alignments -->
@@ -742,6 +746,13 @@
       <h2>Drug Hits (GenomeScreen)</h2>
       <button class="collapse-toggle" id="drugHitsCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
+    <div class="small" style="padding:10px 16px 6px;color:#666;border-bottom:1px solid #f0f0f0;margin-bottom:4px">
+      <strong>DrugCLIP</strong> (<a href="https://drug-the-whole-genome.yanyanlan.com" target="_blank" style="color:#c62828">GenomeScreen</a>)
+      uses contrastive learning to encode protein binding pockets and small-molecule drugs into a shared representation space.
+      GenomeScreenDB screened ~10,000 AlphaFold-predicted human protein structures against 500 million compounds,
+      identifying potential binders for each detected pocket.
+      Higher score = stronger predicted binding. Click a drug row to expand its full SMILES and 2D structure.
+    </div>
     <div class="body" id="drugHitsBody" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
       <div>
         <h3 id="drugHitsAHeader" style="margin:0 0 8px;font-size:14px">Gene A</h3>
@@ -752,9 +763,6 @@
         <div id="drugHitsBContent"></div>
       </div>
     </div>
-    <div class="small" style="padding:8px 16px 12px;color:#888">
-      Drug hits from <a href="https://drug-the-whole-genome.yanyanlan.com" target="_blank" style="color:#1e88e5">GenomeScreen</a> virtual screening using DrugCLIP. Higher score = stronger predicted binding.
-    </div>
   </section>
 
     </div>
@@ -763,6 +771,9 @@
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- SmilesDrawer for 2D molecule rendering -->
+<script src="https://unpkg.com/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
 
 <!-- Molstar -->
 <script src="https://unpkg.com/molstar@3.43.0/build/viewer/molstar.js"></script>

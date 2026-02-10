@@ -443,9 +443,9 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # Cavities have their own track
     cavA_rects = rects_on_alignment(cavities_a, 'A', "#ff7d45", aligned_cols, alnLen)
     cavB_rects = rects_on_alignment(cavities_b, 'B', "#ff7d45", aligned_cols, alnLen)
-    # DrugCLIP pockets have their own track (blue)
-    dcA_rects = rects_on_alignment(drugclip_a, 'A', "#1e88e5", aligned_cols, alnLen)
-    dcB_rects = rects_on_alignment(drugclip_b, 'B', "#1e88e5", aligned_cols, alnLen)
+    # DrugCLIP pockets have their own track (red)
+    dcA_rects = rects_on_alignment(drugclip_a, 'A', "#c62828", aligned_cols, alnLen)
+    dcB_rects = rects_on_alignment(drugclip_b, 'B', "#c62828", aligned_cols, alnLen)
     
     # Fetch AM hotspots for substitution matrix
     log(f"  Fetching AM hotspots...")

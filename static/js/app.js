@@ -4425,7 +4425,7 @@ function toggleFeature(dom, chain) {
   if (selection.has(key)) {
     selection.delete(key);
   } else {
-    const color = (dom.type === 'Cavity') ? '#ff7d45' : '#ffdb13';
+    const color = (dom.type === 'DrugCLIP') ? '#c62828' : (dom.type === 'Cavity') ? '#ff7d45' : '#ffdb13';
     selection.set(key, {
       id: dom.uid,
       chain,
@@ -5112,7 +5112,7 @@ async function recalculateAlignmentTracks() {
 
     DATA.domA_alnRects = remapFeaturesToAlignment(doms, qposToCol, '#2ca02c');
     DATA.cavA_alnRects = remapFeaturesToAlignment(cavs, qposToCol, '#ff7d45');
-    DATA.dcA_alnRects  = remapFeaturesToAlignment(dcs,  qposToCol, '#1e88e5');
+    DATA.dcA_alnRects  = remapFeaturesToAlignment(dcs,  qposToCol, '#c62828');
   }
 
   if (DATA.domainsB) {
@@ -5122,7 +5122,7 @@ async function recalculateAlignmentTracks() {
 
     DATA.domB_alnRects = remapFeaturesToAlignment(doms, tposToCol, '#2ca02c');
     DATA.cavB_alnRects = remapFeaturesToAlignment(cavs, tposToCol, '#ff7d45');
-    DATA.dcB_alnRects  = remapFeaturesToAlignment(dcs,  tposToCol, '#1e88e5');
+    DATA.dcB_alnRects  = remapFeaturesToAlignment(dcs,  tposToCol, '#c62828');
   }
 
   // Recalculate AM tracks if we have bfactors data
@@ -5315,9 +5315,10 @@ function fillDomainTables(){
         const wrap = document.createElement('div');
         wrap.style.cssText = 'position:relative';
         const btn = document.createElement('button');
-        btn.style.cssText = 'background:#1e88e5;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;white-space:nowrap';
+        btn.style.cssText = 'background:#c62828;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;white-space:nowrap';
         btn.textContent = `${nTotal} hits ▼`;
         const dropdown = document.createElement('div');
+        dropdown.className = 'dc-dropdown';
         dropdown.style.cssText = 'display:none;position:absolute;right:0;top:100%;z-index:100;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:6px;min-width:260px;max-height:240px;overflow-y:auto;font-size:11px';
         const dtbl = document.createElement('table');
         dtbl.style.cssText = 'width:100%;border-collapse:collapse';
@@ -5339,7 +5340,7 @@ function fillDomainTables(){
           ev.stopPropagation();
           dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
         });
-        document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+        dropdown.addEventListener('click', (ev) => { ev.stopPropagation(); });
         wrap.append(btn, dropdown);
         tdCav.append(wrap);
       } else {
@@ -5354,7 +5355,9 @@ function fillDomainTables(){
     }
 
     tr.append(tdSel, tdName, tdRange, tdCav);
-    tr.addEventListener('click', ()=>{
+    tr.addEventListener('click', (ev)=>{
+      // Skip if click originated from checkbox, button, or dropdown
+      if (ev.target.closest('input[type="checkbox"]') || ev.target.closest('button') || ev.target.closest('.dc-dropdown')) return;
       toggleFeature(d, chain);
     }, {passive:true});
     tb.append(tr);
@@ -5414,6 +5417,21 @@ function fillDrugHits(){
   document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
+  // Initialize SmilesDrawer if available
+  let smiDrawer = null;
+  if (typeof SmilesDrawer !== 'undefined' && SmilesDrawer.Drawer) {
+    smiDrawer = new SmilesDrawer.Drawer({ width: 200, height: 150, bondThickness: 1.2 });
+  }
+
+  function drawSmiles(canvas, smiles) {
+    if (!smiDrawer || !smiles) return;
+    try {
+      SmilesDrawer.parse(smiles, (tree) => {
+        smiDrawer.draw(tree, canvas, 'light');
+      }, (err) => { console.warn('SMILES parse error:', err); });
+    } catch(e) { console.warn('SmilesDrawer error:', e); }
+  }
+
   const buildPocketCards = (domains, container, chain) => {
     container.innerHTML = '';
     if (!domains.length) {
@@ -5427,10 +5445,10 @@ function fillDrugHits(){
       const header = document.createElement('div');
       header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
       const title = document.createElement('div');
-      title.style.cssText = 'font-weight:600;font-size:13px;color:#1e88e5';
+      title.style.cssText = 'font-weight:600;font-size:13px;color:#c62828';
       title.textContent = d.label || 'Pocket';
       const badge = document.createElement('span');
-      badge.style.cssText = 'background:#1e88e5;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px';
+      badge.style.cssText = 'background:#c62828;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px';
       badge.textContent = `${d.n_total_hits || 0} hits`;
       header.append(title, badge);
 
@@ -5446,18 +5464,68 @@ function fillDrugHits(){
       (d.top_drugs || []).forEach((drug, idx) => {
         const tr = document.createElement('tr');
         tr.style.cssText = 'border-bottom:1px solid #f0f0f0;cursor:pointer';
-        tr.addEventListener('mouseenter', () => { tr.style.background = '#f0f7ff'; });
-        tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
-        tr.addEventListener('click', () => {
-          // Select the pocket in the structure viewer
-          toggleFeature(d, chain);
-        });
+        tr.addEventListener('mouseenter', () => { if (!tr._expanded) tr.style.background = '#fff5f5'; });
+        tr.addEventListener('mouseleave', () => { if (!tr._expanded) tr.style.background = ''; });
         const smi = drug.smiles || '';
         const smiShort = smi.length > 35 ? smi.slice(0, 35) + '...' : smi;
         const oid = drug.oid || '';
         const oidShort = oid.length > 20 ? oid.slice(0, 20) + '...' : oid;
         tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px" title="${oid}">${oidShort}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
-        tbody.append(tr);
+
+        // Expandable detail row
+        const detailTr = document.createElement('tr');
+        detailTr.style.cssText = 'display:none';
+        detailTr.classList.add('dc-detail');
+        const detailTd = document.createElement('td');
+        detailTd.colSpan = 4;
+        detailTd.style.cssText = 'padding:8px 6px;background:#fafafa;border-bottom:1px solid #e0e0e0';
+        detailTr.append(detailTd);
+
+        tr.addEventListener('click', () => {
+          const wasExpanded = tr._expanded;
+          // Close all other expanded rows in this card
+          tbody.querySelectorAll('tr[data-expanded="true"]').forEach(r => {
+            r._expanded = false;
+            r.removeAttribute('data-expanded');
+            r.style.background = '';
+            const next = r.nextElementSibling;
+            if (next && next.classList.contains('dc-detail')) next.style.display = 'none';
+          });
+          if (!wasExpanded) {
+            tr._expanded = true;
+            tr.setAttribute('data-expanded', 'true');
+            tr.style.background = '#fff0f0';
+            detailTr.style.display = '';
+            // Build detail content on first expand
+            if (!detailTd._built) {
+              detailTd._built = true;
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
+              // 2D structure canvas
+              if (smiDrawer && smi) {
+                const cvs = document.createElement('canvas');
+                cvs.width = 200; cvs.height = 150;
+                cvs.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
+                wrap.append(cvs);
+                requestAnimationFrame(() => drawSmiles(cvs, smi));
+              }
+              // Details
+              const info = document.createElement('div');
+              info.style.cssText = 'font-size:11px;min-width:0';
+              info.innerHTML = `<div style="margin-bottom:4px"><strong>Full SMILES:</strong></div><div style="font-family:monospace;font-size:10px;word-break:break-all;background:#fff;padding:4px 6px;border:1px solid #eee;border-radius:4px;margin-bottom:6px">${smi}</div><div><strong>ID:</strong> ${oid}</div><div><strong>Score:</strong> ${drug.score ? drug.score.toFixed(4) : '–'}</div>`;
+              // Highlight pocket button
+              const hlBtn = document.createElement('button');
+              hlBtn.style.cssText = 'margin-top:6px;background:#c62828;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px';
+              hlBtn.textContent = 'Highlight pocket in 3D';
+              hlBtn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleFeature(d, chain); });
+              info.append(hlBtn);
+              wrap.append(info);
+              detailTd.append(wrap);
+            }
+          }
+        });
+
+        tbody.append(tr, detailTr);
       });
       tbl.append(tbody);
 
