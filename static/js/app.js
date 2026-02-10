@@ -5506,23 +5506,32 @@ function fillDrugHits(){
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
   // SmilesDrawer availability check
-  const smiDrawerOk = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function' && typeof SmilesDrawer.parse === 'function';
-  if (!smiDrawerOk) console.warn('SmilesDrawer not available. typeof:', typeof SmilesDrawer, 'keys:', typeof SmilesDrawer === 'object' ? Object.keys(SmilesDrawer) : 'N/A');
+  const _smiHasApply = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.apply === 'function';
+  console.log('SmilesDrawer check:', { exists: typeof SmilesDrawer !== 'undefined', hasApply: _smiHasApply,
+    hasDrawer: typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function',
+    hasParse: typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.parse === 'function' });
 
-  // Draw SMILES on a single canvas element
+  // Render SMILES on a canvas element using SmilesDrawer.apply batch mode
   function drawSmilesOnCanvas(canvas, smiles) {
-    if (!smiDrawerOk || !smiles || !canvas) return;
+    if (!_smiHasApply || !smiles || !canvas) {
+      console.warn('drawSmilesOnCanvas skip:', { hasApply: _smiHasApply, smiles: !!smiles, canvas: !!canvas });
+      return;
+    }
+    // Set data-smiles attribute for SmilesDrawer.apply to find
+    canvas.setAttribute('data-smiles', smiles);
+    console.log('SMILES canvas created, data-smiles set, calling apply...', smiles.slice(0, 40));
+    // Use requestAnimationFrame to ensure canvas is laid out, then apply
     requestAnimationFrame(() => {
-      try {
-        const drawer = new SmilesDrawer.Drawer({ width: canvas.width, height: canvas.height, bondThickness: 1.2 });
-        SmilesDrawer.parse(smiles, function(tree) {
-          drawer.draw(tree, canvas, 'light');
-        }, function(err) {
-          console.warn('SMILES parse error:', err, smiles.slice(0, 60));
-        });
-      } catch(e) {
-        console.warn('SMILES draw exception:', e);
-      }
+      requestAnimationFrame(() => {
+        try {
+          SmilesDrawer.apply({ width: 200, height: 150, bondThickness: 1.2 },
+            'canvas[data-smiles]', 'light',
+            function(err) { console.warn('SmilesDrawer apply error:', err); });
+          console.log('SmilesDrawer.apply() called successfully');
+        } catch(e) {
+          console.error('SmilesDrawer.apply() exception:', e);
+        }
+      });
     });
   }
 
@@ -5607,9 +5616,9 @@ function fillDrugHits(){
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
               // 2D structure via SmilesDrawer
-              if (smiDrawerOk && smi) {
+              if (_smiHasApply && smi) {
                 const cvs = document.createElement('canvas');
-                cvs.width = 400; cvs.height = 300;
+                cvs.width = 200; cvs.height = 150;
                 cvs.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
                 wrap.append(cvs);
                 drawSmilesOnCanvas(cvs, smi);
