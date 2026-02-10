@@ -1,9 +1,8 @@
 """OpenTargets known drug loading for report generation."""
 
-import ast
 import csv
 import glob
-import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -34,13 +33,10 @@ def _build_acc_to_ens_map() -> Dict[str, str]:
             acc_str = row.get('UniProt_Acc', '')
             if not ens_id or not acc_str:
                 continue
-            try:
-                accs = ast.literal_eval(acc_str)
-                if isinstance(accs, list):
-                    for acc in accs:
-                        _acc_to_ens[acc.strip()] = ens_id
-            except (ValueError, SyntaxError):
-                pass
+            # Format: "[P11802, Q96BE9]" or "[Q00534]" - parse with regex
+            accs = re.findall(r'[A-Z][A-Z0-9]{4,9}', acc_str)
+            for acc in accs:
+                _acc_to_ens[acc.strip()] = ens_id
 
     return _acc_to_ens
 

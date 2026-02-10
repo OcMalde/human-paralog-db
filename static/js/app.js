@@ -1309,6 +1309,9 @@ function initProteinDescriptions() {
   fillKnownDrugs('gene2DrugsList', gene2.known_drugs || []);
 }
 
+// Track selected drug globally (by drugId)
+let _selectedDrugId = null;
+
 function fillKnownDrugs(elId, drugs) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -1316,15 +1319,41 @@ function fillKnownDrugs(elId, drugs) {
     el.textContent = 'None';
     return;
   }
-  el.innerHTML = drugs.map(d => {
+  el.innerHTML = '';
+  drugs.forEach((d, i) => {
+    if (i > 0) el.append('; ');
     const name = d.name || d.drugId || '?';
     const phase = d.phase ? ` (Phase ${d.phase})` : '';
     const moa = d.moa ? ` – ${d.moa}` : '';
-    const url = d.drugId ? `https://platform.opentargets.org/drug/${d.drugId}` : '';
-    return url
-      ? `<a href="${url}" target="_blank" style="color:#c62828">${name}</a>${phase}${moa}`
-      : `${name}${phase}${moa}`;
-  }).join('; ');
+    const span = document.createElement('span');
+    span.className = 'known-drug-chip';
+    span.dataset.drugId = d.drugId || '';
+    span.style.cssText = 'cursor:pointer;padding:1px 6px;border-radius:4px;transition:all 0.15s';
+    span.innerHTML = `<strong>${name}</strong>${phase}${moa}`;
+    span.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      toggleKnownDrug(d.drugId);
+    });
+    el.append(span);
+  });
+}
+
+function toggleKnownDrug(drugId) {
+  if (!drugId) return;
+  // Toggle: if already selected, deselect; otherwise select
+  _selectedDrugId = (_selectedDrugId === drugId) ? null : drugId;
+  // Update all drug chips across both gene cards
+  document.querySelectorAll('.known-drug-chip').forEach(chip => {
+    if (chip.dataset.drugId === _selectedDrugId) {
+      chip.style.background = '#e3f2fd';
+      chip.style.color = '#1565c0';
+      chip.style.borderRadius = '4px';
+      chip.style.fontWeight = '';
+    } else {
+      chip.style.background = '';
+      chip.style.color = '';
+    }
+  });
 }
 
 // Boxplot chart instances for new sections
@@ -5453,19 +5482,22 @@ function fillDrugHits(){
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
   // SmilesDrawer availability check
-  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined';
+  const smiDrawerAvail = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function' && typeof SmilesDrawer.parse === 'function';
   let smiUid = 0;
 
-  // Draw SMILES into a canvas using SmilesDrawer.apply (most reliable API)
-  function drawSmilesCanvas(canvasId, smiles) {
-    if (!smiDrawerAvail || !smiles) return;
-    setTimeout(() => {
+  // Draw SMILES onto a canvas element using Drawer+parse (direct API)
+  function drawSmilesOnCanvas(canvasEl, smiles) {
+    if (!smiDrawerAvail || !canvasEl || !smiles) return;
+    // Double rAF ensures element is rendered and has layout dimensions
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       try {
-        // apply() finds elements with data-smiles and draws on them
-        SmilesDrawer.apply({ width: 200, height: 150, bondThickness: 1.2 }, '#' + canvasId, 'light',
-          (err) => { console.warn('SMILES draw error:', err); });
-      } catch(e) { console.warn('SmilesDrawer error:', e); }
-    }, 80);
+        const drawer = new SmilesDrawer.Drawer({ width: canvasEl.width, height: canvasEl.height, bondThickness: 1.2 });
+        SmilesDrawer.parse(smiles, (tree) => {
+          try { drawer.draw(tree, canvasEl, 'light'); }
+          catch(e) { console.warn('SMILES draw error:', e, smiles.slice(0,40)); }
+        }, (err) => { console.warn('SMILES parse error:', err); });
+      } catch(e) { console.warn('SmilesDrawer init error:', e); }
+    }));
   }
 
   // Build link to external drug database from oid (only ZINC has reliable direct URLs)
@@ -5548,16 +5580,13 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure (canvas with data-smiles for SmilesDrawer.apply)
+              // 2D structure via SmilesDrawer Drawer+parse
               if (smiDrawerAvail && smi) {
-                const cvsId = 'smi-cvs-' + (smiUid++);
                 const cvs = document.createElement('canvas');
-                cvs.id = cvsId;
-                cvs.setAttribute('data-smiles', smi);
                 cvs.width = 200; cvs.height = 150;
-                cvs.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
+                cvs.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
                 wrap.append(cvs);
-                drawSmilesCanvas(cvsId, smi);
+                drawSmilesOnCanvas(cvs, smi);
               }
               // Details
               const info = document.createElement('div');

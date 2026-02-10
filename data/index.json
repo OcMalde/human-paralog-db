@@ -9,6 +9,15 @@
     "fident": 0.498
   },
   {
+    "id": "CDK4_CDK6",
+    "geneA": "CDK4",
+    "geneB": "CDK6",
+    "accA": "P11802",
+    "accB": "Q00534",
+    "tm": 0.9749,
+    "fident": 0.709
+  },
+  {
     "id": "ENO1_ENO2",
     "geneA": "ENO1",
     "geneB": "ENO2",
