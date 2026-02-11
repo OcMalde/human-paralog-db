@@ -19,6 +19,10 @@ input/
 .idea/
 .vscode/
 
+# Local reports (self-contained HTML, not for GitHub)
+output/
+scripts/.lib_cache/
+
 # Temporary files
 *.tmp
 *.log

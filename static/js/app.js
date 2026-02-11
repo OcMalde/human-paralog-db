@@ -10,9 +10,9 @@
 const DATA_BASE = './data';
 // =========================================
 
-// Get pair ID from URL
+// Get pair ID from URL (let: reassigned in inline mode)
 const urlParams = new URLSearchParams(window.location.search);
-const PAIR_ID = urlParams.get('pair');
+let PAIR_ID = urlParams.get('pair');
 
 // Family index cache (loaded once)
 let FAMILY_INDEX = null;
@@ -36,8 +36,54 @@ let isProteinHighlighted = false;
     };
 })();
 
+// Inline mode: load data from window.__INLINE__ (self-contained HTML reports)
+async function loadInlineData() {
+    const I = window.__INLINE__;
+    DATA = I.DATA;
+    SUMMARY = I.SUMMARY || { gene1: {}, gene2: {}, pair: {}, conservation: {}, boxplots: {} };
+    PLMA_DATA = I.PLMA || null;
+    PAIR_ID = DATA.PAIR;
+
+    // PDB variants
+    const variants = I.PDB || {};
+    PDB64_FULL = variants.pdb64_full || "";
+    window.PDB64_A = variants.pdb64_a || PDB64_FULL;
+    window.PDB64_B = variants.pdb64_b || PDB64_FULL;
+    window.PDB64_AM_BY_MODE = {};
+    for (const key in variants) {
+        if (key.startsWith('pdb64_am_')) {
+            window.PDB64_AM_BY_MODE[key.replace('pdb64_am_', '')] = variants[key];
+        }
+    }
+    window.PDB64_PLDDT = variants.pdb64_plddt || PDB64_FULL;
+    window.PDB64_ALIGNED = variants.pdb64_aligned || null;
+    window.PDB64_DOMAINS = variants.pdb64_domains || null;
+
+    // DATA-dependent variables
+    AM_MODES = DATA.amModes || ['raw'];
+    PDBe_COMPLEXES = DATA.pdbeComplexes || [];
+    UNIPROT_A = DATA.a1 || '';
+    UNIPROT_B = DATA.a2 || '';
+
+    document.title = `${DATA.g1} vs ${DATA.g2}`;
+    document.getElementById('titleMain').textContent = `${DATA.g1} ↔ ${DATA.g2}`;
+    document.getElementById('titleSub').textContent = `Paralog pair ${DATA.PAIR}`;
+
+    // Family data (inline)
+    FULL_FAMILIES = I.FULL_FAMILIES || null;
+    FAMILY_INDEX = I.FAMILY_INDEX || null;
+    window.__INLINE_INDEX__ = I.INDEX || [];
+
+    await loadFamilyData();
+    await main();
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
 // Main initialization - loads data then runs notebook code
 async function loadDataAndInit() {
+    // Support inline mode (self-contained HTML reports)
+    if (window.__INLINE__) return loadInlineData();
+
     if (!PAIR_ID) {
         document.getElementById('loadingOverlay').textContent = 'No pair specified';
         return;
@@ -166,8 +212,13 @@ async function loadFamilyData() {
     }
 
     // Load index.json to get all pair metadata (for pairs with reports)
-    const indexResp = await fetch(`${DATA_BASE}/index.json`);
-    const allPairsIndex = indexResp.ok ? await indexResp.json() : [];
+    let allPairsIndex = [];
+    if (window.__INLINE_INDEX__) {
+      allPairsIndex = window.__INLINE_INDEX__;
+    } else {
+      const indexResp = await fetch(`${DATA_BASE}/index.json`);
+      allPairsIndex = indexResp.ok ? await indexResp.json() : [];
+    }
     const pairMap = new Map(allPairsIndex.map(p => [p.id, p]));
 
     // Get full family members from full_families.json
@@ -842,9 +893,10 @@ document.addEventListener('DOMContentLoaded', loadDataAndInit);
   if (!searchInput || !searchBtn) return;
 
   // Load available pairs for autocomplete from static index
-  fetch(`${DATA_BASE}/index.json`)
-    .then(resp => resp.json())
-    .then(pairs => {
+  const searchIndexPromise = window.__INLINE_INDEX__
+    ? Promise.resolve(window.__INLINE_INDEX__)
+    : fetch(`${DATA_BASE}/index.json`).then(resp => resp.json());
+  searchIndexPromise.then(pairs => {
       if (datalist && Array.isArray(pairs)) {
         // Populate datalist with first 100 pairs for performance
         pairs.slice(0, 100).forEach(p => {
