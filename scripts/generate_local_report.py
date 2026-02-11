@@ -10,12 +10,18 @@ Usage:
     python scripts/generate_local_report.py CDK4_CDK6
     python scripts/generate_local_report.py CDK4_CDK6 -o ~/reports/CDK4_CDK6.html
     python scripts/generate_local_report.py CDK4_CDK6 --use-cached
+
+    # Full pipeline: populate DB + generate report data + PLMA + HTML
+    # (no need to edit pairs.csv — pair stays local only)
+    python scripts/generate_local_report.py ADAMTS12_ADAMTS7 --full
 """
 
 import argparse
 import json
+import os
 import re
 import sqlite3
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -57,10 +63,70 @@ def download_and_cache(name, url):
 
 
 def get_db():
-    if not DB_PATH.exists():
-        raise FileNotFoundError(f"Database not found at {DB_PATH}")
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
+    return conn
+
+
+def run_full_pipeline(pair_id, conn):
+    """Run the full pipeline: populate DB + generate report data + extract PLMA.
+
+    This allows generating local reports for pairs not in pairs.csv,
+    keeping them out of the online DB.
+    """
+    gene_a, gene_b = pair_id.split("_", 1)
+
+    # Step 1: Populate DB (structure fetch + foldseek alignment)
+    pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
+    if not pair:
+        log(f"Step 1/3: Populating DB for {gene_a} vs {gene_b}...")
+        script = SCRIPTS_DIR / "populate_db.py"
+        result = subprocess.run(
+            [sys.executable, str(script), pair_id],
+            cwd=str(PROJECT_DIR),
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"populate_db.py failed for {pair_id}")
+        # Reconnect to pick up new data (populate_db uses its own connection)
+        conn.close()
+        conn = get_db()
+    else:
+        log("Step 1/3: Pair already in DB (skipping populate)")
+
+    # Step 2: Generate report data
+    report = conn.execute(
+        "SELECT data_json FROM report_data WHERE pair_id = ?", (pair_id,)
+    ).fetchone()
+    if not report or not report["data_json"]:
+        log("Step 2/3: Generating report data...")
+        sys.path.insert(0, str(SCRIPTS_DIR))
+        from generate_report_data import generate_report_data as gen_report
+
+        data_obj, summary_obj = gen_report(pair_id, conn)
+        conn.execute(
+            """INSERT OR REPLACE INTO report_data (pair_id, data_json, summary_json)
+               VALUES (?, ?, ?)""",
+            (pair_id, json.dumps(data_obj), json.dumps(summary_obj)),
+        )
+        conn.commit()
+    else:
+        log("Step 2/3: Report data already in DB (skipping)")
+
+    # Step 3: Extract PLMA data
+    plma_path = DATA_DIR / "pairs" / pair_id / "plma.json"
+    if not plma_path.exists():
+        log("Step 3/3: Extracting PLMA data...")
+        script = SCRIPTS_DIR / "extract_plma.py"
+        result = subprocess.run(
+            [sys.executable, str(script), pair_id],
+            cwd=str(PROJECT_DIR),
+        )
+        if result.returncode != 0:
+            log("  WARNING: PLMA extraction failed (family data may not be available)")
+    else:
+        log("Step 3/3: PLMA data already exists (skipping)")
+
     return conn
 
 
@@ -200,6 +266,11 @@ def main():
         action="store_true",
         help="Force regeneration of report data",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Run full pipeline (populate DB + report data + PLMA) for pairs not yet in DB",
+    )
     args = parser.parse_args()
 
     pair_id = args.pair_id
@@ -208,34 +279,38 @@ def main():
     # Connect to DB
     conn = get_db()
 
-    # Check if pair exists in DB
-    pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
-    if not pair:
-        log(f"ERROR: Pair {pair_id} not found in database")
-        log("Available pairs:")
-        for r in conn.execute("SELECT pair_id FROM pairs").fetchall():
-            log(f"  {r[0]}")
-        sys.exit(1)
+    # Full pipeline mode: populate + report data + PLMA in one go
+    if args.full:
+        conn = run_full_pipeline(pair_id, conn)
+    else:
+        # Check if pair exists in DB
+        pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
+        if not pair:
+            log(f"ERROR: Pair {pair_id} not found in database")
+            log("  Hint: use --full to run the full pipeline (populate + report data + PLMA)")
+            log("Available pairs:")
+            for r in conn.execute("SELECT pair_id FROM pairs").fetchall():
+                log(f"  {r[0]}")
+            sys.exit(1)
 
-    # Check if report data needs generation
-    report = conn.execute(
-        "SELECT data_json FROM report_data WHERE pair_id = ?", (pair_id,)
-    ).fetchone()
+        # Check if report data needs generation
+        report = conn.execute(
+            "SELECT data_json FROM report_data WHERE pair_id = ?", (pair_id,)
+        ).fetchone()
 
-    if not report or not report["data_json"] or args.regenerate:
-        log("Generating report data (this may take a minute)...")
-        sys.path.insert(0, str(SCRIPTS_DIR))
-        from generate_report_data import generate_report_data as gen_report
+        if not report or not report["data_json"] or args.regenerate:
+            log("Generating report data (this may take a minute)...")
+            sys.path.insert(0, str(SCRIPTS_DIR))
+            from generate_report_data import generate_report_data as gen_report
 
-        data_obj, summary_obj = gen_report(pair_id, conn)
-        # Store in DB
-        conn.execute(
-            """INSERT OR REPLACE INTO report_data (pair_id, data_json, summary_json)
-               VALUES (?, ?, ?)""",
-            (pair_id, json.dumps(data_obj), json.dumps(summary_obj)),
-        )
-        conn.commit()
-        log("  Report data generated and cached in DB")
+            data_obj, summary_obj = gen_report(pair_id, conn)
+            conn.execute(
+                """INSERT OR REPLACE INTO report_data (pair_id, data_json, summary_json)
+                   VALUES (?, ?, ?)""",
+                (pair_id, json.dumps(data_obj), json.dumps(summary_obj)),
+            )
+            conn.commit()
+            log("  Report data generated and cached in DB")
 
     # Load all data
     log("Loading pair data...")
