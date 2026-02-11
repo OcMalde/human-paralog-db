@@ -5505,39 +5505,27 @@ function fillDrugHits(){
   document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
-  // SmilesDrawer availability check
-  const _smiOk = typeof SmilesDrawer !== 'undefined';
-  const _smiHasSvg = _smiOk && typeof SmilesDrawer.SvgDrawer === 'function';
-  const _smiHasParse = _smiOk && typeof SmilesDrawer.parse === 'function';
-  console.log('SmilesDrawer:', { ok: _smiOk, SvgDrawer: _smiHasSvg, parse: _smiHasParse,
-    keys: _smiOk ? Object.keys(SmilesDrawer).join(',') : 'N/A' });
+  // OpenChemLib availability check
+  const _oclOk = typeof OCL !== 'undefined' && typeof OCL.Molecule !== 'undefined';
+  console.log('OpenChemLib:', { ok: _oclOk, version: _oclOk ? (OCL.version || 'loaded') : 'N/A' });
 
-  // Render SMILES as SVG into a container element
+  // Render SMILES as SVG into a container element using OpenChemLib
   function renderSmilesToSvg(container, smiles) {
-    if (!_smiHasSvg || !_smiHasParse || !smiles || !container) return;
+    if (!_oclOk || !smiles || !container) return;
     try {
-      const svgDrawer = new SmilesDrawer.SvgDrawer({ width: 200, height: 150, bondThickness: 1.2 });
-      SmilesDrawer.parse(smiles, function(tree) {
-        // Create SVG element for SvgDrawer to draw into
-        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-        svgEl.setAttribute('width', '200');
-        svgEl.setAttribute('height', '150');
-        svgEl.setAttribute('viewBox', '0 0 200 150');
-        svgEl.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
-        container.prepend(svgEl);
-        svgDrawer.draw(tree, svgEl, 'light', false);
-        console.log('SMILES SVG rendered for:', smiles.slice(0, 30));
-      }, function(err) {
-        console.warn('SMILES parse error:', err);
-        // Fallback: show SMILES text
-        const fallback = document.createElement('div');
-        fallback.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;padding:8px;word-break:break-all;flex-shrink:0';
-        fallback.textContent = smiles.length > 80 ? smiles.slice(0, 80) + '...' : smiles;
-        container.prepend(fallback);
-      });
+      const mol = OCL.Molecule.fromSmiles(smiles);
+      const svgStr = mol.toSVG(200, 150);
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0;overflow:hidden';
+      wrap.innerHTML = svgStr;
+      container.prepend(wrap);
+      console.log('SMILES rendered (OCL) for:', smiles.slice(0, 30));
     } catch(e) {
-      console.error('SMILES render exception:', e);
+      console.warn('SMILES render error:', e, smiles.slice(0, 50));
+      const fallback = document.createElement('div');
+      fallback.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;padding:8px;word-break:break-all;flex-shrink:0';
+      fallback.textContent = smiles.length > 80 ? smiles.slice(0, 80) + '...' : smiles;
+      container.prepend(fallback);
     }
   }
 
@@ -5621,8 +5609,8 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure via SmilesDrawer (SVG mode)
-              if (_smiHasSvg && smi) {
+              // 2D structure via OpenChemLib
+              if (_oclOk && smi) {
                 renderSmilesToSvg(wrap, smi);
               }
               // Details
