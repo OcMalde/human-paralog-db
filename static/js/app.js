@@ -4565,7 +4565,10 @@ function toggleFeature(dom, chain) {
   if (selection.has(key)) {
     selection.delete(key);
   } else {
-    const color = (dom.type === 'DrugCLIP') ? '#c62828' : (dom.type === 'Cavity') ? '#ff7d45' : '#ffdb13';
+    const color = (dom.type === 'DrugCLIP') ? '#c62828'
+      : (dom.type === 'Cavity') ? '#ff9800'
+      : (dom.raw_type === 'TED') ? '#00897b'
+      : '#ffdb13';
     selection.set(key, {
       id: dom.uid,
       chain,

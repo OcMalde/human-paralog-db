@@ -438,12 +438,15 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     domB_rects = rects_on_alignment([d for d in doms_ebi_b if d.get("type") == "Domain"], 'B', "#2ca02c", aligned_cols, alnLen)
     disorderA_rects = rects_on_alignment(disorder_a, 'A', "#9467bd", aligned_cols, alnLen)
     disorderB_rects = rects_on_alignment(disorder_b, 'B', "#9467bd", aligned_cols, alnLen)
-    # TED domains have their own separate track
-    tedA_rects = rects_on_alignment(doms_ted_a, 'A', "#d62728", aligned_cols, alnLen)
-    tedB_rects = rects_on_alignment(doms_ted_b, 'B', "#d62728", aligned_cols, alnLen)
-    # Cavities have their own track
-    cavA_rects = rects_on_alignment(cavities_a, 'A', "#ff7d45", aligned_cols, alnLen)
-    cavB_rects = rects_on_alignment(cavities_b, 'B', "#ff7d45", aligned_cols, alnLen)
+    # TED domains have their own separate track (teal)
+    tedA_rects = rects_on_alignment(doms_ted_a, 'A', "#00897b", aligned_cols, alnLen)
+    tedB_rects = rects_on_alignment(doms_ted_b, 'B', "#00897b", aligned_cols, alnLen)
+    # Cavities: color by druggability strength
+    _cav_colors = {"Strong": "#e65100", "Medium": "#ff9800", "Weak": "#ffcc80"}
+    for cav in cavities_a + cavities_b:
+        cav["color"] = _cav_colors.get(cav.get("druggability"), "#ff9800")
+    cavA_rects = rects_on_alignment(cavities_a, 'A', "#ff9800", aligned_cols, alnLen)
+    cavB_rects = rects_on_alignment(cavities_b, 'B', "#ff9800", aligned_cols, alnLen)
     # DrugCLIP pockets have their own track (red)
     dcA_rects = rects_on_alignment(drugclip_a, 'A', "#c62828", aligned_cols, alnLen)
     dcB_rects = rects_on_alignment(drugclip_b, 'B', "#c62828", aligned_cols, alnLen)
