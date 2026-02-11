@@ -7,13 +7,15 @@ Reuses the DB codebase (report.html, app.js) so any future UI changes
 are automatically picked up on next run.
 
 Usage:
+    # For pairs already in the main DB (public pairs):
     python scripts/generate_local_report.py CDK4_CDK6
     python scripts/generate_local_report.py CDK4_CDK6 -o ~/reports/CDK4_CDK6.html
-    python scripts/generate_local_report.py CDK4_CDK6 --use-cached
 
-    # Full pipeline: populate DB + generate report data + PLMA + HTML
-    # (no need to edit pairs.csv — pair stays local only)
+    # Full pipeline for private pairs (all data stays in data/local/, gitignored):
     python scripts/generate_local_report.py ADAMTS12_ADAMTS7 --full
+
+All --full pipeline data is stored in data/local/ which is gitignored.
+No private pair data ever touches the public data/pairs/ directory or main DB.
 """
 
 import argparse
@@ -32,8 +34,9 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 DATA_DIR = PROJECT_DIR / "data"
-LOCAL_DIR = DATA_DIR / "local"  # gitignored, for private pair data
-DB_PATH = DATA_DIR / "pairs.db"
+LOCAL_DIR = DATA_DIR / "local"  # gitignored — all private pair data lives here
+LOCAL_DB_PATH = LOCAL_DIR / "pairs.db"  # separate DB for private pairs
+MAIN_DB_PATH = DATA_DIR / "pairs.db"   # public DB (never touched by --full)
 LIB_CACHE_DIR = SCRIPTS_DIR / ".lib_cache"
 OUTPUT_DIR = PROJECT_DIR / "output"
 INPUT_DIR = PROJECT_DIR / "input"
@@ -67,44 +70,79 @@ def download_and_cache(name, url):
     return content
 
 
-def get_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+def get_db(db_path):
+    """Get a database connection for the given path."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def run_full_pipeline(pair_id, conn):
-    """Run the full pipeline: populate DB + generate report data + extract PLMA.
+def run_full_pipeline(pair_id):
+    """Run the full pipeline using data/local/ as the isolated workspace.
 
-    This allows generating local reports for pairs not in pairs.csv,
-    keeping them out of the online DB. PLMA data goes to data/local/.
+    Uses data/local/pairs.db (separate from the main DB) so no private pair
+    data ever touches the public database. All outputs go to data/local/.
     """
     gene_a, gene_b = pair_id.split("_", 1)
+    LOCAL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Populate DB (structure fetch + foldseek alignment)
-    pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
+    # Environment for subprocesses: point to local DB
+    env = {**os.environ, "PARALOG_DB": str(LOCAL_DB_PATH)}
+
+    conn = get_db(LOCAL_DB_PATH)
+
+    # Step 1: Populate local DB (structure fetch + foldseek alignment)
+    try:
+        pair = conn.execute(
+            "SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        pair = None  # Fresh DB, no tables yet
     if not pair:
-        log(f"Step 1/3: Populating DB for {gene_a} vs {gene_b}...")
-        script = SCRIPTS_DIR / "populate_db.py"
+        log(f"Step 1/4: Populating local DB for {gene_a} vs {gene_b}...")
         result = subprocess.run(
-            [sys.executable, str(script), pair_id],
+            [sys.executable, str(SCRIPTS_DIR / "populate_db.py"), pair_id],
             cwd=str(PROJECT_DIR),
+            env=env,
         )
         if result.returncode != 0:
             raise RuntimeError(f"populate_db.py failed for {pair_id}")
-        # Reconnect to pick up new data (populate_db uses its own connection)
         conn.close()
-        conn = get_db()
+        conn = get_db(LOCAL_DB_PATH)
     else:
-        log("Step 1/3: Pair already in DB (skipping populate)")
+        log("Step 1/4: Pair already in local DB (skipping populate)")
 
-    # Step 2: Generate report data
-    report = conn.execute(
-        "SELECT data_json FROM report_data WHERE pair_id = ?", (pair_id,)
+    # Step 2: Download DrugCLIP data (if not already present)
+    pair = conn.execute(
+        "SELECT acc_a, acc_b FROM pairs WHERE pair_id = ?", (pair_id,)
     ).fetchone()
+    acc_a, acc_b = pair["acc_a"], pair["acc_b"]
+    drugclip_dir = INPUT_DIR / "drugclip"
+    missing_dc = [
+        acc for acc in [acc_a, acc_b]
+        if not (drugclip_dir / acc / "pockets.json").exists()
+    ]
+    if missing_dc:
+        log(f"Step 2/4: Downloading DrugCLIP data for {', '.join(missing_dc)}...")
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "download_drugclip.py")] + missing_dc,
+            cwd=str(PROJECT_DIR),
+        )
+        if result.returncode != 0:
+            log("  WARNING: DrugCLIP download failed (pockets will be missing)")
+    else:
+        log("Step 2/4: DrugCLIP data already present (skipping)")
+
+    # Step 3: Generate report data
+    try:
+        report = conn.execute(
+            "SELECT data_json FROM report_data WHERE pair_id = ?", (pair_id,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        report = None  # Table doesn't exist yet
     if not report or not report["data_json"]:
-        log("Step 2/3: Generating report data...")
+        log("Step 3/4: Generating report data...")
         sys.path.insert(0, str(SCRIPTS_DIR))
         from generate_report_data import generate_report_data as gen_report
 
@@ -116,41 +154,29 @@ def run_full_pipeline(pair_id, conn):
         )
         conn.commit()
     else:
-        log("Step 2/3: Report data already in DB (skipping)")
+        log("Step 3/4: Report data already in local DB (skipping)")
 
-    # Step 3: Extract PLMA data (to data/local/ for private pairs)
-    plma_path = _find_plma_path(pair_id)
-    if not plma_path:
-        log("Step 3/3: Extracting PLMA data...")
-        # Use data/local/ for pairs not in the online set
-        local_plma_dir = LOCAL_DIR / pair_id
-        local_plma_dir.mkdir(parents=True, exist_ok=True)
-        script = SCRIPTS_DIR / "extract_plma.py"
+    # Step 4: Extract PLMA data (directly to data/local/)
+    plma_path = LOCAL_DIR / pair_id / "plma.json"
+    if not plma_path.exists():
+        log("Step 4/4: Extracting PLMA data...")
         result = subprocess.run(
-            [sys.executable, str(script), pair_id],
+            [
+                sys.executable, str(SCRIPTS_DIR / "extract_plma.py"),
+                pair_id, "--output-dir", str(LOCAL_DIR),
+            ],
             cwd=str(PROJECT_DIR),
         )
         if result.returncode != 0:
             log("  WARNING: PLMA extraction failed (family data may not be available)")
-        # Move from data/pairs/ to data/local/ if it ended up there
-        default_plma = DATA_DIR / "pairs" / pair_id / "plma.json"
-        local_plma = local_plma_dir / "plma.json"
-        if default_plma.exists() and not local_plma.exists():
-            import shutil
-            shutil.move(str(default_plma), str(local_plma))
-            # Clean up empty directory
-            try:
-                (DATA_DIR / "pairs" / pair_id).rmdir()
-            except OSError:
-                pass
     else:
-        log("Step 3/3: PLMA data already exists (skipping)")
+        log("Step 4/4: PLMA data already exists (skipping)")
 
     return conn
 
 
 def _find_plma_path(pair_id):
-    """Find plma.json in either data/local/ or data/pairs/."""
+    """Find plma.json in data/local/ or data/pairs/."""
     for base in [LOCAL_DIR, DATA_DIR / "pairs"]:
         p = base / pair_id / "plma.json"
         if p.exists():
@@ -232,6 +258,8 @@ def load_family_data(conn, pair_id):
     # Ensure family_index includes the current pair's genes
     if family_index is None:
         family_index = {}
+
+    # Include pairs from both main and local DBs in family_index
     db_pairs = conn.execute("SELECT pair_id, gene_a, gene_b FROM pairs").fetchall()
     for row in db_pairs:
         for g in [row["gene_a"], row["gene_b"]]:
@@ -399,33 +427,53 @@ def main():
     parser.add_argument(
         "--regenerate",
         action="store_true",
-        help="Force regeneration of report data",
+        help="Force regeneration of report data (use with --full to redo all steps)",
     )
     parser.add_argument(
         "--full",
         action="store_true",
-        help="Run full pipeline (populate DB + report data + PLMA) for pairs not yet in DB",
+        help="Full pipeline for private pairs: populate + DrugCLIP + report + PLMA. "
+             "All data stays in data/local/ (gitignored), never touches the main DB.",
     )
     args = parser.parse_args()
 
     pair_id = args.pair_id
     log(f"Generating self-contained report for {pair_id}...")
 
-    # Connect to DB
-    conn = get_db()
-
-    # Full pipeline mode: populate + report data + PLMA in one go
     if args.full:
-        conn = run_full_pipeline(pair_id, conn)
+        # Full pipeline: everything in data/local/ (completely isolated)
+        if args.regenerate:
+            # Delete cached data to force regeneration
+            local_conn = get_db(LOCAL_DB_PATH)
+            try:
+                local_conn.execute("DELETE FROM report_data WHERE pair_id = ?", (pair_id,))
+                local_conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Table doesn't exist yet (fresh DB)
+            local_conn.close()
+            plma = LOCAL_DIR / pair_id / "plma.json"
+            if plma.exists():
+                plma.unlink()
+            log("Cleared cached data for regeneration")
+
+        conn = run_full_pipeline(pair_id)
     else:
-        # Check if pair exists in DB
-        pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
-        if not pair:
-            log(f"ERROR: Pair {pair_id} not found in database")
-            log("  Hint: use --full to run the full pipeline (populate + report data + PLMA)")
-            log("Available pairs:")
-            for r in conn.execute("SELECT pair_id FROM pairs").fetchall():
-                log(f"  {r[0]}")
+        # Non-full mode: check local DB first, then main DB
+        conn = None
+        for db_path in [LOCAL_DB_PATH, MAIN_DB_PATH]:
+            if db_path.exists():
+                c = get_db(db_path)
+                pair = c.execute(
+                    "SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)
+                ).fetchone()
+                if pair:
+                    conn = c
+                    break
+                c.close()
+
+        if conn is None:
+            log(f"ERROR: Pair {pair_id} not found in any database")
+            log("  Hint: use --full to run the full pipeline")
             sys.exit(1)
 
         # Check if report data needs generation
@@ -454,7 +502,7 @@ def main():
     # Load PLMA data
     plma_data = load_plma_data(pair_id)
     if not plma_data:
-        log("  No PLMA data found (run extract_plma.py first if needed)")
+        log("  No PLMA data found")
 
     # Load family data (generates constellation data on-the-fly if needed)
     log("Loading family data...")

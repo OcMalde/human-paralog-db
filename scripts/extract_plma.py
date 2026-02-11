@@ -420,6 +420,7 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
 def main():
     parser = argparse.ArgumentParser(description='Extract PLMA data for pairs')
     parser.add_argument('pair_id', nargs='?', help='Specific pair to process')
+    parser.add_argument('--output-dir', help='Output directory (default: data/pairs)')
     args = parser.parse_args()
 
     # Load features CSV for family_id and uniprot mappings
@@ -437,6 +438,9 @@ def main():
         pair_ids = [args.pair_id]
     else:
         pair_ids = [f"{r['A1']}_{r['A2']}" for _, r in pairs_df.iterrows()]
+
+    # Determine output base directory
+    output_base = Path(args.output_dir) if args.output_dir else PAIRS_DIR
 
     log(f"Processing {len(pair_ids)} pairs...")
 
@@ -480,7 +484,7 @@ def main():
             continue
 
         # Write plma.json
-        out_dir = PAIRS_DIR / pair_id
+        out_dir = output_base / pair_id
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / "plma.json"
         with open(out_file, 'w') as f:

@@ -35,7 +35,7 @@ import requests
 
 # ============= Configuration =============
 BASE_DIR = Path(__file__).parent.parent
-DB_PATH = BASE_DIR / "data" / "pairs.db"
+DB_PATH = Path(os.environ.get("PARALOG_DB", str(BASE_DIR / "data" / "pairs.db")))
 STRUCTURES_DIR = BASE_DIR / "data" / "structures"
 CACHE_DIR = BASE_DIR / "data" / "cache"
 
