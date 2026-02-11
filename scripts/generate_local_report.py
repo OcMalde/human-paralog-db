@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -24,15 +25,19 @@ import sqlite3
 import subprocess
 import sys
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 
 # Project paths
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = PROJECT_DIR / "scripts"
 DATA_DIR = PROJECT_DIR / "data"
+LOCAL_DIR = DATA_DIR / "local"  # gitignored, for private pair data
 DB_PATH = DATA_DIR / "pairs.db"
 LIB_CACHE_DIR = SCRIPTS_DIR / ".lib_cache"
 OUTPUT_DIR = PROJECT_DIR / "output"
+INPUT_DIR = PROJECT_DIR / "input"
+FEATURES_CSV = INPUT_DIR / "ens111_human_allFeatures.csv"
 
 # CDN libraries to download and inline
 CDN_LIBS = {
@@ -73,7 +78,7 @@ def run_full_pipeline(pair_id, conn):
     """Run the full pipeline: populate DB + generate report data + extract PLMA.
 
     This allows generating local reports for pairs not in pairs.csv,
-    keeping them out of the online DB.
+    keeping them out of the online DB. PLMA data goes to data/local/.
     """
     gene_a, gene_b = pair_id.split("_", 1)
 
@@ -113,10 +118,13 @@ def run_full_pipeline(pair_id, conn):
     else:
         log("Step 2/3: Report data already in DB (skipping)")
 
-    # Step 3: Extract PLMA data
-    plma_path = DATA_DIR / "pairs" / pair_id / "plma.json"
-    if not plma_path.exists():
+    # Step 3: Extract PLMA data (to data/local/ for private pairs)
+    plma_path = _find_plma_path(pair_id)
+    if not plma_path:
         log("Step 3/3: Extracting PLMA data...")
+        # Use data/local/ for pairs not in the online set
+        local_plma_dir = LOCAL_DIR / pair_id
+        local_plma_dir.mkdir(parents=True, exist_ok=True)
         script = SCRIPTS_DIR / "extract_plma.py"
         result = subprocess.run(
             [sys.executable, str(script), pair_id],
@@ -124,20 +132,38 @@ def run_full_pipeline(pair_id, conn):
         )
         if result.returncode != 0:
             log("  WARNING: PLMA extraction failed (family data may not be available)")
+        # Move from data/pairs/ to data/local/ if it ended up there
+        default_plma = DATA_DIR / "pairs" / pair_id / "plma.json"
+        local_plma = local_plma_dir / "plma.json"
+        if default_plma.exists() and not local_plma.exists():
+            import shutil
+            shutil.move(str(default_plma), str(local_plma))
+            # Clean up empty directory
+            try:
+                (DATA_DIR / "pairs" / pair_id).rmdir()
+            except OSError:
+                pass
     else:
         log("Step 3/3: PLMA data already exists (skipping)")
 
     return conn
 
 
+def _find_plma_path(pair_id):
+    """Find plma.json in either data/local/ or data/pairs/."""
+    for base in [LOCAL_DIR, DATA_DIR / "pairs"]:
+        p = base / pair_id / "plma.json"
+        if p.exists():
+            return p
+    return None
+
+
 def load_pair_data(conn, pair_id):
     """Load report data, summary, and PDB variants from the database."""
-    # Check if pair exists
     pair = conn.execute("SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)).fetchone()
     if not pair:
         raise ValueError(f"Pair {pair_id} not found in database")
 
-    # Check for generated report data
     report = conn.execute(
         "SELECT data_json, summary_json FROM report_data WHERE pair_id = ?",
         (pair_id,),
@@ -151,7 +177,6 @@ def load_pair_data(conn, pair_id):
     report_data = json.loads(report["data_json"])
     summary_data = json.loads(report["summary_json"]) if report["summary_json"] else {}
 
-    # Generate PDB variants (reuse export_static logic)
     sys.path.insert(0, str(SCRIPTS_DIR))
     from export_static import generate_pdb_variants
 
@@ -161,15 +186,19 @@ def load_pair_data(conn, pair_id):
 
 
 def load_plma_data(pair_id):
-    """Load PLMA data from the exported JSON or generate it."""
-    plma_path = DATA_DIR / "pairs" / pair_id / "plma.json"
-    if plma_path.exists():
-        return json.loads(plma_path.read_text())
+    """Load PLMA data from data/local/ or data/pairs/."""
+    p = _find_plma_path(pair_id)
+    if p:
+        return json.loads(p.read_text())
     return None
 
 
-def load_family_data():
-    """Load full_families.json, family_index.json, and index.json."""
+def load_family_data(conn, pair_id):
+    """Load family data, generating on-the-fly if needed for the pair's family.
+
+    Ensures the constellation view is populated even for private pairs
+    not present in the pre-built full_families.json.
+    """
     full_families = None
     family_index = None
     index_data = []
@@ -186,7 +215,115 @@ def load_family_data():
     if idx_path.exists():
         index_data = json.loads(idx_path.read_text())
 
+    # Check if the pair's genes are already in full_families
+    gene_a, gene_b = pair_id.split("_", 1)
+    genes_present = (
+        full_families
+        and gene_a in full_families.get("families", {})
+        and gene_b in full_families.get("families", {})
+    )
+
+    if not genes_present and FEATURES_CSV.exists():
+        log("  Generating family constellation data from features CSV...")
+        full_families, family_index = _build_family_data_for_pair(
+            conn, gene_a, gene_b, full_families, family_index,
+        )
+
+    # Ensure family_index includes the current pair's genes
+    if family_index is None:
+        family_index = {}
+    db_pairs = conn.execute("SELECT pair_id, gene_a, gene_b FROM pairs").fetchall()
+    for row in db_pairs:
+        for g in [row["gene_a"], row["gene_b"]]:
+            if g not in family_index:
+                family_index[g] = []
+            if row["pair_id"] not in family_index[g]:
+                family_index[g].append(row["pair_id"])
+
     return full_families, family_index, index_data
+
+
+def _build_family_data_for_pair(conn, gene_a, gene_b, existing_families, existing_index):
+    """Build family constellation data for a pair from the features CSV.
+
+    Uses union-find to discover the full family, then builds the identity matrix.
+    Merges with any existing full_families data.
+    """
+    # Read relevant pairs from features CSV
+    all_pairs = []
+    pair_identities = {}
+
+    with open(FEATURES_CSV, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            g1 = row.get("A1", "").strip()
+            g2 = row.get("A2", "").strip()
+            if g1 and g2:
+                all_pairs.append((g1, g2))
+                try:
+                    identity = float(row.get("max_sequence_identity", 0))
+                except (ValueError, TypeError):
+                    identity = 0
+                pair_identities[(g1, g2)] = identity
+                pair_identities[(g2, g1)] = identity
+
+    # Union-find to discover family
+    parent = {}
+
+    def find(x):
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for g1, g2 in all_pairs:
+        union(g1, g2)
+
+    # Find family containing gene_a
+    root = find(gene_a)
+    family_genes = {gene for gene in parent if find(gene) == root}
+
+    log(f"  Family has {len(family_genes)} genes")
+
+    # Build identity matrix
+    family_identities = {}
+    for g in family_genes:
+        gene_ids = {}
+        for other_g in family_genes:
+            if g != other_g:
+                identity = pair_identities.get((g, other_g))
+                if identity is not None:
+                    gene_ids[other_g] = identity
+        if gene_ids:
+            family_identities[g] = gene_ids
+
+    # Merge with existing data
+    if existing_families is None:
+        existing_families = {"families": {}, "family_data": {}}
+
+    # Find next available family_id
+    existing_ids = [
+        int(fid.split("_")[1])
+        for fid in existing_families.get("family_data", {})
+        if fid.startswith("family_")
+    ]
+    next_id = max(existing_ids, default=-1) + 1
+    fid = f"family_{next_id}"
+
+    existing_families["family_data"][fid] = {
+        "genes": sorted(family_genes),
+        "identities": family_identities,
+    }
+    for gene in family_genes:
+        existing_families["families"][gene] = fid
+
+    return existing_families, existing_index
 
 
 def assemble_html(
@@ -195,7 +332,6 @@ def assemble_html(
 ):
     """Assemble a self-contained HTML file from the DB codebase."""
 
-    # Read template files from the codebase
     html = (PROJECT_DIR / "report.html").read_text(encoding="utf-8")
     app_js = (PROJECT_DIR / "static" / "js" / "app.js").read_text(encoding="utf-8")
 
@@ -215,7 +351,6 @@ def assemble_html(
         "FAMILY_INDEX": family_index,
         "INDEX": index_data,
     }
-    # Use separators to minimize size
     data_json = json.dumps(inline_data, separators=(",", ":"))
     data_script = f"<script>window.__INLINE__={data_json};</script>"
 
@@ -321,8 +456,9 @@ def main():
     if not plma_data:
         log("  No PLMA data found (run extract_plma.py first if needed)")
 
-    # Load family data
-    full_families, family_index, index_data = load_family_data()
+    # Load family data (generates constellation data on-the-fly if needed)
+    log("Loading family data...")
+    full_families, family_index, index_data = load_family_data(conn, pair_id)
 
     conn.close()
 

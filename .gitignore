@@ -19,7 +19,8 @@ input/
 .idea/
 .vscode/
 
-# Local reports (self-contained HTML, not for GitHub)
+# Local/private pair data (not for GitHub)
+data/local/
 output/
 scripts/.lib_cache/
 

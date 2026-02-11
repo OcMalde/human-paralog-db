@@ -188,6 +188,24 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
         log(f"  WARNING: No blocks found in {dot_file.name}")
         return None
 
+    # Filter to human sequences only (OX=9606 or _HUMAN in entry name)
+    human_seqs = set()
+    for sn, info in seq_descs.items():
+        desc = info.get('desc', '')
+        if 'OX=9606' in desc or '_HUMAN' in desc:
+            human_seqs.add(sn)
+    n_removed = len(seq_descs) - len(human_seqs)
+    if n_removed > 0:
+        log(f"  Filtered {n_removed} ortholog sequences (keeping {len(human_seqs)} human)")
+        seq_descs = {sn: v for sn, v in seq_descs.items() if sn in human_seqs}
+        seq_names = {sn: v for sn, v in seq_names.items() if sn in human_seqs}
+        seq_lengths = {sn: v for sn, v in seq_lengths.items() if sn in human_seqs}
+        # Remove ortholog entries from blocks
+        for bloc_id in list(blocks.keys()):
+            blocks[bloc_id] = {sn: v for sn, v in blocks[bloc_id].items() if sn in human_seqs}
+            if not blocks[bloc_id]:
+                del blocks[bloc_id]
+
     # Find which sequence numbers correspond to gene A and gene B
     gene_a_seq = None
     gene_b_seq = None
