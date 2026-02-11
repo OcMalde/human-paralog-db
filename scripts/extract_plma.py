@@ -253,21 +253,16 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
             }
         blocks_json.append(b)
 
-    # Sort blocks by position: prefer gene A, then gene B, then average
-    # of all member start positions. This ensures correct ordering for
-    # all sequences in the alignment, not just the pair.
+    # Sort blocks by median start position across ALL member sequences.
+    # This consensus ordering minimizes out-of-order blocks for the
+    # entire family, not just the pair.
     def block_sort_key(b):
-        pos_a = b['positions'].get(gene_a_seq)
-        pos_b = b['positions'].get(gene_b_seq)
-        if pos_a and pos_a.get('start') is not None:
-            return pos_a['start']
-        if pos_b and pos_b.get('start') is not None:
-            return pos_b['start']
-        # Fallback: average start position across all member sequences
         starts = [p['start'] for p in b['positions'].values()
                   if p.get('start') is not None]
         if starts:
-            return sum(starts) / len(starts)
+            starts.sort()
+            mid = len(starts) // 2
+            return starts[mid]  # median
         m = re.match(r'B(\d+)', b['id'])
         return 100000 + (int(m.group(1)) if m else 0)
 

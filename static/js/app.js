@@ -5506,33 +5506,39 @@ function fillDrugHits(){
   document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
 
   // SmilesDrawer availability check
-  const _smiHasApply = typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.apply === 'function';
-  console.log('SmilesDrawer check:', { exists: typeof SmilesDrawer !== 'undefined', hasApply: _smiHasApply,
-    hasDrawer: typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.Drawer === 'function',
-    hasParse: typeof SmilesDrawer !== 'undefined' && typeof SmilesDrawer.parse === 'function' });
+  const _smiOk = typeof SmilesDrawer !== 'undefined';
+  const _smiHasSvg = _smiOk && typeof SmilesDrawer.SvgDrawer === 'function';
+  const _smiHasParse = _smiOk && typeof SmilesDrawer.parse === 'function';
+  console.log('SmilesDrawer:', { ok: _smiOk, SvgDrawer: _smiHasSvg, parse: _smiHasParse,
+    keys: _smiOk ? Object.keys(SmilesDrawer).join(',') : 'N/A' });
 
-  // Render SMILES on a canvas element using SmilesDrawer.apply batch mode
-  function drawSmilesOnCanvas(canvas, smiles) {
-    if (!_smiHasApply || !smiles || !canvas) {
-      console.warn('drawSmilesOnCanvas skip:', { hasApply: _smiHasApply, smiles: !!smiles, canvas: !!canvas });
-      return;
-    }
-    // Set data-smiles attribute for SmilesDrawer.apply to find
-    canvas.setAttribute('data-smiles', smiles);
-    console.log('SMILES canvas created, data-smiles set, calling apply...', smiles.slice(0, 40));
-    // Use requestAnimationFrame to ensure canvas is laid out, then apply
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        try {
-          SmilesDrawer.apply({ width: 200, height: 150, bondThickness: 1.2 },
-            'canvas[data-smiles]', 'light',
-            function(err) { console.warn('SmilesDrawer apply error:', err); });
-          console.log('SmilesDrawer.apply() called successfully');
-        } catch(e) {
-          console.error('SmilesDrawer.apply() exception:', e);
-        }
+  // Render SMILES as SVG into a container element
+  function renderSmilesToSvg(container, smiles) {
+    if (!_smiHasSvg || !_smiHasParse || !smiles || !container) return;
+    try {
+      const svgDrawer = new SmilesDrawer.SvgDrawer({ width: 200, height: 150, bondThickness: 1.2 });
+      SmilesDrawer.parse(smiles, function(tree) {
+        // Create SVG element for SvgDrawer to draw into
+        const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgEl.setAttribute('width', '200');
+        svgEl.setAttribute('height', '150');
+        svgEl.setAttribute('viewBox', '0 0 200 150');
+        svgEl.style.cssText = 'border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
+        container.prepend(svgEl);
+        svgDrawer.draw(tree, svgEl, 'light', false);
+        console.log('SMILES SVG rendered for:', smiles.slice(0, 30));
+      }, function(err) {
+        console.warn('SMILES parse error:', err);
+        // Fallback: show SMILES text
+        const fallback = document.createElement('div');
+        fallback.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;padding:8px;word-break:break-all;flex-shrink:0';
+        fallback.textContent = smiles.length > 80 ? smiles.slice(0, 80) + '...' : smiles;
+        container.prepend(fallback);
       });
-    });
+    } catch(e) {
+      console.error('SMILES render exception:', e);
+    }
   }
 
   // Build link to external drug database from oid (only ZINC has reliable direct URLs)
@@ -5615,13 +5621,9 @@ function fillDrugHits(){
               detailTd._built = true;
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure via SmilesDrawer
-              if (_smiHasApply && smi) {
-                const cvs = document.createElement('canvas');
-                cvs.width = 200; cvs.height = 150;
-                cvs.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0';
-                wrap.append(cvs);
-                drawSmilesOnCanvas(cvs, smi);
+              // 2D structure via SmilesDrawer (SVG mode)
+              if (_smiHasSvg && smi) {
+                renderSmilesToSvg(wrap, smi);
               }
               // Details
               const info = document.createElement('div');
