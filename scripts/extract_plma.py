@@ -253,20 +253,111 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
             }
         blocks_json.append(b)
 
-    # Sort blocks by median start position across ALL member sequences.
-    # This consensus ordering minimizes out-of-order blocks for the
-    # entire family, not just the pair.
-    def block_sort_key(b):
-        starts = [p['start'] for p in b['positions'].values()
-                  if p.get('start') is not None]
-        if starts:
-            starts.sort()
-            mid = len(starts) // 2
-            return starts[mid]  # median
-        m = re.match(r'B(\d+)', b['id'])
-        return 100000 + (int(m.group(1)) if m else 0)
+    # Sort blocks to minimize positional inversions across all sequences.
+    # PLMA is a graph alignment where different subsets can diverge/reconverge.
+    # We use topological sort of the pairwise preference DAG (Kahn's algorithm)
+    # which guarantees: if ALL shared sequences agree A < B, then A appears
+    # before B. Cycles (genuine rearrangements) are broken by normalized pos.
+    from collections import defaultdict
 
-    blocks_json.sort(key=block_sort_key)
+    n_blk = len(blocks_json)
+    if n_blk <= 1:
+        pass  # nothing to sort
+    else:
+        # Build seq_length map from the sequences list
+        sl_map = {s['num']: s['length'] for s in sequences if s.get('length')}
+
+        # Normalized position per block: mean(start/seq_len)
+        norm_pos = []
+        for b in blocks_json:
+            fracs = []
+            for sn, p in b['positions'].items():
+                sl = sl_map.get(sn, 0)
+                if sl > 0 and p.get('start') is not None:
+                    fracs.append(p['start'] / sl)
+            norm_pos.append(sum(fracs) / len(fracs) if fracs else 1.0)
+
+        # Build directed preference graph: edge i→j means i should come before j
+        # Only add edge if ALL shared sequences unanimously agree (no conflict).
+        # For majority-vote edges (conflict), we don't add an edge.
+        adj = defaultdict(set)  # i -> set of j (i must come before j)
+        in_deg = [0] * n_blk
+
+        for i in range(n_blk):
+            pi = blocks_json[i]['positions']
+            for j in range(i + 1, n_blk):
+                pj = blocks_json[j]['positions']
+                shared = set(pi.keys()) & set(pj.keys())
+                if not shared:
+                    continue
+                v_ij = 0  # i before j
+                v_ji = 0  # j before i
+                for sn in shared:
+                    si = pi[sn]['start']
+                    sj = pj[sn]['start']
+                    if si < sj:
+                        v_ij += 1
+                    elif sj < si:
+                        v_ji += 1
+                # Add edge based on majority vote
+                if v_ij > v_ji:
+                    adj[i].add(j)
+                    in_deg[j] += 1
+                elif v_ji > v_ij:
+                    adj[j].add(i)
+                    in_deg[i] += 1
+
+        # Kahn's topological sort with normalized position as tiebreaker
+        import heapq
+        # Priority queue: (normalized_position, block_index)
+        heap = [(norm_pos[i], i) for i in range(n_blk) if in_deg[i] == 0]
+        heapq.heapify(heap)
+
+        order = []
+        visited = set()
+        while heap:
+            _, node = heapq.heappop(heap)
+            if node in visited:
+                continue
+            visited.add(node)
+            order.append(node)
+            for nb in adj[node]:
+                in_deg[nb] -= 1
+                if in_deg[nb] == 0:
+                    heapq.heappush(heap, (norm_pos[nb], nb))
+
+        # Handle remaining nodes (in cycles) - sorted by normalized position
+        if len(order) < n_blk:
+            remaining = [(norm_pos[i], i) for i in range(n_blk) if i not in visited]
+            remaining.sort()
+            # Break cycles: repeatedly pick lowest norm_pos unvisited node
+            while len(order) < n_blk:
+                # Find unvisited node with lowest norm_pos
+                best = None
+                for np_val, idx in remaining:
+                    if idx not in visited:
+                        best = idx
+                        break
+                if best is None:
+                    break
+                visited.add(best)
+                order.append(best)
+                for nb in adj[best]:
+                    in_deg[nb] -= 1
+                    if in_deg[nb] == 0 and nb not in visited:
+                        heapq.heappush(heap, (norm_pos[nb], nb))
+                while heap:
+                    _, node = heapq.heappop(heap)
+                    if node in visited:
+                        continue
+                    visited.add(node)
+                    order.append(node)
+                    for nb in adj[node]:
+                        in_deg[nb] -= 1
+                        if in_deg[nb] == 0 and nb not in visited:
+                            heapq.heappush(heap, (norm_pos[nb], nb))
+
+        blocks_json[:] = [blocks_json[i] for i in order]
 
     # Compute category summary
     summary = {
