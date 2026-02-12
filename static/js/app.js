@@ -4651,7 +4651,27 @@ function buildSeq(){
   addRow(tbl, 'TED '+DATA.g1, tedA, 16); trackRefs['tedA'] = tedA;
 
   const cavA = document.createElement('nightingale-track');
-  addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
+  const cavARow = addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
+  const cavSubRowsA = [];
+  const cavToggleA = document.createElement('button');
+  cavToggleA.textContent = '▼'; cavToggleA.className = 'am-matrix-toggle';
+  cavARow.labelCell.appendChild(cavToggleA);
+
+  const cavStrongA = document.createElement('nightingale-track');
+  const csARow = addRow(tbl, 'Strong', cavStrongA, 10);
+  csARow.row.style.display = 'none'; cavSubRowsA.push(csARow.row); trackRefs['cavStrongA'] = cavStrongA;
+  const cavMediumA = document.createElement('nightingale-track');
+  const cmARow = addRow(tbl, 'Medium', cavMediumA, 10);
+  cmARow.row.style.display = 'none'; cavSubRowsA.push(cmARow.row); trackRefs['cavMediumA'] = cavMediumA;
+  const cavWeakA = document.createElement('nightingale-track');
+  const cwARow = addRow(tbl, 'Weak', cavWeakA, 10);
+  cwARow.row.style.display = 'none'; cavSubRowsA.push(cwARow.row); trackRefs['cavWeakA'] = cavWeakA;
+
+  cavToggleA.addEventListener('click', () => {
+    const hidden = cavSubRowsA[0].style.display === 'none';
+    cavSubRowsA.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    cavToggleA.textContent = hidden ? '▲' : '▼';
+  }, { passive: true });
 
   const dcA = document.createElement('nightingale-track');
   addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
@@ -4732,7 +4752,27 @@ function buildSeq(){
   addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
 
   const cavB = document.createElement('nightingale-track');
-  addRow(tbl, 'Cavities '+DATA.g2, cavB, 16); trackRefs['cavB'] = cavB;
+  const cavBRow = addRow(tbl, 'Cavities '+DATA.g2, cavB, 16); trackRefs['cavB'] = cavB;
+  const cavSubRowsB = [];
+  const cavToggleB = document.createElement('button');
+  cavToggleB.textContent = '▼'; cavToggleB.className = 'am-matrix-toggle';
+  cavBRow.labelCell.appendChild(cavToggleB);
+
+  const cavStrongB = document.createElement('nightingale-track');
+  const csBRow = addRow(tbl, 'Strong', cavStrongB, 10);
+  csBRow.row.style.display = 'none'; cavSubRowsB.push(csBRow.row); trackRefs['cavStrongB'] = cavStrongB;
+  const cavMediumB = document.createElement('nightingale-track');
+  const cmBRow = addRow(tbl, 'Medium', cavMediumB, 10);
+  cmBRow.row.style.display = 'none'; cavSubRowsB.push(cmBRow.row); trackRefs['cavMediumB'] = cavMediumB;
+  const cavWeakB = document.createElement('nightingale-track');
+  const cwBRow = addRow(tbl, 'Weak', cavWeakB, 10);
+  cwBRow.row.style.display = 'none'; cavSubRowsB.push(cwBRow.row); trackRefs['cavWeakB'] = cavWeakB;
+
+  cavToggleB.addEventListener('click', () => {
+    const hidden = cavSubRowsB[0].style.display === 'none';
+    cavSubRowsB.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    cavToggleB.textContent = hidden ? '▲' : '▼';
+  }, { passive: true });
 
   const dcB = document.createElement('nightingale-track');
   addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
@@ -4740,10 +4780,10 @@ function buildSeq(){
   requestAnimationFrame(()=>{
     const allTracks = [
       nav, seqA,
-      domA, disorderA, tedA, cavA, dcA,
+      domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA,
       amA, dam, amB,
       seqB,
-      domB, disorderB, tedB, cavB, dcB
+      domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB
     ];
     amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
     amMatrixTracksB.forEach(obj => allTracks.push(obj.track));
@@ -4762,7 +4802,7 @@ function buildSeq(){
     amB.setAttribute('shape','rectangle');
     dam.setAttribute('shape','rectangle');
 
-    [domA, disorderA, tedA, cavA, dcA, domB, disorderB, tedB, cavB, dcB].forEach(track => {
+    [domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA, domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB].forEach(track => {
       track.setAttribute('shape','roundRectangle');
       track.setAttribute('show-label','');
     });
@@ -4770,13 +4810,21 @@ function buildSeq(){
     domA.data       = sanitizeRects(DATA.domA_alnRects||[], alnLen);          domA._originalData = [...domA.data];
     disorderA.data  = sanitizeRects(DATA.disorderA_alnRects||[], alnLen);     disorderA._originalData = [...disorderA.data];
     tedA.data       = sanitizeRects(DATA.tedA_alnRects||[], alnLen);          tedA._originalData = [...tedA.data];
-    cavA.data       = sanitizeRects(DATA.cavA_alnRects||[], alnLen);          cavA._originalData = [...cavA.data];
+    const allCavA = sanitizeRects(DATA.cavA_alnRects||[], alnLen);
+    cavA._originalData = [...allCavA];
+    cavStrongA._originalData = allCavA.filter(r => (r.druggability||'').toLowerCase() === 'strong');
+    cavMediumA._originalData = allCavA.filter(r => (r.druggability||'').toLowerCase() === 'medium');
+    cavWeakA._originalData = allCavA.filter(r => (r.druggability||'').toLowerCase() === 'weak');
     dcA.data        = sanitizeRects(DATA.dcA_alnRects||[], alnLen);           dcA._originalData = [...dcA.data];
 
     domB.data       = sanitizeRects(DATA.domB_alnRects||[], alnLen);          domB._originalData = [...domB.data];
     disorderB.data  = sanitizeRects(DATA.disorderB_alnRects||[], alnLen);     disorderB._originalData = [...disorderB.data];
     tedB.data       = sanitizeRects(DATA.tedB_alnRects||[], alnLen);          tedB._originalData = [...tedB.data];
-    cavB.data       = sanitizeRects(DATA.cavB_alnRects||[], alnLen);          cavB._originalData = [...cavB.data];
+    const allCavB = sanitizeRects(DATA.cavB_alnRects||[], alnLen);
+    cavB._originalData = [...allCavB];
+    cavStrongB._originalData = allCavB.filter(r => (r.druggability||'').toLowerCase() === 'strong');
+    cavMediumB._originalData = allCavB.filter(r => (r.druggability||'').toLowerCase() === 'medium');
+    cavWeakB._originalData = allCavB.filter(r => (r.druggability||'').toLowerCase() === 'weak');
     dcB.data        = sanitizeRects(DATA.dcB_alnRects||[], alnLen);           dcB._originalData = [...dcB.data];
 
     applyAmMode(amMode);
@@ -4798,11 +4846,17 @@ function buildSeq(){
   attachDomainClick(disorderA, chainIdA);
   attachDomainClick(tedA, chainIdA);
   attachDomainClick(cavA, chainIdA);
+  attachDomainClick(cavStrongA, chainIdA);
+  attachDomainClick(cavMediumA, chainIdA);
+  attachDomainClick(cavWeakA, chainIdA);
   attachDomainClick(dcA, chainIdA);
   attachDomainClick(domB, chainIdB);
   attachDomainClick(disorderB, chainIdB);
   attachDomainClick(tedB, chainIdB);
   attachDomainClick(cavB, chainIdB);
+  attachDomainClick(cavStrongB, chainIdB);
+  attachDomainClick(cavMediumB, chainIdB);
+  attachDomainClick(cavWeakB, chainIdB);
   attachDomainClick(dcB, chainIdB);
 }
 
@@ -4951,8 +5005,8 @@ function shouldShowDomain(d) {
   const dg = (d.druggability || '').toLowerCase();
 
   if (druggabilityFilter === 'all') return true;
-  if (druggabilityFilter === 'high') return dg === 'high';
-  if (druggabilityFilter === 'medium+') return dg === 'high' || dg === 'medium';
+  if (druggabilityFilter === 'strong') return dg === 'strong';
+  if (druggabilityFilter === 'medium+') return dg === 'strong' || dg === 'medium';
 
   return true;
 }
@@ -4964,26 +5018,37 @@ function shouldShowCavityRect(rect) {
   const dg = (rect.druggability || '').toLowerCase();
 
   if (druggabilityFilter === 'all') return true;
-  if (druggabilityFilter === 'high') return dg === 'high';
-  if (druggabilityFilter === 'medium+') return dg === 'high' || dg === 'medium';
+  if (druggabilityFilter === 'strong') return dg === 'strong';
+  if (druggabilityFilter === 'medium+') return dg === 'strong' || dg === 'medium';
 
   return true;
 }
 
 function applyCavityFilter() {
-  // Apply druggability filter to Nightingale cavity tracks
-  const cavA = trackRefs['cavA'];
-  const cavB = trackRefs['cavB'];
+  const DRUG_PRI = { 'weak': 0, 'medium': 1, 'strong': 2 };
+  const sortByDrug = (arr) => [...arr].sort((a, b) =>
+    (DRUG_PRI[(a.druggability||'').toLowerCase()]||0) - (DRUG_PRI[(b.druggability||'').toLowerCase()]||0)
+  );
 
-  if (cavA && cavA._originalData) {
-    cavA.data = cavA._originalData.filter(shouldShowCavityRect);
-  }
+  ['A', 'B'].forEach(side => {
+    const ov = trackRefs['cav' + side];
+    const strong = trackRefs['cavStrong' + side];
+    const medium = trackRefs['cavMedium' + side];
+    const weak = trackRefs['cavWeak' + side];
 
-  if (cavB && cavB._originalData) {
-    cavB.data = cavB._originalData.filter(shouldShowCavityRect);
-  }
-
-  console.log('Applied cavity filter:', druggabilityFilter);
+    if (ov && ov._originalData) {
+      ov.data = sortByDrug(ov._originalData.filter(shouldShowCavityRect));
+    }
+    if (strong && strong._originalData) {
+      strong.data = strong._originalData.filter(shouldShowCavityRect);
+    }
+    if (medium && medium._originalData) {
+      medium.data = medium._originalData.filter(shouldShowCavityRect);
+    }
+    if (weak && weak._originalData) {
+      weak.data = weak._originalData.filter(shouldShowCavityRect);
+    }
+  });
 }
 
 /**
