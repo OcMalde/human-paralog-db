@@ -3407,7 +3407,7 @@ function sanitizeRects(arr, alnLen){
     const opacity = ('opacity' in r) ? r.opacity : 1.0;
     const id = r.id;
     const label = r.label || r.name || r.type;
-    out.push({ ...base, end:e, to:e, color, opacity, id, label });
+    out.push({ ...base, end:e, to:e, color, opacity, id, label, druggability: r.druggability });
   }
   return out;
 }
@@ -4798,11 +4798,11 @@ function buildSeq(){
     seqA.data = DATA.qaln || '';
     seqB.data = DATA.taln || '';
 
-    amA.setAttribute('shape','rectangle');
-    amB.setAttribute('shape','rectangle');
-    dam.setAttribute('shape','rectangle');
+    [amA, amB, dam, cavA, cavB].forEach(track => {
+      track.setAttribute('shape','rectangle');
+    });
 
-    [domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA, domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB].forEach(track => {
+    [domA, disorderA, tedA, cavStrongA, cavMediumA, cavWeakA, dcA, domB, disorderB, tedB, cavStrongB, cavMediumB, cavWeakB, dcB].forEach(track => {
       track.setAttribute('shape','roundRectangle');
       track.setAttribute('show-label','');
     });
@@ -5024,11 +5024,38 @@ function shouldShowCavityRect(rect) {
   return true;
 }
 
+function buildCavityOverview(rects, alnLen) {
+  // Build per-residue heatmap: each position gets the strongest druggability color
+  const PRI = { 'strong': 2, 'medium': 1, 'weak': 0 };
+  const COLORS = { 2: '#e65100', 1: '#ff9800', 0: '#ffcc80' };
+
+  const best = new Int8Array(alnLen + 1).fill(-1);
+  for (const r of rects) {
+    const s = r.x || r.start || 1;
+    const e = r.end || r.to || s;
+    const pri = PRI[(r.druggability||'').toLowerCase()] ?? -1;
+    if (pri < 0) continue;
+    for (let p = s; p <= e && p <= alnLen; p++) {
+      if (pri > best[p]) best[p] = pri;
+    }
+  }
+
+  // Merge adjacent positions with same priority into runs
+  const out = [];
+  let runStart = -1, runPri = -1;
+  for (let p = 1; p <= alnLen + 1; p++) {
+    const cur = p <= alnLen ? best[p] : -1;
+    if (cur === runPri && cur >= 0) continue;
+    if (runStart > 0 && runPri >= 0) {
+      out.push({ x: runStart, start: runStart, begin: runStart, end: p - 1, to: p - 1, color: COLORS[runPri], opacity: 0.8 });
+    }
+    runStart = p; runPri = cur;
+  }
+  return out;
+}
+
 function applyCavityFilter() {
-  const DRUG_PRI = { 'weak': 0, 'medium': 1, 'strong': 2 };
-  const sortByDrug = (arr) => [...arr].sort((a, b) =>
-    (DRUG_PRI[(a.druggability||'').toLowerCase()]||0) - (DRUG_PRI[(b.druggability||'').toLowerCase()]||0)
-  );
+  const alnLen = Math.max(1, (DATA.qaln||'').length);
 
   ['A', 'B'].forEach(side => {
     const ov = trackRefs['cav' + side];
@@ -5037,7 +5064,8 @@ function applyCavityFilter() {
     const weak = trackRefs['cavWeak' + side];
 
     if (ov && ov._originalData) {
-      ov.data = sortByDrug(ov._originalData.filter(shouldShowCavityRect));
+      const filtered = ov._originalData.filter(shouldShowCavityRect);
+      ov.data = buildCavityOverview(filtered, alnLen);
     }
     if (strong && strong._originalData) {
       strong.data = strong._originalData.filter(shouldShowCavityRect);
