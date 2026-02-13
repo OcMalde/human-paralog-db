@@ -3497,23 +3497,14 @@ function getVisibleChains() {
 async function applyChainVisibility() {
   if (!plugin) return;
 
-  // For color modes that use special PDB variants, we need to use the appropriate PDB
-  // For uniform mode, we can use chain-specific PDBs for better performance
-
   let pdb64;
 
-  // If we're in a special color mode, try to use that PDB variant (contains both chains with color data)
-  if (currentColorMode === 'plddt' && window.PDB64_PLDDT) {
-    pdb64 = window.PDB64_PLDDT;
-  } else if (currentColorMode === 'am' && window.PDB64_AM_BY_MODE && window.PDB64_AM_BY_MODE[amMode]) {
-    pdb64 = window.PDB64_AM_BY_MODE[amMode];
-  } else if (currentColorMode === 'aligned' && window.PDB64_ALIGNED) {
-    pdb64 = window.PDB64_ALIGNED;
-  } else if (currentColorMode === 'domains' && window.PDB64_DOMAINS) {
-    pdb64 = window.PDB64_DOMAINS;
+  // If in a color mode, use the colored PDB variant (contains both chains)
+  if (currentColorMode && currentColorMode !== 'uniform') {
+    pdb64 = getColoredPdb(currentColorMode);
   }
 
-  // Fallback: if no special variant available (or uniform mode), use chain-specific PDBs
+  // Fallback: use chain-specific PDBs for uniform mode
   if (!pdb64) {
     if (chainVisible.A && chainVisible.B) {
       pdb64 = PDB64_FULL;
@@ -3522,24 +3513,18 @@ async function applyChainVisibility() {
     } else if (chainVisible.B) {
       pdb64 = window.PDB64_B || PDB64_FULL;
     } else {
-      // Both hidden - show full anyway (will be empty view)
       pdb64 = PDB64_FULL;
     }
   }
 
-  console.log('Applying chain visibility:', chainVisible, 'colorMode:', currentColorMode);
-
-  // Reload with camera preservation
   await reloadViewerWith(pdb64, true);
 
-  // Apply chain visibility via Molstar for color-mode PDBs (which contain both chains)
   if (currentColorMode && currentColorMode !== 'uniform') {
     await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
     const theme = themeForColorMode(currentColorMode);
     await applyColorTheme(theme);
   }
 
-  // Restore selections
   await renderSelections();
 }
 
@@ -4879,7 +4864,7 @@ function buildSeq(){
       track.setAttribute('shape','rectangle');
     });
     [plmaSharedA, plmaPairA, plmaSpecA, plmaFamA, plmaSharedB, plmaPairB, plmaSpecB, plmaFamB].forEach(track => {
-      track.setAttribute('shape','roundRectangle');
+      track.setAttribute('shape','rectangle');
     });
     helixA.setAttribute('shape','helix'); helixB.setAttribute('shape','helix');
     strandA.setAttribute('shape','strand'); strandB.setAttribute('shape','strand');
@@ -5957,6 +5942,200 @@ function fillDrugHits(){
 
 let currentColorMode = 'uniform';
 
+// --- Client-side PDB B-factor modification for Molstar coloring ---
+const _pdbBfCache = {};
+
+function modifyPdbBfactors(bfMapA, bfMapB, defaultBf) {
+  if (!PDB64_FULL) return null;
+  const pdbText = atob(PDB64_FULL);
+  const lines = pdbText.split('\n');
+  const out = [];
+  for (const line of lines) {
+    if (line.length >= 66 && (line.startsWith('ATOM') || line.startsWith('HETATM'))) {
+      const chain = line[21];
+      const resSeq = parseInt(line.substring(22, 26).trim(), 10);
+      const map = chain === 'A' ? bfMapA : bfMapB;
+      const bf = (map && resSeq in map) ? map[resSeq] : defaultBf;
+      out.push(line.substring(0, 60) + bf.toFixed(2).padStart(6) + line.substring(66));
+    } else {
+      out.push(line);
+    }
+  }
+  return btoa(out.join('\n'));
+}
+
+function alnColToResMap(aln) {
+  const m = {};
+  let pos = 0;
+  for (let col = 0; col < aln.length; col++) {
+    if (aln[col] !== '-') { pos++; m[col + 1] = pos; }
+  }
+  return m;
+}
+
+function buildPlddtBfactorMaps() {
+  if (!PDB64_FULL) return null;
+  const pdbText = atob(PDB64_FULL);
+  const mapA = {}, mapB = {};
+  for (const line of pdbText.split('\n')) {
+    if (!line.startsWith('ATOM')) continue;
+    const chain = line[21];
+    const resSeq = parseInt(line.substring(22, 26).trim(), 10);
+    const bf = parseFloat(line.substring(60, 66).trim());
+    if (!isFinite(bf)) continue;
+    const map = chain === 'A' ? mapA : mapB;
+    if (!(resSeq in map)) {
+      // Bin: <=50->0, 51-70->1, 71-90->2, >90->3
+      map[resSeq] = bf <= 50 ? 0 : bf <= 70 ? 1 : bf <= 90 ? 2 : 3;
+    }
+  }
+  return { A: mapA, B: mapB };
+}
+
+function buildAmBfactorMaps() {
+  if (!DATA) return null;
+  const mapA = {}, mapB = {};
+  (DATA.bfactorsA || []).forEach((v, i) => { if (typeof v === 'number') mapA[i + 1] = v * 100; });
+  (DATA.bfactorsB || []).forEach((v, i) => { if (typeof v === 'number') mapB[i + 1] = v * 100; });
+  return { A: mapA, B: mapB };
+}
+
+function buildDamBfactorMaps() {
+  if (!DATA) return null;
+  const mapA = {}, mapB = {};
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
+  const bfA = DATA.bfactorsA || [], bfB = DATA.bfactorsB || [];
+  for (let col = 1; col <= qaln.length; col++) {
+    const pa = colToA[col], pb = colToB[col];
+    if (pa && pb && pa <= bfA.length && pb <= bfB.length) {
+      const va = bfA[pa - 1], vb = bfB[pb - 1];
+      if (typeof va === 'number' && typeof vb === 'number') {
+        const delta = Math.abs(va - vb) * 100;
+        mapA[pa] = delta;
+        mapB[pb] = delta;
+      }
+    }
+  }
+  return { A: mapA, B: mapB };
+}
+
+function buildAlignedBfactorMaps() {
+  if (!DATA) return null;
+  const mapA = {}, mapB = {};
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
+  for (let col = 1; col <= qaln.length; col++) {
+    const pa = colToA[col], pb = colToB[col];
+    const aligned = (pa && pb) ? 1 : 0;
+    if (pa) mapA[pa] = aligned;
+    if (pb) mapB[pb] = aligned;
+  }
+  return { A: mapA, B: mapB };
+}
+
+function buildDomainBfactorMaps() {
+  if (!DATA) return null;
+  const mapA = {}, mapB = {};
+  for (const d of (DATA.domainsA || [])) {
+    if (d.type === 'Domain' || d.raw_type === 'DOMAIN') {
+      for (let r = d.start; r <= d.end; r++) mapA[r] = 1;
+    }
+  }
+  for (const d of (DATA.domainsB || [])) {
+    if (d.type === 'Domain' || d.raw_type === 'DOMAIN') {
+      for (let r = d.start; r <= d.end; r++) mapB[r] = 1;
+    }
+  }
+  return { A: mapA, B: mapB };
+}
+
+function rectsToResMap(rects, colToRes, valueFn) {
+  const map = {};
+  for (const r of rects) {
+    const s = r.start || r.x || 1, e = r.end || r.to || s;
+    const val = valueFn(r);
+    for (let col = s; col <= e; col++) {
+      const pos = colToRes[col];
+      if (pos && (!(pos in map) || val > map[pos])) map[pos] = val;
+    }
+  }
+  return map;
+}
+
+function buildSsBfactorMaps() {
+  if (!DATA) return null;
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
+  const ssVal = r => r.ss_type === 'helix' ? 2 : r.ss_type === 'strand' ? 1 : 0;
+  return {
+    A: rectsToResMap(DATA.ssA_alnRects || [], colToA, ssVal),
+    B: rectsToResMap(DATA.ssB_alnRects || [], colToB, ssVal),
+  };
+}
+
+function buildCavityBfactorMaps() {
+  if (!DATA) return null;
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
+  const drugVal = r => {
+    const d = (r.druggability || '').toLowerCase();
+    return d === 'strong' ? 3 : d === 'medium' ? 2 : d === 'weak' ? 1 : 0;
+  };
+  return {
+    A: rectsToResMap(DATA.cavA_alnRects || [], colToA, drugVal),
+    B: rectsToResMap(DATA.cavB_alnRects || [], colToB, drugVal),
+  };
+}
+
+function buildDrugclipBfactorMaps() {
+  if (!DATA) return null;
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
+  return {
+    A: rectsToResMap(DATA.dcA_alnRects || [], colToA, () => 1),
+    B: rectsToResMap(DATA.dcB_alnRects || [], colToB, () => 1),
+  };
+}
+
+function buildPlmaBfactorMaps() {
+  if (!PLMA_DATA || !DATA) return null;
+  const mapA = {}, mapB = {};
+  const catVal = { specific_a:5, specific_b:5, a_with_family:4, b_with_family:4,
+                   pair_exclusive:3, shared_with_family:2, family_only:1 };
+  const seqA = PLMA_DATA.gene_a_seq, seqB = PLMA_DATA.gene_b_seq;
+  for (const block of (PLMA_DATA.blocks || [])) {
+    const val = catVal[block.category] || 0;
+    const pA = block.positions?.[seqA];
+    if (pA) { for (let r = pA.start; r <= pA.end; r++) { if (!(r in mapA) || val > mapA[r]) mapA[r] = val; } }
+    const pB = block.positions?.[seqB];
+    if (pB) { for (let r = pB.start; r <= pB.end; r++) { if (!(r in mapB) || val > mapB[r]) mapB[r] = val; } }
+  }
+  return { A: mapA, B: mapB };
+}
+
+function getColoredPdb(mode) {
+  if (_pdbBfCache[mode]) return _pdbBfCache[mode];
+  const builders = {
+    plddt:    [buildPlddtBfactorMaps,    50],
+    am:       [buildAmBfactorMaps,       50],
+    dam:      [buildDamBfactorMaps,       0],
+    aligned:  [buildAlignedBfactorMaps,   0],
+    domains:  [buildDomainBfactorMaps,    0],
+    ss:       [buildSsBfactorMaps,        0],
+    cavities: [buildCavityBfactorMaps,    0],
+    drugclip: [buildDrugclipBfactorMaps,  0],
+    plma:     [buildPlmaBfactorMaps,      0],
+  };
+  const entry = builders[mode];
+  if (!entry) return null;
+  const maps = entry[0]();
+  if (!maps) return null;
+  const pdb = modifyPdbBfactors(maps.A, maps.B, entry[1]);
+  if (pdb) _pdbBfCache[mode] = pdb;
+  return pdb;
+}
+
 async function applyColorTheme(theme){
   if (!plugin || !structureReady) return;
   const hierarchy = plugin.managers.structure.hierarchy.current;
@@ -5999,33 +6178,28 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'am') {
-    // AlphaMissense coloring - B-factors are AM scores in 0-1 range
-    // grey (benign) -> orange -> red (pathogenic)
-    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
-    // Colors listed from high→low B-factor: red, orange, grey, light grey
+    // AlphaMissense: B-factors scaled 0-100 (AM×100)
+    // high→low (reverse): red, orange, grey, light grey
     return {
       name: 'uncertainty',
       params: {
-        domain: [0, 1],
+        domain: [0, 100],
         list: { kind: 'set', colors: [0xd62728, 0xff7d45, 0xbbbbbb, 0xdddddd] }
       }
     };
   }
   if (m === 'dam') {
-    // Delta AM coloring - B-factors are delta values in 0-1 range
-    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
+    // Delta AM: B-factors |deltaAM|×100, 0-100 range
     return {
       name: 'uncertainty',
       params: {
-        domain: [0, 1],
+        domain: [0, 100],
         list: { kind: 'set', colors: [0xd62728, 0xff7d45, 0xbbbbbb, 0xdddddd] }
       }
     };
   }
   if (m === 'aligned') {
-    // Aligned vs unaligned: B-factor 1.0 = aligned (green), 0.0 = unaligned (grey)
-    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
-    // High B-factor (1.0, aligned) → first color, Low (0.0, unaligned) → last color
+    // Aligned=1 (green), gap=0 (grey)
     return {
       name: 'uncertainty',
       params: {
@@ -6035,14 +6209,53 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'domains') {
-    // Domain coloring: B-factor 0.0 = no domain (grey), 1.0 = domain (green)
-    // NOTE: Molstar's uncertainty theme has `reverse: true`, so colors are reversed
-    // High B-factor (1.0, domain) → first color, Low (0.0, no domain) → last color
+    // Domain=1 (green), none=0 (grey)
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
         list: { kind: 'set', colors: [0x2ca02c, 0xcccccc] }
+      }
+    };
+  }
+  if (m === 'ss') {
+    // Secondary structure: helix=2 (red-pink), strand=1 (yellow), coil=0 (grey)
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 2],
+        list: { kind: 'set', colors: [0xFF0066, 0xFFCC00, 0xdddddd] }
+      }
+    };
+  }
+  if (m === 'cavities') {
+    // Cavity druggability: strong=3, medium=2, weak=1, none=0
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 3],
+        list: { kind: 'set', colors: [0xe65100, 0xff9800, 0xffc107, 0xdddddd] }
+      }
+    };
+  }
+  if (m === 'drugclip') {
+    // DrugCLIP pocket: hit=1 (red), none=0 (grey)
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 1],
+        list: { kind: 'set', colors: [0xc62828, 0xdddddd] }
+      }
+    };
+  }
+  if (m === 'plma') {
+    // PLMA categories: specific=5, +family=4, pair_excl=3, shared=2, family_only=1, none=0
+    // Colors match Nightingale track colors (high→low for reverse theme)
+    return {
+      name: 'uncertainty',
+      params: {
+        domain: [0, 5],
+        list: { kind: 'set', colors: [0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD, 0xEEEEEE] }
       }
     };
   }
@@ -6054,73 +6267,27 @@ function themeForColorMode(mode){
 
 async function colorBy(mode){
   currentColorMode = mode;
-  console.log('Applying color mode:', mode);
 
   try {
-    // Modes that require loading a specific PDB variant with modified B-factors
-    const modesPdbMap = {
-      'am': () => window.PDB64_AM_BY_MODE && amMode ? window.PDB64_AM_BY_MODE[amMode] : null,
-      'plddt': () => window.PDB64_PLDDT || PDB64_FULL,
-      'aligned': () => window.PDB64_ALIGNED,
-      'domains': () => window.PDB64_DOMAINS,
-    };
-
-    if (mode in modesPdbMap) {
-      const pdb = modesPdbMap[mode]();
-      console.log(`${mode} mode requested, PDB available:`, !!pdb);
-
+    if (mode !== 'uniform') {
+      const pdb = getColoredPdb(mode);
       if (pdb) {
-        // Debug: check B-factors in the PDB being loaded
-        try {
-          const pdbText = atob(pdb);
-          const lines = pdbText.split('\n').filter(l => l.startsWith('ATOM'));
-          const bfactors = lines.slice(0, 20).map(l => parseFloat(l.substring(60, 66).trim()));
-          console.log(`${mode} PDB first 20 B-factors:`, bfactors);
-          if (mode === 'plddt') {
-            // Count bins for pLDDT (bin indices 0-3)
-            const allBf = lines.map(l => parseFloat(l.substring(60, 66).trim()));
-            const bins = {0: 0, 1: 0, 2: 0, 3: 0};
-            allBf.forEach(bf => {
-              const bin = Math.round(bf);
-              if (bin >= 0 && bin <= 3) bins[bin]++;
-            });
-            console.log('pLDDT bin distribution:', bins, '(0=orange ≤50, 1=yellow 51-70, 2=cyan 71-90, 3=blue >90)');
-          }
-        } catch(e) { console.warn('Could not parse PDB for debug:', e); }
-
-        console.log(`Loading ${mode}-colored PDB`);
         await reloadViewerWith(pdb);
-
-        // Wait for structure to be fully loaded
         await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Apply theme after reload
         const theme = themeForColorMode(mode);
-        console.log(`Applying ${mode} theme:`, theme);
         await applyColorTheme(theme);
-
-        // Restore selections
         await renderSelections();
         return;
-      } else {
-        console.warn(`No PDB variant available for mode: ${mode}, falling back to uniform`);
-        // Reset to uniform since the requested mode isn't available
-        currentColorMode = 'uniform';
-        const select = document.getElementById('colorBy');
-        if (select) select.value = 'uniform';
       }
+      // Fallback to uniform if mode data not available
+      currentColorMode = 'uniform';
+      const select = document.getElementById('colorBy');
+      if (select) select.value = 'uniform';
     }
 
-    // For uniform mode or if specific PDB not available, just apply theme
-    if (!plugin || !structureReady) {
-      console.log('Viewer not ready for coloring');
-      return;
-    }
-
-    const theme = themeForColorMode(mode);
-    console.log('Applying theme:', theme.name);
+    if (!plugin || !structureReady) return;
+    const theme = themeForColorMode('uniform');
     await applyColorTheme(theme);
-    console.log('Color theme applied:', mode);
   } catch(e) {
     console.error('Error applying color theme:', e);
   }
