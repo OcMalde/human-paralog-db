@@ -292,6 +292,75 @@ def get_pdb_text_for_acc(conn: sqlite3.Connection, acc: str) -> Optional[str]:
     return None
 
 
+def compute_secondary_structure(pdb_text: str) -> List[Dict[str, Any]]:
+    """Extract secondary structure from PDB text using pydssp.
+
+    Returns list of dicts with start, end, type ('helix' or 'strand'),
+    color, and label for each SS element.
+    """
+    try:
+        import pydssp
+        import numpy as np
+        from Bio.PDB import PDBParser
+        import io
+
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure('prot', io.StringIO(pdb_text))
+        model = structure[0]
+
+        coords = []
+        for chain in model:
+            for residue in chain:
+                if residue.id[0] != ' ':
+                    continue
+                try:
+                    n = residue['N'].get_vector().get_array()
+                    ca = residue['CA'].get_vector().get_array()
+                    c = residue['C'].get_vector().get_array()
+                    o = residue['O'].get_vector().get_array()
+                    coords.append([n, ca, c, o])
+                except KeyError:
+                    continue
+
+        if not coords:
+            return []
+
+        coords = np.array(coords, dtype=np.float32)
+        ss = pydssp.assign(coords, out_type='c3')
+
+        # Convert to list of SS elements (contiguous runs of H or E)
+        elements = []
+        _COLORS = {'H': '#FF0066', 'E': '#FFCC00'}
+        _LABELS = {'H': 'Helix', 'E': 'Strand'}
+        cur_type, cur_start = None, 1
+        for i, c in enumerate(ss):
+            c = str(c)
+            if c != cur_type:
+                if cur_type in ('H', 'E'):
+                    elements.append({
+                        'start': cur_start, 'end': i,
+                        'type': 'SecondaryStructure',
+                        'ss_type': 'helix' if cur_type == 'H' else 'strand',
+                        'color': _COLORS[cur_type],
+                        'label': _LABELS[cur_type],
+                    })
+                cur_type = c
+                cur_start = i + 1
+        if cur_type in ('H', 'E'):
+            elements.append({
+                'start': cur_start, 'end': len(ss),
+                'type': 'SecondaryStructure',
+                'ss_type': 'helix' if cur_type == 'H' else 'strand',
+                'color': _COLORS[cur_type],
+                'label': _LABELS[cur_type],
+            })
+
+        return elements
+    except Exception as e:
+        log(f"  WARNING: DSSP failed: {e}")
+        return []
+
+
 # Standard amino acid 3-letter to 1-letter mapping
 AA3TO1 = {
     'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D', 'CYS': 'C',
@@ -450,7 +519,7 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # DrugCLIP pockets have their own track (red)
     dcA_rects = rects_on_alignment(drugclip_a, 'A', "#c62828", aligned_cols, alnLen)
     dcB_rects = rects_on_alignment(drugclip_b, 'B', "#c62828", aligned_cols, alnLen)
-    
+
     # Fetch AM hotspots for substitution matrix
     log(f"  Fetching AM hotspots...")
     hotspotsA = fetch_am_hotspots(acc_a, lenA) if lenA > 0 else []
@@ -472,7 +541,15 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # Generate domain×domain alignments
     pdb_a_text = get_pdb_text_for_acc(conn, acc_a)
     pdb_b_text = get_pdb_text_for_acc(conn, acc_b)
-    
+
+    # Secondary structure (DSSP on AlphaFold structures)
+    log(f"  Computing secondary structure (DSSP)...")
+    ss_a = compute_secondary_structure(pdb_a_text) if pdb_a_text else []
+    ss_b = compute_secondary_structure(pdb_b_text) if pdb_b_text else []
+    ssA_rects = rects_on_alignment(ss_a, 'A', "#FF0066", aligned_cols, alnLen)
+    ssB_rects = rects_on_alignment(ss_b, 'B', "#FF0066", aligned_cols, alnLen)
+    log(f"  SS: {len(ss_a)} elements for {gene_a}, {len(ss_b)} for {gene_b}")
+
     if pdb_a_text and pdb_b_text and (domsA_all or domsB_all):
         domPairs = generate_domain_alignments(
             domsA_all, domsB_all,
@@ -517,6 +594,8 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         "cavB_alnRects": cavB_rects,
         "dcA_alnRects": dcA_rects,
         "dcB_alnRects": dcB_rects,
+        "ssA_alnRects": ssA_rects,
+        "ssB_alnRects": ssB_rects,
         "qposByCol": qpos_by_col,
         "tposByCol": tpos_by_col,
         "amModes": AM_MODES,

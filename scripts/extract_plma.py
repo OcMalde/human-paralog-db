@@ -134,31 +134,44 @@ def extract_block_sequences(plma_dot_file):
     return dict_bloc_infos, seq_number_name, seq_lengths, seq_descriptions
 
 
-def categorize_blocks(blocks, gene_a_seq_num, gene_b_seq_num):
+def categorize_blocks(blocks, gene_a_seq_num, gene_b_seq_num, human_seqs):
     """Categorize each block by conservation pattern relative to the pair.
 
+    Uses only human sequences for categorization (orthologs are kept for
+    visualization but don't affect category assignment).
+
     Categories:
-    - shared_with_family: Both A and B present, plus other family members
-    - pair_exclusive: Only A and B present (no other family members)
-    - specific_a: Only A present (not B)
-    - specific_b: Only B present (not A)
+    - shared_with_family: Both A and B present, plus other human family members
+    - pair_exclusive: Only A and B among humans (orthologs may be present)
+    - specific_a: Only A among humans (+ possibly orthologs of A)
+    - specific_b: Only B among humans (+ possibly orthologs of B)
+    - a_with_family: A + other human family members, B absent
+    - b_with_family: B + other human family members, A absent
     - family_only: Neither A nor B present
     """
     categorized = []
     for bloc_id, members in blocks.items():
         seq_nums = set(members.keys())
-        a_in = gene_a_seq_num in seq_nums
-        b_in = gene_b_seq_num in seq_nums
+        humans_in = seq_nums & human_seqs
+        a_in = gene_a_seq_num in humans_in
+        b_in = gene_b_seq_num in humans_in
+        other_humans = humans_in - {gene_a_seq_num, gene_b_seq_num}
 
         if a_in and b_in:
-            if len(seq_nums) == 2:
-                category = "pair_exclusive"
-            else:
+            if other_humans:
                 category = "shared_with_family"
+            else:
+                category = "pair_exclusive"
         elif a_in and not b_in:
-            category = "specific_a"
+            if other_humans:
+                category = "a_with_family"
+            else:
+                category = "specific_a"
         elif b_in and not a_in:
-            category = "specific_b"
+            if other_humans:
+                category = "b_with_family"
+            else:
+                category = "specific_b"
         else:
             category = "family_only"
 
@@ -167,6 +180,7 @@ def categorize_blocks(blocks, gene_a_seq_num, gene_b_seq_num):
             'category': category,
             'members': members,
             'n_seqs': len(seq_nums),
+            'n_human': len(humans_in),
         })
 
     return categorized
@@ -188,23 +202,14 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
         log(f"  WARNING: No blocks found in {dot_file.name}")
         return None
 
-    # Filter to human sequences only (OX=9606 or _HUMAN in entry name)
+    # Identify human sequences (for categorization) but keep all sequences
     human_seqs = set()
     for sn, info in seq_descs.items():
         desc = info.get('desc', '')
         if 'OX=9606' in desc or '_HUMAN' in desc:
             human_seqs.add(sn)
-    n_removed = len(seq_descs) - len(human_seqs)
-    if n_removed > 0:
-        log(f"  Filtered {n_removed} ortholog sequences (keeping {len(human_seqs)} human)")
-        seq_descs = {sn: v for sn, v in seq_descs.items() if sn in human_seqs}
-        seq_names = {sn: v for sn, v in seq_names.items() if sn in human_seqs}
-        seq_lengths = {sn: v for sn, v in seq_lengths.items() if sn in human_seqs}
-        # Remove ortholog entries from blocks
-        for bloc_id in list(blocks.keys()):
-            blocks[bloc_id] = {sn: v for sn, v in blocks[bloc_id].items() if sn in human_seqs}
-            if not blocks[bloc_id]:
-                del blocks[bloc_id]
+    n_orthologs = len(seq_descs) - len(human_seqs)
+    log(f"  {len(human_seqs)} human + {n_orthologs} ortholog sequences")
 
     # Find which sequence numbers correspond to gene A and gene B
     gene_a_seq = None
@@ -248,10 +253,11 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
             'length': seq_lengths.get(sn, 0),
             'is_gene_a': sn == gene_a_seq,
             'is_gene_b': sn == gene_b_seq,
+            'is_human': sn in human_seqs,
         })
 
     # Categorize blocks
-    categorized = categorize_blocks(blocks, gene_a_seq, gene_b_seq)
+    categorized = categorize_blocks(blocks, gene_a_seq, gene_b_seq, human_seqs)
 
     # Build block data for JSON, including AA sequences
     blocks_json = []
@@ -260,6 +266,7 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
             'id': block['id'],
             'category': block['category'],
             'n_seqs': block['n_seqs'],
+            'n_human': block['n_human'],
             'positions': {},
         }
         for sn, info in block['members'].items():
@@ -377,25 +384,25 @@ def build_plma_json(pair_id, gene_a, gene_b, uniprot_a, uniprot_b, family_id):
 
         blocks_json[:] = [blocks_json[i] for i in order]
 
-    # Compute category summary
+    # Compute category summary (amino acid counts)
     summary = {
         'shared_with_family': 0,
         'pair_exclusive': 0,
         'specific_a': 0,
         'specific_b': 0,
+        'a_with_family': 0,
+        'b_with_family': 0,
         'family_only': 0,
     }
     for b in blocks_json:
         cat = b['category']
-        # Sum aa count for the pair's sequences
         if cat in ('shared_with_family', 'pair_exclusive'):
-            # Use average of A and B lengths
             la = b['positions'].get(gene_a_seq, {}).get('length', 0)
             lb = b['positions'].get(gene_b_seq, {}).get('length', 0)
             summary[cat] += (la + lb) // 2
-        elif cat == 'specific_a':
+        elif cat in ('specific_a', 'a_with_family'):
             summary[cat] += b['positions'].get(gene_a_seq, {}).get('length', 0)
-        elif cat == 'specific_b':
+        elif cat in ('specific_b', 'b_with_family'):
             summary[cat] += b['positions'].get(gene_b_seq, {}).get('length', 0)
         elif cat == 'family_only':
             lengths = [p['length'] for p in b['positions'].values()]

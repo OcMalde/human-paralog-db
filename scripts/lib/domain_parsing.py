@@ -304,13 +304,16 @@ def rects_on_alignment(
                 a = max(1, min(alnLen, seg_start))
                 b = max(1, min(alnLen, prev))
                 if b >= a:
-                    out.append({
+                    rect = {
                         "start": a, "end": b,
                         "color": d.get("color") or color,
                         "label": d.get("label") or "",
                         "id": d.get("uid") or f"{s}-{e}",
                         "druggability": d.get("druggability"),  # Pass through for cavities
-                    })
+                    }
+                    if d.get("ss_type"):
+                        rect["ss_type"] = d["ss_type"]
+                    out.append(rect)
                 if c is not None:
                     seg_start = c
             if c is not None:

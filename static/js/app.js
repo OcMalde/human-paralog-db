@@ -2149,6 +2149,8 @@ function drawPlmaAlignment() {
     pair_exclusive:     '#43a047',
     specific_a:         '#d97706',
     specific_b:         '#7c3aed',
+    a_with_family:      '#e65100',
+    b_with_family:      '#6a1b9a',
     family_only:        '#d4cfc5',
   };
   const catBorders = {
@@ -2156,13 +2158,17 @@ function drawPlmaAlignment() {
     pair_exclusive:     '#2e7d32',
     specific_a:         '#92400e',
     specific_b:         '#5b21b6',
+    a_with_family:      '#bf360c',
+    b_with_family:      '#4a148c',
     family_only:        '#a8a298',
   };
   const catLabels = {
     shared_with_family: 'Shared (pair + family)',
     pair_exclusive:     'Pair exclusive',
-    specific_a:         `${geneA} + other family members`,
-    specific_b:         `${geneB} + other family members`,
+    specific_a:         `${geneA} specific`,
+    specific_b:         `${geneB} specific`,
+    a_with_family:      `${geneA} + family (no ${geneB})`,
+    b_with_family:      `${geneB} + family (no ${geneA})`,
     family_only:        'Other family members only',
   };
 
@@ -2279,13 +2285,18 @@ function drawPlmaAlignment() {
   // Summary
   if (summaryEl) {
     const s = plma.summary || {};
+    const nHuman = sequences.filter(x => x.is_human).length;
+    const nOrtho = nSeqs - nHuman;
     const parts = [];
     if (s.shared_with_family) parts.push(`${s.shared_with_family} aa shared with family`);
     if (s.pair_exclusive) parts.push(`${s.pair_exclusive} aa pair-exclusive`);
-    if (s.specific_a) parts.push(`${s.specific_a} aa specific to ${geneA}`);
-    if (s.specific_b) parts.push(`${s.specific_b} aa specific to ${geneB}`);
-    if (s.family_only) parts.push(`${s.family_only} aa in other family members only`);
-    summaryEl.textContent = `${blocks.length} conserved blocks across ${nSeqs} family members` +
+    if (s.specific_a) parts.push(`${s.specific_a} aa ${geneA}-specific`);
+    if (s.a_with_family) parts.push(`${s.a_with_family} aa ${geneA}+family`);
+    if (s.specific_b) parts.push(`${s.specific_b} aa ${geneB}-specific`);
+    if (s.b_with_family) parts.push(`${s.b_with_family} aa ${geneB}+family`);
+    if (s.family_only) parts.push(`${s.family_only} aa family-only`);
+    const seqDesc = nOrtho > 0 ? `${nHuman} human + ${nOrtho} orthologs` : `${nSeqs} family members`;
+    summaryEl.textContent = `${blocks.length} conserved blocks across ${seqDesc}` +
       (parts.length ? ` · ${parts.join(' · ')}` : '');
   }
 }
@@ -3407,7 +3418,7 @@ function sanitizeRects(arr, alnLen){
     const opacity = ('opacity' in r) ? r.opacity : 1.0;
     const id = r.id;
     const label = r.label || r.name || r.type;
-    out.push({ ...base, end:e, to:e, color, opacity, id, label, druggability: r.druggability });
+    out.push({ ...base, end:e, to:e, color, opacity, id, label, druggability: r.druggability, ss_type: r.ss_type });
   }
   return out;
 }
@@ -4641,6 +4652,11 @@ function buildSeq(){
   const seqA = document.createElement('nightingale-sequence');
   addRow(tbl, DATA.g1+' ('+DATA.a1+') aligned', seqA, 28);
 
+  const helixA = document.createElement('nightingale-track');
+  addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
+  const strandA = document.createElement('nightingale-track');
+  addRow(tbl, 'β '+DATA.g1, strandA, 12); trackRefs['strandA'] = strandA;
+
   const domA = document.createElement('nightingale-track');
   addRow(tbl, 'Domains '+DATA.g1, domA, 16); trackRefs['domA'] = domA;
 
@@ -4675,6 +4691,9 @@ function buildSeq(){
 
   const dcA = document.createElement('nightingale-track');
   addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
+
+  const plmaCatA = document.createElement('nightingale-track');
+  addRow(tbl, 'PLMA '+DATA.g1, plmaCatA, 14); trackRefs['plmaCatA'] = plmaCatA;
 
   const amA = document.createElement('nightingale-track');
   const amARow = addRow(tbl, 'AlphaMissense '+DATA.g1, amA, 18);
@@ -4742,6 +4761,11 @@ function buildSeq(){
   const seqB = document.createElement('nightingale-sequence');
   addRow(tbl, DATA.g2+' ('+DATA.a2+') aligned', seqB, 28);
 
+  const helixB = document.createElement('nightingale-track');
+  addRow(tbl, 'α '+DATA.g2, helixB, 12); trackRefs['helixB'] = helixB;
+  const strandB = document.createElement('nightingale-track');
+  addRow(tbl, 'β '+DATA.g2, strandB, 12); trackRefs['strandB'] = strandB;
+
   const domB = document.createElement('nightingale-track');
   addRow(tbl, 'Domains '+DATA.g2, domB, 16); trackRefs['domB'] = domB;
 
@@ -4777,13 +4801,16 @@ function buildSeq(){
   const dcB = document.createElement('nightingale-track');
   addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
 
+  const plmaCatB = document.createElement('nightingale-track');
+  addRow(tbl, 'PLMA '+DATA.g2, plmaCatB, 14); trackRefs['plmaCatB'] = plmaCatB;
+
   requestAnimationFrame(()=>{
     const allTracks = [
-      nav, seqA,
-      domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA,
+      nav, seqA, helixA, strandA,
+      domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA, plmaCatA,
       amA, dam, amB,
-      seqB,
-      domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB
+      seqB, helixB, strandB,
+      domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB, plmaCatB
     ];
     amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
     amMatrixTracksB.forEach(obj => allTracks.push(obj.track));
@@ -4798,14 +4825,23 @@ function buildSeq(){
     seqA.data = DATA.qaln || '';
     seqB.data = DATA.taln || '';
 
-    [amA, amB, dam, cavA, cavB].forEach(track => {
+    [amA, amB, dam, cavA, cavB, plmaCatA, plmaCatB].forEach(track => {
       track.setAttribute('shape','rectangle');
     });
+    helixA.setAttribute('shape','helix'); helixB.setAttribute('shape','helix');
+    strandA.setAttribute('shape','strand'); strandB.setAttribute('shape','strand');
 
     [domA, disorderA, tedA, cavStrongA, cavMediumA, cavWeakA, dcA, domB, disorderB, tedB, cavStrongB, cavMediumB, cavWeakB, dcB].forEach(track => {
       track.setAttribute('shape','roundRectangle');
       track.setAttribute('show-label','');
     });
+
+    const allSsA = sanitizeRects(DATA.ssA_alnRects||[], alnLen);
+    helixA.data = allSsA.filter(r => r.ss_type === 'helix');
+    strandA.data = allSsA.filter(r => r.ss_type === 'strand');
+    const allSsB = sanitizeRects(DATA.ssB_alnRects||[], alnLen);
+    helixB.data = allSsB.filter(r => r.ss_type === 'helix');
+    strandB.data = allSsB.filter(r => r.ss_type === 'strand');
 
     domA.data       = sanitizeRects(DATA.domA_alnRects||[], alnLen);          domA._originalData = [...domA.data];
     disorderA.data  = sanitizeRects(DATA.disorderA_alnRects||[], alnLen);     disorderA._originalData = [...disorderA.data];
@@ -4826,6 +4862,10 @@ function buildSeq(){
     cavMediumB._originalData = allCavB.filter(r => (r.druggability||'').toLowerCase() === 'medium');
     cavWeakB._originalData = allCavB.filter(r => (r.druggability||'').toLowerCase() === 'weak');
     dcB.data        = sanitizeRects(DATA.dcB_alnRects||[], alnLen);           dcB._originalData = [...dcB.data];
+
+    // PLMA category tracks (per-residue heatmap from PLMA block categories)
+    plmaCatA.data = buildPlmaCategoryRects('A');
+    plmaCatB.data = buildPlmaCategoryRects('B');
 
     applyAmMode(amMode);
     applyCavityFilter(); // Apply default druggability filter (medium+)
@@ -5050,6 +5090,65 @@ function buildCavityOverview(rects, alnLen) {
       out.push({ x: runStart, start: runStart, begin: runStart, end: p - 1, to: p - 1, color: COLORS[runPri], opacity: 0.8 });
     }
     runStart = p; runPri = cur;
+  }
+  return out;
+}
+
+// Build per-residue PLMA category rects for a gene, mapped to pairwise alignment columns
+const PLMA_CAT_COLORS = {
+  shared_with_family: '#8b6f3a',
+  pair_exclusive:     '#43a047',
+  specific_a:         '#d97706',
+  specific_b:         '#7c3aed',
+  a_with_family:      '#e65100',
+  b_with_family:      '#6a1b9a',
+  family_only:        '#d4cfc5',
+};
+function buildPlmaCategoryRects(side) {
+  if (!PLMA_DATA || !DATA) return [];
+  const aln = side === 'A' ? (DATA.qaln || '') : (DATA.taln || '');
+  const seqNum = side === 'A' ? PLMA_DATA.gene_a_seq : PLMA_DATA.gene_b_seq;
+  if (!seqNum || !aln) return [];
+
+  // Build raw-sequence-position → alignment-column mapping
+  const posToCol = {};
+  let pos = 0;
+  for (let col = 0; col < aln.length; col++) {
+    if (aln[col] !== '-') {
+      pos++;
+      posToCol[pos] = col + 1; // 1-based
+    }
+  }
+  const alnLen = aln.length;
+
+  // Per-column category (use priority to handle overlaps)
+  const PRI = { shared_with_family:4, pair_exclusive:3, a_with_family:2, b_with_family:2, specific_a:1, specific_b:1, family_only:0 };
+  const colCat = new Array(alnLen + 1).fill(null);
+  const colPri = new Int8Array(alnLen + 1).fill(-1);
+
+  for (const block of (PLMA_DATA.blocks || [])) {
+    const p = block.positions?.[seqNum];
+    if (!p) continue;
+    const cat = block.category;
+    const pri = PRI[cat] ?? -1;
+    for (let r = p.start; r <= p.end; r++) {
+      const c = posToCol[r];
+      if (!c || c > alnLen) continue;
+      if (pri > colPri[c]) { colPri[c] = pri; colCat[c] = cat; }
+    }
+  }
+
+  // Merge adjacent same-category columns into runs
+  const out = [];
+  let runStart = -1, runCat = null;
+  for (let c = 1; c <= alnLen + 1; c++) {
+    const cur = c <= alnLen ? colCat[c] : null;
+    if (cur === runCat && cur !== null) continue;
+    if (runStart > 0 && runCat) {
+      out.push({ x:runStart, start:runStart, begin:runStart, end:c-1, to:c-1,
+                 color: PLMA_CAT_COLORS[runCat] || '#ccc', opacity:0.85 });
+    }
+    runStart = c; runCat = cur;
   }
   return out;
 }
