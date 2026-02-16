@@ -3547,7 +3547,10 @@ async function applyChainVisibility() {
   await reloadViewerWith(pdb64, true);
 
   if (currentColorMode && currentColorMode !== 'uniform') {
-    await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    if (!chainVisible.A || !chainVisible.B) {
+      await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
+    }
     const theme = themeForColorMode(currentColorMode);
     await applyColorTheme(theme);
   }
@@ -4948,14 +4951,40 @@ function buildSeq(){
   });
 
   function attachDomainClick(track, chain) {
-    track.addEventListener('click', (ev)=>{
+    const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
+    // Listen for nightingale's 'change' event (fires on feature interaction in some versions)
+    track.addEventListener('change', (ev)=>{
       const feat = ev?.detail?.feature;
-      if (!feat || !feat.id) return;
-      const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
-      const dom = domMap[feat.id];
-      if (!dom) return;
-      toggleFeature(dom, chain);
-    }, {passive:true});
+      if (feat && feat.id && domMap[feat.id]) { toggleFeature(domMap[feat.id], chain); return; }
+      // Also check highlight string format "start:end"
+      const hl = ev?.detail?.highlight;
+      if (!hl) return;
+    });
+    // Direct click: find feature at clicked alignment position
+    track.addEventListener('click', (ev)=>{
+      const trackData = track.data || [];
+      if (!trackData.length) return;
+      // Get the nightingale manager's display-start/end to compute position from click
+      const mgrEl = document.getElementById('mgr');
+      const dispStart = parseInt(mgrEl?.getAttribute('display-start') || track.getAttribute('display-start') || '1');
+      const dispEnd = parseInt(mgrEl?.getAttribute('display-end') || track.getAttribute('display-end') || String(alnLen));
+      const rect = track.getBoundingClientRect();
+      // nightingale-track has some left padding (~20px for labels, but our labels are in a table cell)
+      const fraction = ev.clientX - rect.left;
+      const trackWidth = rect.width;
+      if (trackWidth <= 0) return;
+      const pos = Math.round(dispStart + (fraction / trackWidth) * (dispEnd - dispStart));
+      // Find which feature contains this position
+      for (const f of trackData) {
+        if (!f.id) continue;
+        const s = f.start || f.x || f.begin || 1;
+        const e = f.end || f.to || s;
+        if (pos >= s && pos <= e) {
+          const dom = domMap[f.id];
+          if (dom) { toggleFeature(dom, chain); return; }
+        }
+      }
+    });
   }
 
   attachDomainClick(domA, chainIdA);
@@ -6063,15 +6092,30 @@ function buildAlignedBfactorMaps() {
 
 function buildDomainBfactorMaps() {
   if (!DATA) return null;
+  // Assign a unique index per domain name (consistent across A and B)
+  const nameToIdx = {};
+  let idx = 1;
+  const allDoms = [...(DATA.domainsA||[]), ...(DATA.domainsB||[])];
+  for (const d of allDoms) {
+    if (d.type !== 'Domain' && d.raw_type !== 'DOMAIN') continue;
+    const name = d.label || d.name || d.type || 'unknown';
+    if (!(name in nameToIdx)) nameToIdx[name] = idx++;
+  }
+  // Store for theme generation
+  window._domainColorNames = nameToIdx;
   const mapA = {}, mapB = {};
   for (const d of (DATA.domainsA || [])) {
     if (d.type === 'Domain' || d.raw_type === 'DOMAIN') {
-      for (let r = d.start; r <= d.end; r++) mapA[r] = 1;
+      const name = d.label || d.name || d.type || 'unknown';
+      const val = nameToIdx[name] || 1;
+      for (let r = d.start; r <= d.end; r++) mapA[r] = val;
     }
   }
   for (const d of (DATA.domainsB || [])) {
     if (d.type === 'Domain' || d.raw_type === 'DOMAIN') {
-      for (let r = d.start; r <= d.end; r++) mapB[r] = 1;
+      const name = d.label || d.name || d.type || 'unknown';
+      const val = nameToIdx[name] || 1;
+      for (let r = d.start; r <= d.end; r++) mapB[r] = val;
     }
   }
   return { A: mapA, B: mapB };
@@ -6236,12 +6280,24 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'domains') {
-    // Domain=1 (green), none=0 (grey)
+    // Distinct color per domain type, 0 = no domain (grey)
+    const names = window._domainColorNames || {};
+    const nDomains = Object.keys(names).length || 1;
+    // Build color list: index 0=grey (no domain), then one color per domain from palette
+    // Molstar uncertainty theme with reverse: high→first color
+    // Domain [0, nDomains]: 0=grey, 1..N=palette colors
+    const colors = [0xcccccc]; // index 0: no domain
+    for (let i = 0; i < nDomains; i++) {
+      const hex = DOMAIN_PALETTE[i % DOMAIN_PALETTE.length];
+      colors.push(parseInt(hex.replace('#', ''), 16));
+    }
+    // Reverse for uncertainty theme (high B-factor → first color)
+    colors.reverse();
     return {
       name: 'uncertainty',
       params: {
-        domain: [0, 1],
-        list: { kind: 'set', colors: [0x2ca02c, 0xcccccc] }
+        domain: [0, nDomains],
+        list: { kind: 'set', colors }
       }
     };
   }
@@ -6399,10 +6455,15 @@ function updateColorLegend(mode) {
     },
     domains: {
       title: 'Domain Regions',
-      items: [
-        {color:'#2ca02c',label:'Domain'},
-        {color:'#cccccc',label:'No domain'},
-      ]
+      items: (() => {
+        const names = window._domainColorNames || {};
+        const items = [];
+        for (const [name, idx] of Object.entries(names)) {
+          items.push({color: DOMAIN_PALETTE[(idx-1) % DOMAIN_PALETTE.length], label: name});
+        }
+        items.push({color:'#cccccc', label:'No domain'});
+        return items.length > 1 ? items : [{color:'#2ca02c',label:'Domain'},{color:'#cccccc',label:'No domain'}];
+      })()
     },
     ss: {
       title: 'Secondary Structure',
@@ -6457,69 +6518,92 @@ function updateColorLegend(mode) {
   el.style.display = '';
 }
 
-// ===== Highlight domain dropdowns =====
+// ===== Highlight domain dropdowns (checkbox menus) =====
 function populateHighlightDropdowns() {
-  const selA = document.getElementById('hlDomainsA');
-  const selB = document.getElementById('hlDomainsB');
-  if (!selA || !selB || !DATA) return;
+  const wrapA = document.getElementById('hlDomainsA');
+  const wrapB = document.getElementById('hlDomainsB');
+  if (!wrapA || !wrapB || !DATA) return;
 
   const lblA = document.getElementById('hlLabelA');
   const lblB = document.getElementById('hlLabelB');
   if (lblA) lblA.textContent = DATA.g1 || 'A';
   if (lblB) lblB.textContent = DATA.g2 || 'B';
 
-  function fillSelect(sel, domains, chain) {
-    sel.innerHTML = '';
-    if (!domains || !domains.length) return;
+  function buildMenu(wrap, domains, chain) {
+    wrap.innerHTML = '';
+    if (!domains || !domains.length) { wrap.style.display = 'none'; return; }
+    const btn = document.createElement('button');
+    btn.className = 'hl-menu-btn';
+    btn.type = 'button';
+    btn.textContent = 'Select domains...';
+    btn.style.cssText = 'font-size:12px;padding:3px 8px;cursor:pointer;min-width:160px;text-align:left;background:#fff;border:1px solid #ccc;border-radius:4px';
+    const menu = document.createElement('div');
+    menu.className = 'hl-menu-list';
+    menu.style.cssText = 'display:none;position:absolute;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;min-width:200px;padding:4px 0';
     const seen = new Set();
     for (const d of domains) {
       if (!d.uid) continue;
       const key = `${d.label||d.name}_${d.start}-${d.end}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const opt = document.createElement('option');
-      opt.value = d.uid;
-      opt.textContent = `${d.label||d.name||d.type} (${d.start}-${d.end})`;
-      opt.dataset.chain = chain;
-      sel.appendChild(opt);
+      const item = document.createElement('label');
+      item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;font-size:12px;white-space:nowrap';
+      item.addEventListener('mouseenter', () => { item.style.background='#f0f0f0'; });
+      item.addEventListener('mouseleave', () => { item.style.background=''; });
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = d.uid;
+      cb.dataset.chain = chain;
+      cb.style.cssText = 'margin:0;cursor:pointer';
+      const swatch = document.createElement('span');
+      swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;background:${d.color||'#ccc'};flex-shrink:0`;
+      const txt = document.createElement('span');
+      txt.textContent = `${d.label||d.name||d.type} (${d.start}-${d.end})`;
+      item.appendChild(cb);
+      item.appendChild(swatch);
+      item.appendChild(txt);
+      cb.addEventListener('change', () => {
+        const domMap = {};
+        for (const dd of domains) { if (dd.uid) domMap[dd.uid] = dd; }
+        const dom = domMap[cb.value];
+        if (dom) toggleFeature(dom, chain);
+        updateMenuBtnLabel(btn, menu);
+      });
+      menu.appendChild(item);
     }
-    sel.size = Math.min(sel.options.length, 1);
-    sel.addEventListener('mousedown', (e) => {
-      if (e.target.tagName === 'OPTION') {
-        e.preventDefault();
-        e.target.selected = !e.target.selected;
-        syncFromDropdown(sel, domains, chain);
-      }
+    wrap.style.position = 'relative';
+    wrap.appendChild(btn);
+    wrap.appendChild(menu);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = menu.style.display !== 'none';
+      menu.style.display = open ? 'none' : 'block';
+    });
+    document.addEventListener('click', (e) => {
+      if (!wrap.contains(e.target)) menu.style.display = 'none';
     });
   }
-
-  fillSelect(selA, DATA.domainsA, chainIdA);
-  fillSelect(selB, DATA.domainsB, chainIdB);
+  buildMenu(wrapA, DATA.domainsA, chainIdA);
+  buildMenu(wrapB, DATA.domainsB, chainIdB);
 }
 
-function syncFromDropdown(sel, domains, chain) {
-  const domMap = {};
-  for (const d of domains) { if (d.uid) domMap[d.uid] = d; }
-  // Deselect any that are no longer selected
-  for (const opt of sel.options) {
-    const key = selectionKey(chain, opt.value);
-    if (!opt.selected && selection.has(key)) { selection.delete(key); }
-    else if (opt.selected && !selection.has(key)) {
-      const dom = domMap[opt.value];
-      if (dom) toggleFeature(dom, chain);
-      return; // toggleFeature calls renderSelections
-    }
-  }
-  renderSelections();
+function updateMenuBtnLabel(btn, menu) {
+  const checked = menu.querySelectorAll('input:checked');
+  if (checked.length === 0) btn.textContent = 'Select domains...';
+  else btn.textContent = `${checked.length} domain${checked.length>1?'s':''} selected`;
 }
 
 function syncHighlightDropdowns() {
-  for (const [selId, chain] of [['hlDomainsA', chainIdA], ['hlDomainsB', chainIdB]]) {
-    const sel = document.getElementById(selId);
-    if (!sel) continue;
-    for (const opt of sel.options) {
-      opt.selected = selection.has(selectionKey(chain, opt.value));
+  for (const [wrapId, chain] of [['hlDomainsA', chainIdA], ['hlDomainsB', chainIdB]]) {
+    const wrap = document.getElementById(wrapId);
+    if (!wrap) continue;
+    const cbs = wrap.querySelectorAll('input[type="checkbox"]');
+    for (const cb of cbs) {
+      cb.checked = selection.has(selectionKey(chain, cb.value));
     }
+    const btn = wrap.querySelector('.hl-menu-btn');
+    const menu = wrap.querySelector('.hl-menu-list');
+    if (btn && menu) updateMenuBtnLabel(btn, menu);
   }
 }
 
