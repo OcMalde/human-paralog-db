@@ -4956,26 +4956,9 @@ function buildSeq(){
     applyCavityFilter(); // Apply default druggability filter (medium+)
   });
 
-  // Debounce: track last toggled uid+time to prevent double-fire from change+click
-  let _lastToggleUid = null, _lastToggleTime = 0;
   function attachDomainClick(track, chain) {
     const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
-
-    function handleToggle(dom) {
-      const now = Date.now();
-      // Same domain within 400ms = duplicate event, skip it
-      if (dom.uid === _lastToggleUid && now - _lastToggleTime < 400) return;
-      _lastToggleUid = dom.uid;
-      _lastToggleTime = now;
-      toggleFeature(dom, chain);
-    }
-
-    // Nightingale 'change' event (fires on feature click in some versions)
-    track.addEventListener('change', (ev)=>{
-      const feat = ev?.detail?.feature;
-      if (feat && feat.id && domMap[feat.id]) { handleToggle(domMap[feat.id]); }
-    });
-    // Direct click fallback: find feature at clicked alignment position
+    // Click only — find feature at clicked alignment position
     track.addEventListener('click', (ev)=>{
       const trackData = track.data || [];
       if (!trackData.length) return;
@@ -4993,7 +4976,7 @@ function buildSeq(){
         const e = f.end || f.to || s;
         if (pos >= s && pos <= e) {
           const dom = domMap[f.id];
-          if (dom) { handleToggle(dom); return; }
+          if (dom) { toggleFeature(dom, chain); return; }
         }
       }
     });

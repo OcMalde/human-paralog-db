@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <title>Paralog Pair Report</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="icon" type="image/png" href="static/img/favicon.png"/>
+<link rel="icon" type="image/png" sizes="180x180" href="static/img/favicon.png"/>
+<link rel="apple-touch-icon" href="static/img/favicon.png"/>
 <link rel="stylesheet" href="https://unpkg.com/molstar@3.43.0/build/viewer/molstar.css"/>
 <style>
   :root{ --bg:#fafafa; --pane:#fff; --muted:#888; --soft:#f3f3f3; }
@@ -688,7 +689,7 @@
         <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
         <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:6px 16px;margin-top:4px">
+      <div class="row" style="flex-wrap:wrap;gap:6px 16px;padding:6px 0">
         <label>Highlight:</label>
         <div id="hlDomainsA" style="display:inline-block"></div>
         <div id="hlDomainsB" style="display:inline-block"></div>
@@ -706,7 +707,7 @@
       <button class="collapse-toggle" id="alignmentCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="body" id="alignmentBody">
-      <div class="row" style="flex-wrap:wrap;gap:6px 16px;margin-bottom:6px">
+      <div class="row" style="flex-wrap:wrap;gap:6px 16px;padding:6px 0">
         <label><span id="selLabelA">A</span> residues: <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:200px;padding:4px 8px"></label>
         <label><span id="selLabelB">B</span> residues: <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:200px;padding:4px 8px"></label>
         <button id="clearAllHighlights" style="padding:4px 12px">Clear all</button>

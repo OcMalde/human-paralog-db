@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Human Paralog DB</title>
-<link rel="icon" type="image/png" href="static/img/favicon.png"/>
+<link rel="icon" type="image/png" sizes="180x180" href="static/img/favicon.png"/>
+<link rel="apple-touch-icon" href="static/img/favicon.png"/>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f5fb;min-height:100vh}
 .top-bar{position:sticky;top:0;z-index:1000;padding:12px 20px;background:#21244d;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
@@ -47,7 +48,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 </head>
 <body>
 <div class="top-bar">
-  <img src="static/img/logo.png" alt="" style="height:42px;width:auto;border-radius:8px;background:#fff;padding:3px;cursor:pointer" onclick="goHome()">
+  <img src="static/img/logo.png" alt="" style="height:42px;width:auto;cursor:pointer" onclick="goHome()">
   <h1 onclick="goHome()">Human Paralog DB</h1>
   <div class="search-box">
     <input id="pairInput" type="text" placeholder="Search gene or pair (e.g. ENO1 or ENO1_ENO2)" list="pairOptions" autocomplete="off"/>
