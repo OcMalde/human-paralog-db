@@ -3521,36 +3521,42 @@ function getVisibleChains() {
   return chains;
 }
 
+// Filter a base64-encoded PDB to keep only the specified chain(s)
+function filterPdbChains(pdb64, keepA, keepB) {
+  if (keepA && keepB) return pdb64;
+  const text = atob(pdb64);
+  const lines = text.split('\n');
+  const out = [];
+  for (const line of lines) {
+    if ((line.startsWith('ATOM') || line.startsWith('HETATM') || line.startsWith('TER')) && line.length > 21) {
+      const chain = line[21];
+      if (chain === 'A' && !keepA) continue;
+      if (chain === 'B' && !keepB) continue;
+    }
+    out.push(line);
+  }
+  return btoa(out.join('\n'));
+}
+
 async function applyChainVisibility() {
   if (!plugin) return;
 
   let pdb64;
 
-  // If in a color mode, use the colored PDB variant (contains both chains)
+  // Get the base PDB (colored or full)
   if (currentColorMode && currentColorMode !== 'uniform') {
     pdb64 = getColoredPdb(currentColorMode);
   }
-
-  // Fallback: use chain-specific PDBs for uniform mode
   if (!pdb64) {
-    if (chainVisible.A && chainVisible.B) {
-      pdb64 = PDB64_FULL;
-    } else if (chainVisible.A) {
-      pdb64 = window.PDB64_A || PDB64_FULL;
-    } else if (chainVisible.B) {
-      pdb64 = window.PDB64_B || PDB64_FULL;
-    } else {
-      pdb64 = PDB64_FULL;
-    }
+    pdb64 = PDB64_FULL;
   }
+
+  // Filter out hidden chain(s) at the PDB level — reliable, no Molstar hierarchy manipulation
+  pdb64 = filterPdbChains(pdb64, chainVisible.A, chainVisible.B);
 
   await reloadViewerWith(pdb64, true);
 
   if (currentColorMode && currentColorMode !== 'uniform') {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    if (!chainVisible.A || !chainVisible.B) {
-      await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
-    }
     const theme = themeForColorMode(currentColorMode);
     await applyColorTheme(theme);
   }
@@ -4950,38 +4956,41 @@ function buildSeq(){
     applyCavityFilter(); // Apply default druggability filter (medium+)
   });
 
+  let _lastTrackToggle = 0; // debounce across all track clicks
   function attachDomainClick(track, chain) {
     const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
-    // Listen for nightingale's 'change' event (fires on feature interaction in some versions)
+
+    function handleToggle(dom) {
+      const now = Date.now();
+      if (now - _lastTrackToggle < 300) return; // debounce: ignore rapid re-fires
+      _lastTrackToggle = now;
+      toggleFeature(dom, chain);
+    }
+
+    // Nightingale 'change' event (fires on feature click in some versions)
     track.addEventListener('change', (ev)=>{
       const feat = ev?.detail?.feature;
-      if (feat && feat.id && domMap[feat.id]) { toggleFeature(domMap[feat.id], chain); return; }
-      // Also check highlight string format "start:end"
-      const hl = ev?.detail?.highlight;
-      if (!hl) return;
+      if (feat && feat.id && domMap[feat.id]) { handleToggle(domMap[feat.id]); }
     });
-    // Direct click: find feature at clicked alignment position
+    // Direct click fallback: find feature at clicked alignment position
     track.addEventListener('click', (ev)=>{
       const trackData = track.data || [];
       if (!trackData.length) return;
-      // Get the nightingale manager's display-start/end to compute position from click
       const mgrEl = document.getElementById('mgr');
       const dispStart = parseInt(mgrEl?.getAttribute('display-start') || track.getAttribute('display-start') || '1');
       const dispEnd = parseInt(mgrEl?.getAttribute('display-end') || track.getAttribute('display-end') || String(alnLen));
       const rect = track.getBoundingClientRect();
-      // nightingale-track has some left padding (~20px for labels, but our labels are in a table cell)
       const fraction = ev.clientX - rect.left;
       const trackWidth = rect.width;
       if (trackWidth <= 0) return;
       const pos = Math.round(dispStart + (fraction / trackWidth) * (dispEnd - dispStart));
-      // Find which feature contains this position
       for (const f of trackData) {
         if (!f.id) continue;
         const s = f.start || f.x || f.begin || 1;
         const e = f.end || f.to || s;
         if (pos >= s && pos <= e) {
           const dom = domMap[f.id];
-          if (dom) { toggleFeature(dom, chain); return; }
+          if (dom) { handleToggle(dom); return; }
         }
       }
     });
@@ -6353,14 +6362,11 @@ async function colorBy(mode){
 
   try {
     if (mode !== 'uniform') {
-      const pdb = getColoredPdb(mode);
+      let pdb = getColoredPdb(mode);
       if (pdb) {
+        // Filter out hidden chain(s) at PDB level
+        pdb = filterPdbChains(pdb, chainVisible.A, chainVisible.B);
         await reloadViewerWith(pdb, true);
-        await new Promise(resolve => setTimeout(resolve, 300));
-        // Restore chain visibility after reload
-        if (!chainVisible.A || !chainVisible.B) {
-          await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
-        }
         const theme = themeForColorMode(mode);
         await applyColorTheme(theme);
         await renderSelections();
@@ -6375,9 +6381,7 @@ async function colorBy(mode){
 
     if (!plugin || !structureReady) return;
     // For uniform mode, also respect chain visibility
-    if (!chainVisible.A || !chainVisible.B) {
-      await applyChainVisibility();
-    }
+    await applyChainVisibility();
     const theme = themeForColorMode('uniform');
     await applyColorTheme(theme);
     updateColorLegend('uniform');

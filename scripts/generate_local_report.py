@@ -402,7 +402,24 @@ def assemble_html(
     for old, new in cdn_replacements.items():
         html = html.replace(old, new)
 
-    # 3c: Replace app.js reference with data injection + inline app.js
+    # 3c: Inline logo and favicon as data URIs
+    logo_path = PROJECT_DIR / "static" / "img" / "logo.png"
+    if logo_path.exists():
+        import base64 as b64mod
+        logo_b64 = b64mod.b64encode(logo_path.read_bytes()).decode()
+        html = html.replace(
+            'src="static/img/logo.png"',
+            f'src="data:image/png;base64,{logo_b64}"',
+        )
+        favicon_path = PROJECT_DIR / "static" / "img" / "favicon.png"
+        if favicon_path.exists():
+            fav_b64 = b64mod.b64encode(favicon_path.read_bytes()).decode()
+            html = html.replace(
+                'href="static/img/favicon.png"',
+                f'href="data:image/png;base64,{fav_b64}"',
+            )
+
+    # 3d: Replace app.js reference with data injection + inline app.js
     html = html.replace(
         '<script src="static/js/app.js"></script>',
         f'{data_script}\n<script>{app_js}</script>',

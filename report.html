@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <title>Paralog Pair Report</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="icon" type="image/png" href="static/img/favicon.png"/>
 <link rel="stylesheet" href="https://unpkg.com/molstar@3.43.0/build/viewer/molstar.css"/>
 <style>
   :root{ --bg:#fafafa; --pane:#fff; --muted:#888; --soft:#f3f3f3; }
@@ -319,9 +320,12 @@
 <body>
 <div class="loading-overlay" id="loadingOverlay">Loading pair data...</div>
 
-<header>
-  <div class="title-main" id="titleMain">Loading...</div>
-  <div class="title-sub" id="titleSub">Paralog pair report</div>
+<header style="display:flex;align-items:center;gap:16px">
+  <img src="static/img/logo.png" alt="Human Paralog DB" style="height:48px;width:auto;border-radius:8px;background:#fff;padding:2px">
+  <div>
+    <div class="title-main" id="titleMain">Loading...</div>
+    <div class="title-sub" id="titleSub">Paralog pair report</div>
+  </div>
 </header>
 
 <div class="page-layout">
