@@ -4956,14 +4956,17 @@ function buildSeq(){
     applyCavityFilter(); // Apply default druggability filter (medium+)
   });
 
-  let _lastTrackToggle = 0; // debounce across all track clicks
+  // Debounce: track last toggled uid+time to prevent double-fire from change+click
+  let _lastToggleUid = null, _lastToggleTime = 0;
   function attachDomainClick(track, chain) {
     const domMap = (chain === chainIdA) ? domByUidA : domByUidB;
 
     function handleToggle(dom) {
       const now = Date.now();
-      if (now - _lastTrackToggle < 300) return; // debounce: ignore rapid re-fires
-      _lastTrackToggle = now;
+      // Same domain within 400ms = duplicate event, skip it
+      if (dom.uid === _lastToggleUid && now - _lastToggleTime < 400) return;
+      _lastToggleUid = dom.uid;
+      _lastToggleTime = now;
       toggleFeature(dom, chain);
     }
 
@@ -6540,10 +6543,10 @@ function populateHighlightDropdowns() {
     btn.className = 'hl-menu-btn';
     btn.type = 'button';
     btn.textContent = 'Select domains...';
-    btn.style.cssText = 'font-size:12px;padding:3px 8px;cursor:pointer;min-width:160px;text-align:left;background:#fff;border:1px solid #ccc;border-radius:4px';
+    btn.style.cssText = 'font-size:inherit;padding:4px 10px;cursor:pointer;min-width:170px;text-align:left;background:#fff;border:1px solid #ccc;border-radius:4px';
     const menu = document.createElement('div');
     menu.className = 'hl-menu-list';
-    menu.style.cssText = 'display:none;position:absolute;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);max-height:260px;overflow-y:auto;min-width:200px;padding:4px 0';
+    menu.style.cssText = 'display:none;position:absolute;z-index:100;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.15);max-height:280px;overflow-y:auto;min-width:220px;padding:4px 0';
     const seen = new Set();
     for (const d of domains) {
       if (!d.uid) continue;
@@ -6551,7 +6554,7 @@ function populateHighlightDropdowns() {
       if (seen.has(key)) continue;
       seen.add(key);
       const item = document.createElement('label');
-      item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;font-size:12px;white-space:nowrap';
+      item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:5px 12px;cursor:pointer;font-size:13px;white-space:nowrap';
       item.addEventListener('mouseenter', () => { item.style.background='#f0f0f0'; });
       item.addEventListener('mouseleave', () => { item.style.background=''; });
       const cb = document.createElement('input');
