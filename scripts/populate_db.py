@@ -189,12 +189,25 @@ def create_tables(conn):
 
 # ============= Structure Fetching =============
 
+def _get_af_version(acc: str) -> int:
+    """Get latest AlphaFold model version for an accession."""
+    try:
+        resp = requests.get(AF_API_URL.format(acc=acc), timeout=10)
+        if resp.ok:
+            entries = resp.json()
+            if entries:
+                return entries[0].get("latestVersion", 4)
+    except Exception:
+        pass
+    return 4
+
+
 def fetch_am_pdb(acc: str) -> Optional[Tuple[str, List[float], int]]:
     """
     Fetch AlphaMissense PDB from hegelab.
+    Falls back to original AlphaFold PDB if AM version unavailable.
     Returns (pdb_content, bfactors, length) or None.
     """
-    # Check cache first
     STRUCTURES_DIR.mkdir(parents=True, exist_ok=True)
     cache_path = STRUCTURES_DIR / f"AF-{acc}-F1-AM.pdb"
 
@@ -202,20 +215,37 @@ def fetch_am_pdb(acc: str) -> Optional[Tuple[str, List[float], int]]:
         pdb_content = cache_path.read_text()
         log(f"    Loaded from cache: {cache_path.name}")
     else:
+        # Try AlphaMissense PDB first
         url = AM_PDB_URL.format(acc=acc)
+        pdb_content = None
         try:
             log(f"    Fetching: {url}")
             resp = requests.get(url, timeout=30)
-            if not resp.ok:
-                log(f"    HTTP {resp.status_code} for {acc}")
-                return None
-            pdb_content = resp.text
-            # Cache it
-            cache_path.write_text(pdb_content)
-            log(f"    Cached: {cache_path.name}")
+            if resp.ok:
+                pdb_content = resp.text
+                cache_path.write_text(pdb_content)
+                log(f"    Cached: {cache_path.name}")
+            else:
+                log(f"    AM PDB HTTP {resp.status_code} for {acc}, trying AlphaFold fallback...")
         except Exception as e:
-            log(f"    Failed to fetch PDB for {acc}: {e}")
-            return None
+            log(f"    AM PDB failed for {acc}: {e}, trying AlphaFold fallback...")
+
+        # Fallback: original AlphaFold PDB (B-factors = pLDDT, not AM)
+        if not pdb_content:
+            ver = _get_af_version(acc)
+            af_url = AF_PDB_URL.format(acc=acc, ver=ver)
+            try:
+                log(f"    Fetching: {af_url}")
+                resp = requests.get(af_url, timeout=30)
+                if not resp.ok:
+                    log(f"    AlphaFold PDB HTTP {resp.status_code} for {acc}")
+                    return None
+                pdb_content = resp.text
+                cache_path.write_text(pdb_content)
+                log(f"    Cached (AlphaFold fallback, no AM scores): {cache_path.name}")
+            except Exception as e:
+                log(f"    Failed to fetch PDB for {acc}: {e}")
+                return None
 
     # Extract B-factors from CA atoms
     bfactors = []

@@ -3473,7 +3473,8 @@ function setViewerLocked(locked) {
   viewerLocked = locked;
   const btn = document.getElementById('lockViewer');
   if (btn) {
-    btn.textContent = locked ? 'Unlock Hover' : 'Lock Hover';
+    btn.innerHTML = locked ? '&#x1F512;' : '&#x1F513;';
+    btn.title = locked ? 'Unlock hover highlight' : 'Lock hover highlight';
     btn.style.background = locked ? '#ffeb3b' : '#fff';
   }
   if (!locked) pendingHighlightLoci = null;
@@ -3486,6 +3487,32 @@ function toggleViewerLock() {
 // Chain visibility state
 const chainVisible = { A: true, B: true };
 let druggabilityFilter = 'medium+';
+
+// Domain color palette - distinct modern colors for unique domain types
+const DOMAIN_PALETTE = [
+  '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+  '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac',
+  '#86bcb6','#8cd17d','#b6992d','#499894','#d37295',
+];
+const TED_PALETTE = ['#00897b','#26a69a','#4db6ac','#80cbc4','#009688','#00796b'];
+
+function assignDomainColors(domainsA, domainsB) {
+  const nameToColor = {};
+  const tedNameToColor = {};
+  let domIdx = 0, tedIdx = 0;
+  const allDoms = [...(domainsA||[]), ...(domainsB||[])];
+  for (const d of allDoms) {
+    if (d.type === 'CAV' || d.type === 'Cavity' || d.type === 'DrugCLIP') continue;
+    const name = d.label || d.name || d.type || 'unknown';
+    if (d.raw_type === 'TED') {
+      if (!(name in tedNameToColor)) { tedNameToColor[name] = TED_PALETTE[tedIdx++ % TED_PALETTE.length]; }
+      d.color = tedNameToColor[name];
+    } else {
+      if (!(name in nameToColor)) { nameToColor[name] = DOMAIN_PALETTE[domIdx++ % DOMAIN_PALETTE.length]; }
+      d.color = nameToColor[name];
+    }
+  }
+}
 
 function getVisibleChains() {
   const chains = [];
@@ -4561,10 +4588,11 @@ function toggleFeature(dom, chain) {
   if (selection.has(key)) {
     selection.delete(key);
   } else {
-    const color = (dom.type === 'DrugCLIP') ? '#c62828'
-      : (dom.type === 'Cavity') ? '#ff9800'
-      : (dom.raw_type === 'TED') ? '#00897b'
-      : '#ffdb13';
+    const color = dom.color
+      || ((dom.type === 'DrugCLIP') ? '#c62828'
+        : (dom.type === 'Cavity') ? '#ff9800'
+        : (dom.raw_type === 'TED') ? '#00897b'
+        : '#ffdb13');
     selection.set(key, {
       id: dom.uid,
       chain,
@@ -4575,6 +4603,7 @@ function toggleFeature(dom, chain) {
     });
   }
   renderSelections();
+  syncHighlightDropdowns();
 }
 
 function applyAmMode(mode){
@@ -5485,6 +5514,8 @@ async function recalculateAlignmentTracks() {
     return rects;
   }
 
+  assignDomainColors(DATA.domainsA, DATA.domainsB);
+
   // Recalculate domain/disorder/cavity/drugclip rectangles
   if (DATA.domainsA) {
     const doms = DATA.domainsA.filter(d => d.type !== 'CAV' && d.type !== 'Cavity' && d.type !== 'DrugCLIP');
@@ -5756,7 +5787,7 @@ async function fillDomPairs(){
     tb.innerHTML = '<tr><td colspan="5" class="small">No domain sub-alignments computed.</td></tr>';
     return;
   }
-  DATA.domPairs.forEach((r)=>{
+  DATA.domPairs.forEach((r, idx)=>{
     const tr=document.createElement('tr'); tr.className='clickable';
     tr.innerHTML = `<td>${r.Aname} ${r.Arng}</td><td>${r.Bname} ${r.Brng}</td><td>${r.fident!=null?r.fident.toFixed(1)+'%':'–'}</td><td>${r.tm!=null?r.tm.toFixed(3):'–'}</td><td>${r.damPct!=null?r.damPct.toFixed(1)+'%':'–'}</td>`;
     tr.addEventListener('click', async ()=>{
@@ -5771,14 +5802,17 @@ async function fillDomPairs(){
       if (domA) selection.set(selectionKey(chainIdA, domA.uid), {
         id: domA.uid, chain: chainIdA,
         start: parseInt(domA.start,10), end: parseInt(domA.end,10),
-        color: '#ffdb13', name: domA.label||domA.name
+        color: domA.color||'#ffdb13', name: domA.label||domA.name
       });
       if (domB) selection.set(selectionKey(chainIdB, domB.uid), {
         id: domB.uid, chain: chainIdB,
         start: parseInt(domB.start,10), end: parseInt(domB.end,10),
-        color: '#ff7d45', name: domB.label||domB.name
+        color: domB.color||'#ff7d45', name: domB.label||domB.name
       });
       await renderSelections();
+      syncHighlightDropdowns();
+      const alnSel = document.getElementById('alnSelector');
+      if (alnSel) alnSel.value = String(idx);
     }, {passive:true});
     tb.append(tr);
   });
@@ -6265,11 +6299,16 @@ async function colorBy(mode){
     if (mode !== 'uniform') {
       const pdb = getColoredPdb(mode);
       if (pdb) {
-        await reloadViewerWith(pdb);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await reloadViewerWith(pdb, true);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Restore chain visibility after reload
+        if (!chainVisible.A || !chainVisible.B) {
+          await setMolstarChainVisibility(chainVisible.A, chainVisible.B);
+        }
         const theme = themeForColorMode(mode);
         await applyColorTheme(theme);
         await renderSelections();
+        updateColorLegend(mode);
         return;
       }
       // Fallback to uniform if mode data not available
@@ -6279,10 +6318,317 @@ async function colorBy(mode){
     }
 
     if (!plugin || !structureReady) return;
+    // For uniform mode, also respect chain visibility
+    if (!chainVisible.A || !chainVisible.B) {
+      await applyChainVisibility();
+    }
     const theme = themeForColorMode('uniform');
     await applyColorTheme(theme);
+    updateColorLegend('uniform');
   } catch(e) {
     console.error('Error applying color theme:', e);
+  }
+}
+
+// ===== Color Legend =====
+function updateColorLegend(mode) {
+  const el = document.getElementById('colorLegend');
+  if (!el) return;
+  if (!mode || mode === 'uniform') { el.style.display = 'none'; return; }
+
+  const legends = {
+    plddt: {
+      title: 'pLDDT Confidence',
+      items: [
+        {color:'#0053d6',label:'>90 Very High'},
+        {color:'#65cbf3',label:'70-90 Confident'},
+        {color:'#ffdb13',label:'50-70 Low'},
+        {color:'#ff7d45',label:'≤50 Very Low'},
+      ],
+      stats: () => {
+        const counts = {'> 90':0,'70-90':0,'50-70':0,'≤ 50':0};
+        for (const arr of [DATA.plddtA||[], DATA.plddtB||[]]) {
+          for (const v of arr) {
+            if (v > 90) counts['> 90']++;
+            else if (v > 70) counts['70-90']++;
+            else if (v > 50) counts['50-70']++;
+            else counts['≤ 50']++;
+          }
+        }
+        const total = (DATA.plddtA||[]).length + (DATA.plddtB||[]).length;
+        if (!total) return '';
+        return Object.entries(counts).map(([k,v])=>`${k}: ${v} (${(v/total*100).toFixed(0)}%)`).join(' · ');
+      }
+    },
+    am: {
+      title: 'AlphaMissense Pathogenicity',
+      items: [
+        {color:'#d62728',label:'Pathogenic (>0.564)'},
+        {color:'#ff7d45',label:'Ambiguous (0.34-0.564)'},
+        {color:'#bbbbbb',label:'Benign (<0.34)'},
+      ],
+      stats: () => {
+        const counts = {path:0,amb:0,ben:0};
+        for (const arr of [DATA.bfactorsA||[], DATA.bfactorsB||[]]) {
+          for (const v of arr) {
+            if (v > 0.564) counts.path++;
+            else if (v > 0.34) counts.amb++;
+            else counts.ben++;
+          }
+        }
+        const total = (DATA.bfactorsA||[]).length + (DATA.bfactorsB||[]).length;
+        if (!total) return '';
+        return `Pathogenic: ${counts.path} (${(counts.path/total*100).toFixed(0)}%) · Ambiguous: ${counts.amb} (${(counts.amb/total*100).toFixed(0)}%) · Benign: ${counts.ben} (${(counts.ben/total*100).toFixed(0)}%)`;
+      }
+    },
+    dam: {
+      title: 'Δ AlphaMissense (|A-B| at aligned positions)',
+      items: [
+        {color:'#d62728',label:'High Δ'},
+        {color:'#ff7d45',label:'Medium Δ'},
+        {color:'#bbbbbb',label:'Low Δ'},
+        {color:'#dddddd',label:'No Δ / Gap'},
+      ]
+    },
+    aligned: {
+      title: 'Aligned vs Gap',
+      items: [
+        {color:'#43a047',label:'Aligned'},
+        {color:'#cccccc',label:'Gap'},
+      ]
+    },
+    domains: {
+      title: 'Domain Regions',
+      items: [
+        {color:'#2ca02c',label:'Domain'},
+        {color:'#cccccc',label:'No domain'},
+      ]
+    },
+    ss: {
+      title: 'Secondary Structure',
+      items: [
+        {color:'#FF0066',label:'α-Helix'},
+        {color:'#FFCC00',label:'β-Strand'},
+        {color:'#dddddd',label:'Coil/Loop'},
+      ]
+    },
+    cavities: {
+      title: 'Cavity Druggability',
+      items: [
+        {color:'#e65100',label:'Strong'},
+        {color:'#ff9800',label:'Medium'},
+        {color:'#ffc107',label:'Weak'},
+        {color:'#dddddd',label:'No cavity'},
+      ]
+    },
+    drugclip: {
+      title: 'DrugCLIP Binding Pockets',
+      items: [
+        {color:'#c62828',label:'Pocket hit'},
+        {color:'#dddddd',label:'No pocket'},
+      ]
+    },
+    plma: {
+      title: 'PLMA Conservation Categories',
+      items: [
+        {color:'#EF5350',label:'Specific'},
+        {color:'#FFA726',label:'+ Family'},
+        {color:'#26A69A',label:'Pair exclusive'},
+        {color:'#FFCA28',label:'Shared w/ family'},
+        {color:'#BDBDBD',label:'Family only'},
+        {color:'#EEEEEE',label:'None'},
+      ]
+    },
+  };
+
+  const cfg = legends[mode];
+  if (!cfg) { el.style.display = 'none'; return; }
+
+  let html = `<strong>${cfg.title}</strong><span style="margin-left:12px">`;
+  for (const it of cfg.items) {
+    html += `<span style="display:inline-flex;align-items:center;margin-right:10px"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${it.color};margin-right:3px"></span>${it.label}</span>`;
+  }
+  html += '</span>';
+  if (cfg.stats) {
+    const s = cfg.stats();
+    if (s) html += `<div style="margin-top:4px;color:#666">${s}</div>`;
+  }
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+// ===== Highlight domain dropdowns =====
+function populateHighlightDropdowns() {
+  const selA = document.getElementById('hlDomainsA');
+  const selB = document.getElementById('hlDomainsB');
+  if (!selA || !selB || !DATA) return;
+
+  const lblA = document.getElementById('hlLabelA');
+  const lblB = document.getElementById('hlLabelB');
+  if (lblA) lblA.textContent = DATA.g1 || 'A';
+  if (lblB) lblB.textContent = DATA.g2 || 'B';
+
+  function fillSelect(sel, domains, chain) {
+    sel.innerHTML = '';
+    if (!domains || !domains.length) return;
+    const seen = new Set();
+    for (const d of domains) {
+      if (!d.uid) continue;
+      const key = `${d.label||d.name}_${d.start}-${d.end}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const opt = document.createElement('option');
+      opt.value = d.uid;
+      opt.textContent = `${d.label||d.name||d.type} (${d.start}-${d.end})`;
+      opt.dataset.chain = chain;
+      sel.appendChild(opt);
+    }
+    sel.size = Math.min(sel.options.length, 1);
+    sel.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'OPTION') {
+        e.preventDefault();
+        e.target.selected = !e.target.selected;
+        syncFromDropdown(sel, domains, chain);
+      }
+    });
+  }
+
+  fillSelect(selA, DATA.domainsA, chainIdA);
+  fillSelect(selB, DATA.domainsB, chainIdB);
+}
+
+function syncFromDropdown(sel, domains, chain) {
+  const domMap = {};
+  for (const d of domains) { if (d.uid) domMap[d.uid] = d; }
+  // Deselect any that are no longer selected
+  for (const opt of sel.options) {
+    const key = selectionKey(chain, opt.value);
+    if (!opt.selected && selection.has(key)) { selection.delete(key); }
+    else if (opt.selected && !selection.has(key)) {
+      const dom = domMap[opt.value];
+      if (dom) toggleFeature(dom, chain);
+      return; // toggleFeature calls renderSelections
+    }
+  }
+  renderSelections();
+}
+
+function syncHighlightDropdowns() {
+  for (const [selId, chain] of [['hlDomainsA', chainIdA], ['hlDomainsB', chainIdB]]) {
+    const sel = document.getElementById(selId);
+    if (!sel) continue;
+    for (const opt of sel.options) {
+      opt.selected = selection.has(selectionKey(chain, opt.value));
+    }
+  }
+}
+
+// ===== Alignment selector dropdown =====
+function populateAlnSelector() {
+  const sel = document.getElementById('alnSelector');
+  if (!sel || !DATA) return;
+  sel.innerHTML = '<option value="full">Full alignment</option>';
+  if (Array.isArray(DATA.domPairs)) {
+    DATA.domPairs.forEach((r, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = `${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
+      sel.appendChild(opt);
+    });
+  }
+  sel.addEventListener('change', async () => {
+    if (sel.value === 'full') {
+      document.getElementById('backFull').click();
+    } else {
+      const idx = parseInt(sel.value, 10);
+      const r = DATA.domPairs[idx];
+      if (!r) return;
+      await reloadViewerWith(r.pdb64);
+      document.getElementById('tmScore').textContent = (r.tm!=null ? r.tm.toFixed(3) : '–');
+      document.getElementById('contextTitle').textContent = `Domain: ${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
+      selection.clear();
+      const domA = (DATA.domainsA||[]).find(d => (d.label===r.Aname) || (`${d.start}-${d.end}`===r.Arng));
+      const domB = (DATA.domainsB||[]).find(d => (d.label===r.Bname) || (`${d.start}-${d.end}`===r.Brng));
+      if (domA) selection.set(selectionKey(chainIdA, domA.uid), {
+        id: domA.uid, chain: chainIdA,
+        start: parseInt(domA.start,10), end: parseInt(domA.end,10),
+        color: domA.color||'#ffdb13', name: domA.label||domA.name
+      });
+      if (domB) selection.set(selectionKey(chainIdB, domB.uid), {
+        id: domB.uid, chain: chainIdB,
+        start: parseInt(domB.start,10), end: parseInt(domB.end,10),
+        color: domB.color||'#ff7d45', name: domB.label||domB.name
+      });
+      await renderSelections();
+      syncHighlightDropdowns();
+    }
+  });
+}
+
+// ===== Manual residue selection =====
+function setupManualSelection() {
+  const inputA = document.getElementById('manualSelA');
+  const inputB = document.getElementById('manualSelB');
+  const clearBtn = document.getElementById('clearAllHighlights');
+  const lblA = document.getElementById('selLabelA');
+  const lblB = document.getElementById('selLabelB');
+  if (lblA) lblA.textContent = DATA?.g1 || 'A';
+  if (lblB) lblB.textContent = DATA?.g2 || 'B';
+
+  function parseRanges(text) {
+    const residues = new Set();
+    for (const part of text.split(',')) {
+      const t = part.trim();
+      if (!t) continue;
+      const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) { for (let i = +m[1]; i <= +m[2]; i++) residues.add(i); }
+      else if (/^\d+$/.test(t)) residues.add(+t);
+    }
+    return residues;
+  }
+
+  function applyManual(input, chain) {
+    const residues = parseRanges(input.value);
+    // Remove existing manual selections for this chain
+    for (const [key] of selection) {
+      if (key.startsWith(`manual_${chain}_`)) selection.delete(key);
+    }
+    if (residues.size === 0) { renderSelections(); syncHighlightDropdowns(); return; }
+    // Group into contiguous ranges
+    const sorted = [...residues].sort((a,b)=>a-b);
+    let start = sorted[0], prev = sorted[0];
+    for (let i = 1; i <= sorted.length; i++) {
+      const curr = i < sorted.length ? sorted[i] : null;
+      if (curr === null || curr !== prev + 1) {
+        const key = `manual_${chain}_${start}-${prev}`;
+        selection.set(key, {
+          id: key, chain, start, end: prev,
+          color: '#9c27b0', name: `${start}-${prev}`
+        });
+        if (curr !== null) start = curr;
+      }
+      if (curr !== null) prev = curr;
+    }
+    renderSelections();
+    syncHighlightDropdowns();
+  }
+
+  if (inputA) {
+    inputA.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyManual(inputA, chainIdA); });
+    inputA.addEventListener('blur', () => applyManual(inputA, chainIdA));
+  }
+  if (inputB) {
+    inputB.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyManual(inputB, chainIdB); });
+    inputB.addEventListener('blur', () => applyManual(inputB, chainIdB));
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      selection.clear();
+      if (inputA) inputA.value = '';
+      if (inputB) inputB.value = '';
+      renderSelections();
+      syncHighlightDropdowns();
+    });
   }
 }
 
@@ -6339,6 +6685,19 @@ async function main(){
   
   (DATA.domainsA||[]).forEach(d => { if (d.uid) domByUidA[d.uid] = d; });
   (DATA.domainsB||[]).forEach(d => { if (d.uid) domByUidB[d.uid] = d; });
+  // Assign distinct colors to domains (same name = same color across A and B)
+  assignDomainColors(DATA.domainsA, DATA.domainsB);
+  // Re-color server-generated rects with the new palette
+  function recolorRects(rects, domains) {
+    if (!rects || !domains) return;
+    const uidToColor = {};
+    for (const d of domains) { if (d.uid && d.color) uidToColor[d.uid] = d.color; }
+    for (const r of rects) { if (r.id && uidToColor[r.id]) r.color = uidToColor[r.id]; }
+  }
+  recolorRects(DATA.domA_alnRects, DATA.domainsA);
+  recolorRects(DATA.domB_alnRects, DATA.domainsB);
+  recolorRects(DATA.tedA_alnRects, DATA.domainsA);
+  recolorRects(DATA.tedB_alnRects, DATA.domainsB);
 
   document.getElementById('tmScore').textContent = (DATA.tm!=null ? DATA.tm.toFixed(3) : '–');
   document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
@@ -6348,6 +6707,9 @@ async function main(){
   fillDomainTables();
   await fillDomPairs();
   fillDrugHits();
+  populateHighlightDropdowns();
+  populateAlnSelector();
+  setupManualSelection();
 
   setupPdbeCollapse();
   setupPdbeControls();
@@ -6374,6 +6736,9 @@ async function main(){
     await initializeHighlightColors();
     setupHoverInterception();
     await renderSelections();
+    syncHighlightDropdowns();
+    const alnSel = document.getElementById('alnSelector');
+    if (alnSel) alnSel.value = 'full';
   }, {passive:true});
 
   // Chain visibility toggles
