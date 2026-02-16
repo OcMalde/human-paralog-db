@@ -452,6 +452,10 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     # Get bfactors (AM values)
     bfA = json.loads(prot_a["bfactors_json"]) if prot_a and prot_a["bfactors_json"] else []
     bfB = json.loads(prot_b["bfactors_json"]) if prot_b and prot_b["bfactors_json"] else []
+
+    # Get pLDDT values (from original AlphaFold PDB)
+    plddtA = json.loads(prot_a["plddt_json"]) if prot_a and prot_a["plddt_json"] else []
+    plddtB = json.loads(prot_b["plddt_json"]) if prot_b and prot_b["plddt_json"] else []
     
     # Build column position maps
     qpos_by_col = {}
@@ -601,6 +605,8 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         "amModes": AM_MODES,
         "bfactorsA": bfA,
         "bfactorsB": bfB,
+        "plddtA": plddtA,
+        "plddtB": plddtB,
         "domPairs": domPairs,
         "pdbeComplexes": pdbe_complexes,
         "seq1": seq1,

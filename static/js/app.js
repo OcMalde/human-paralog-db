@@ -5974,21 +5974,14 @@ function alnColToResMap(aln) {
 }
 
 function buildPlddtBfactorMaps() {
-  if (!PDB64_FULL) return null;
-  const pdbText = atob(PDB64_FULL);
+  if (!DATA) return null;
   const mapA = {}, mapB = {};
-  for (const line of pdbText.split('\n')) {
-    if (!line.startsWith('ATOM')) continue;
-    const chain = line[21];
-    const resSeq = parseInt(line.substring(22, 26).trim(), 10);
-    const bf = parseFloat(line.substring(60, 66).trim());
-    if (!isFinite(bf)) continue;
-    const map = chain === 'A' ? mapA : mapB;
-    if (!(resSeq in map)) {
-      // Bin: <=50->0, 51-70->1, 71-90->2, >90->3
-      map[resSeq] = bf <= 50 ? 0 : bf <= 70 ? 1 : bf <= 90 ? 2 : 3;
-    }
-  }
+  const plddtA = DATA.plddtA || [], plddtB = DATA.plddtB || [];
+  if (!plddtA.length && !plddtB.length) return null;
+  // Bin to match AlphaFold official cutoffs: <=50→0, 51-70→1, 71-90→2, >90→3
+  const bin = v => v <= 50 ? 0 : v <= 70 ? 1 : v <= 90 ? 2 : 3;
+  plddtA.forEach((v, i) => { if (typeof v === 'number') mapA[i + 1] = bin(v); });
+  plddtB.forEach((v, i) => { if (typeof v === 'number') mapB[i + 1] = bin(v); });
   return { A: mapA, B: mapB };
 }
 

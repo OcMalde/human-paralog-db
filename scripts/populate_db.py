@@ -51,6 +51,10 @@ FOLDSEEK = os.environ.get("FOLDSEEK", "foldseek")
 # AlphaMissense PDB URL
 AM_PDB_URL = "https://alphamissense.hegelab.org/pdb/AF-{acc}-F1-AM_v4.pdb"
 
+# AlphaFold original PDB URL (for pLDDT)
+AF_PDB_URL = "https://alphafold.ebi.ac.uk/files/AF-{acc}-F1-model_v{ver}.pdb"
+AF_API_URL = "https://alphafold.ebi.ac.uk/api/prediction/{acc}"
+
 # Annotation API URLs
 TED_API_URL = "https://ted.cathdb.info/api/v1/uniprot/summary/{acc}?skip=0&limit=100"
 EBI_API_URL = "https://www.ebi.ac.uk/proteins/api/features/{acc}"
@@ -138,7 +142,8 @@ def create_tables(conn):
             acc TEXT PRIMARY KEY,
             length INTEGER,
             bfactors_json TEXT,
-            pdb_b64 TEXT
+            pdb_b64 TEXT,
+            plddt_json TEXT
         );
 
         CREATE TABLE IF NOT EXISTS annotations (
@@ -173,6 +178,12 @@ def create_tables(conn):
         CREATE INDEX IF NOT EXISTS idx_pairs_gene_b ON pairs(gene_b);
         CREATE INDEX IF NOT EXISTS idx_annotations_acc ON annotations(acc);
     """)
+
+    # Migration: add plddt_json column if missing
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(proteins)").fetchall()}
+    if "plddt_json" not in cols:
+        conn.execute("ALTER TABLE proteins ADD COLUMN plddt_json TEXT")
+
     conn.commit()
 
 
@@ -222,6 +233,53 @@ def fetch_am_pdb(acc: str) -> Optional[Tuple[str, List[float], int]]:
                 pass
 
     return pdb_content, bfactors, len(bfactors)
+
+
+def fetch_plddt(acc: str) -> Optional[List[float]]:
+    """Fetch per-residue pLDDT from original AlphaFold PDB."""
+    cache_path = STRUCTURES_DIR / f"AF-{acc}-F1-plddt.json"
+    if cache_path.exists():
+        import json as _json
+        return _json.loads(cache_path.read_text())
+
+    # Get model version from AlphaFold API
+    try:
+        resp = requests.get(AF_API_URL.format(acc=acc), timeout=10)
+        if not resp.ok:
+            return None
+        entries = resp.json()
+        if not entries:
+            return None
+        ver = entries[0].get("latestVersion", 4)
+    except Exception:
+        ver = 4
+
+    # Download original PDB
+    try:
+        resp = requests.get(AF_PDB_URL.format(acc=acc, ver=ver), timeout=15)
+        if not resp.ok:
+            return None
+    except Exception:
+        return None
+
+    plddt = []
+    seen = set()
+    for line in resp.text.split('\n'):
+        if line.startswith("ATOM") and line[12:16].strip() == "CA":
+            try:
+                res_num = int(line[22:26].strip())
+                if res_num not in seen:
+                    seen.add(res_num)
+                    plddt.append(round(float(line[60:66].strip()), 2))
+            except Exception:
+                pass
+
+    if plddt:
+        import json as _json
+        cache_path.write_text(_json.dumps(plddt))
+        log(f"    pLDDT: {len(plddt)} residues (v{ver})")
+
+    return plddt if plddt else None
 
 
 # ============= Annotation Fetching =============
@@ -375,11 +433,15 @@ def populate_pair(conn, gene_a: str, gene_b: str, proteins_cache: dict) -> bool:
                 pdb_path = STRUCTURES_DIR / f"AF-{acc}-F1-AM.pdb"
                 proteins_cache[acc] = (pdb_path, bfactors, length)
 
+                # Fetch pLDDT from original AlphaFold PDB
+                plddt = fetch_plddt(acc)
+
                 # Store in database
                 conn.execute("""
-                    INSERT OR REPLACE INTO proteins (acc, length, bfactors_json, pdb_b64)
-                    VALUES (?, ?, ?, ?)
-                """, (acc, length, json.dumps(bfactors), base64.b64encode(pdb_content.encode()).decode()))
+                    INSERT OR REPLACE INTO proteins (acc, length, bfactors_json, pdb_b64, plddt_json)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (acc, length, json.dumps(bfactors), base64.b64encode(pdb_content.encode()).decode(),
+                      json.dumps(plddt) if plddt else None))
 
                 # Fetch and store annotations
                 log(f"    Fetching annotations for {acc}...")
@@ -390,6 +452,16 @@ def populate_pair(conn, gene_a: str, gene_b: str, proteins_cache: dict) -> bool:
             else:
                 proteins_cache[acc] = None
                 log(f"    Failed to fetch {acc}")
+
+        # Backfill pLDDT for proteins already in cache/DB but missing it
+        if acc in proteins_cache and proteins_cache[acc]:
+            row = conn.execute("SELECT plddt_json FROM proteins WHERE acc = ?", (acc,)).fetchone()
+            if row and not row[0]:
+                log(f"  Backfilling pLDDT for {acc} ({gene})...")
+                plddt = fetch_plddt(acc)
+                if plddt:
+                    conn.execute("UPDATE proteins SET plddt_json = ? WHERE acc = ?",
+                                 (json.dumps(plddt), acc))
 
         if proteins_cache.get(acc):
             pdb_paths[acc] = proteins_cache[acc][0]
