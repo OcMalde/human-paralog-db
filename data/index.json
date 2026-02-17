@@ -18,6 +18,15 @@
     "fident": 0.709
   },
   {
+    "id": "EGFR_ERBB2",
+    "geneA": "EGFR",
+    "geneB": "ERBB2",
+    "accA": "P00533",
+    "accB": "P04626",
+    "tm": 0.3094,
+    "fident": 0.491
+  },
+  {
     "id": "ENO1_ENO2",
     "geneA": "ENO1",
     "geneB": "ENO2",
@@ -70,6 +79,15 @@
     "accB": "A0A5H1",
     "tm": null,
     "fident": null
+  },
+  {
+    "id": "ERBB2_ERBB4",
+    "geneA": "ERBB2",
+    "geneB": "ERBB4",
+    "accA": "P04626",
+    "accB": "Q15303",
+    "tm": 0.3494,
+    "fident": 0.45
   },
   {
     "id": "MAGOH_MAGOHB",
