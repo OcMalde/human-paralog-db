@@ -4713,6 +4713,18 @@ function buildSeq(){
 
   const alnLen = Math.max(1, (DATA.qaln||'').length);
 
+  // Build position-to-column maps if not yet set
+  if (!DATA.qposToCol || !Object.keys(DATA.qposToCol).length) {
+    const qposToCol = {}, tposToCol = {};
+    let qp = 0, tp = 0;
+    for (let col = 0; col < alnLen; col++) {
+      if ((DATA.qaln||'')[col] !== '-') { qp++; qposToCol[qp] = col + 1; }
+      if ((DATA.taln||'')[col] !== '-') { tp++; tposToCol[tp] = col + 1; }
+    }
+    DATA.qposToCol = qposToCol;
+    DATA.tposToCol = tposToCol;
+  }
+
   amMatrixTracksA = [];
   amMatrixTracksB = [];
 
