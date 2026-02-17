@@ -3400,6 +3400,7 @@ const selection = new Map();
 const trackRefs = {};
 const domByUidA = {};
 const domByUidB = {};
+let hlTrackA = null, hlTrackB = null;
 
 function selectionKey(chain, uid) {
   return `${chain}:${uid}`;
@@ -4595,7 +4596,36 @@ function setupPdbeControls() {
 async function renderSelections() {
   renderTrackSelections();
   renderTableSelections();
+  updateNightingaleHighlights();
   await applyMolstarSelection();
+}
+
+function updateNightingaleHighlights() {
+  if (!hlTrackA || !hlTrackB || !DATA) return;
+  const sel = getAllSelections();
+  const qmap = DATA.qposToCol || {};
+  const tmap = DATA.tposToCol || {};
+  const alnLen = Math.max(1, (DATA.qaln || '').length);
+
+  function buildFeatures(chain, posToCol, color) {
+    const ranges = sel.filter(s => s.chain === chain);
+    if (!ranges.length) return [];
+    const features = [];
+    for (const r of ranges) {
+      let minCol = Infinity, maxCol = -Infinity;
+      for (let p = r.start; p <= r.end; p++) {
+        const col = posToCol[p];
+        if (col) { minCol = Math.min(minCol, col); maxCol = Math.max(maxCol, col); }
+      }
+      if (minCol <= maxCol) {
+        features.push({ start: minCol, end: maxCol, color, opacity: 0.8 });
+      }
+    }
+    return features;
+  }
+
+  hlTrackA.data = buildFeatures(chainIdA, qmap, '#43a047');
+  hlTrackB.data = buildFeatures(chainIdB, tmap, '#e91e63');
 }
 
 function toggleFeature(dom, chain) {
@@ -4678,6 +4708,9 @@ function buildSeq(){
 
   const nav = document.createElement('nightingale-navigation');
   addRow(tbl, '', nav, 40);
+
+  hlTrackA = document.createElement('nightingale-track');
+  addRow(tbl, 'Sel. '+DATA.g1, hlTrackA, 8);
 
   const seqA = document.createElement('nightingale-sequence');
   addRow(tbl, DATA.g1+' ('+DATA.a1+') aligned', seqA, 28);
@@ -4839,6 +4872,9 @@ function buildSeq(){
     plmaToggleB.textContent = hidden ? '▲' : '▼';
   }, { passive: true });
 
+  hlTrackB = document.createElement('nightingale-track');
+  addRow(tbl, 'Sel. '+DATA.g2, hlTrackB, 8);
+
   const seqB = document.createElement('nightingale-sequence');
   addRow(tbl, DATA.g2+' ('+DATA.a2+') aligned', seqB, 28);
 
@@ -4884,12 +4920,12 @@ function buildSeq(){
 
   requestAnimationFrame(()=>{
     const allTracks = [
-      nav, seqA, helixA, strandA,
+      nav, hlTrackA, seqA, helixA, strandA,
       domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA,
       plmaCatA, plmaSharedA, plmaPairA, plmaSpecA, plmaFamA,
       amA, dam, amB,
       plmaCatB, plmaSharedB, plmaPairB, plmaSpecB, plmaFamB,
-      seqB, helixB, strandB,
+      hlTrackB, seqB, helixB, strandB,
       domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB
     ];
     amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
@@ -4905,9 +4941,11 @@ function buildSeq(){
     seqA.data = DATA.qaln || '';
     seqB.data = DATA.taln || '';
 
-    [amA, amB, dam, cavA, cavB, plmaCatA, plmaCatB].forEach(track => {
+    [amA, amB, dam, cavA, cavB, plmaCatA, plmaCatB, hlTrackA, hlTrackB].forEach(track => {
       track.setAttribute('shape','rectangle');
     });
+    hlTrackA.data = [];
+    hlTrackB.data = [];
     [plmaSharedA, plmaPairA, plmaSpecA, plmaFamA, plmaSharedB, plmaPairB, plmaSpecB, plmaFamB].forEach(track => {
       track.setAttribute('shape','rectangle');
     });
@@ -5493,6 +5531,8 @@ async function recalculateAlignmentTracks() {
   }
 
   console.log(`Position maps built: qpos=${qpos}, tpos=${tpos}`);
+  DATA.qposToCol = qposToCol;
+  DATA.tposToCol = tposToCol;
 
   // Helper to remap domains/features to alignment columns
   function remapFeaturesToAlignment(features, posToCol, defaultColor) {
