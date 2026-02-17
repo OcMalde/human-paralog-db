@@ -4624,8 +4624,8 @@ function updateNightingaleHighlights() {
     return sanitizeRects(features, alnLen);
   }
 
-  const featA = buildFeatures(chainIdA, qmap, '#43a047');
-  const featB = buildFeatures(chainIdB, tmap, '#e91e63');
+  const featA = buildFeatures(chainIdA, qmap, '#00e676');
+  const featB = buildFeatures(chainIdB, tmap, '#ff4081');
 
   // Force Nightingale re-render: set data then call requestUpdate if available
   hlTrackA.data = featA;
@@ -4633,9 +4633,6 @@ function updateNightingaleHighlights() {
   if (typeof hlTrackA.requestUpdate === 'function') hlTrackA.requestUpdate();
   if (typeof hlTrackB.requestUpdate === 'function') hlTrackB.requestUpdate();
 
-  console.log('updateNightingaleHighlights:', featA.length, 'A features,', featB.length, 'B features',
-    'sel:', sel.length, 'qmap keys:', Object.keys(qmap).length, 'tmap keys:', Object.keys(tmap).length,
-    'sel chains:', sel.map(s => s.chain + ':' + s.start + '-' + s.end));
 }
 
 function toggleFeature(dom, chain) {
