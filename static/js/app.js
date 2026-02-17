@@ -4621,11 +4621,13 @@ function updateNightingaleHighlights() {
         features.push({ start: minCol, end: maxCol, color, opacity: 0.8 });
       }
     }
-    return features;
+    return sanitizeRects(features, alnLen);
   }
 
-  hlTrackA.data = buildFeatures(chainIdA, qmap, '#43a047');
-  hlTrackB.data = buildFeatures(chainIdB, tmap, '#e91e63');
+  const featA = buildFeatures(chainIdA, qmap, '#43a047');
+  const featB = buildFeatures(chainIdB, tmap, '#e91e63');
+  hlTrackA.data = featA;
+  hlTrackB.data = featB;
 }
 
 function toggleFeature(dom, chain) {
