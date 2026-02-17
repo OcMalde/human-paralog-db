@@ -4728,53 +4728,31 @@ function buildSeq(){
   const nav = document.createElement('nightingale-navigation');
   addRow(tbl, '', nav, 40);
 
+  // === Sel (Highlights) ===
   hlTrackA = document.createElement('nightingale-track');
   addRow(tbl, 'Sel. '+DATA.g1, hlTrackA, 8);
+  hlTrackB = document.createElement('nightingale-track');
+  addRow(tbl, 'Sel. '+DATA.g2, hlTrackB, 8);
 
+  // === Sequences ===
   const seqA = document.createElement('nightingale-sequence');
   addRow(tbl, DATA.g1+' ('+DATA.a1+') aligned', seqA, 28);
+  const seqB = document.createElement('nightingale-sequence');
+  addRow(tbl, DATA.g2+' ('+DATA.a2+') aligned', seqB, 28);
 
-  const helixA = document.createElement('nightingale-track');
-  addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
-  const strandA = document.createElement('nightingale-track');
-  addRow(tbl, 'β '+DATA.g1, strandA, 12); trackRefs['strandA'] = strandA;
-
+  // === Domains ===
   const domA = document.createElement('nightingale-track');
   addRow(tbl, 'Domains '+DATA.g1, domA, 16); trackRefs['domA'] = domA;
+  const domB = document.createElement('nightingale-track');
+  addRow(tbl, 'Domains '+DATA.g2, domB, 16); trackRefs['domB'] = domB;
 
-  const disorderA = document.createElement('nightingale-track');
-  addRow(tbl, 'Disordered '+DATA.g1, disorderA, 16); trackRefs['disorderA'] = disorderA;
-
+  // === TED ===
   const tedA = document.createElement('nightingale-track');
   addRow(tbl, 'TED '+DATA.g1, tedA, 16); trackRefs['tedA'] = tedA;
+  const tedB = document.createElement('nightingale-track');
+  addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
 
-  const cavA = document.createElement('nightingale-track');
-  const cavARow = addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
-  const cavSubRowsA = [];
-  const cavToggleA = document.createElement('button');
-  cavToggleA.textContent = '▼'; cavToggleA.className = 'am-matrix-toggle';
-  cavARow.labelCell.appendChild(cavToggleA);
-
-  const cavStrongA = document.createElement('nightingale-track');
-  const csARow = addRow(tbl, 'Strong', cavStrongA, 10);
-  csARow.row.style.display = 'none'; cavSubRowsA.push(csARow.row); trackRefs['cavStrongA'] = cavStrongA;
-  const cavMediumA = document.createElement('nightingale-track');
-  const cmARow = addRow(tbl, 'Medium', cavMediumA, 10);
-  cmARow.row.style.display = 'none'; cavSubRowsA.push(cmARow.row); trackRefs['cavMediumA'] = cavMediumA;
-  const cavWeakA = document.createElement('nightingale-track');
-  const cwARow = addRow(tbl, 'Weak', cavWeakA, 10);
-  cwARow.row.style.display = 'none'; cavSubRowsA.push(cwARow.row); trackRefs['cavWeakA'] = cavWeakA;
-
-  cavToggleA.addEventListener('click', () => {
-    const hidden = cavSubRowsA[0].style.display === 'none';
-    cavSubRowsA.forEach(r => { r.style.display = hidden ? '' : 'none'; });
-    cavToggleA.textContent = hidden ? '▲' : '▼';
-  }, { passive: true });
-
-  const dcA = document.createElement('nightingale-track');
-  addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
-
-  // PLMA category track A (expandable overview + sub-tracks)
+  // === PLMA A (expandable overview + sub-tracks) ===
   const plmaCatA = document.createElement('nightingale-track');
   const plmaARow = addRow(tbl, 'PLMA '+DATA.g1, plmaCatA, 14); trackRefs['plmaCatA'] = plmaCatA;
   const plmaSubRowsA = [];
@@ -4801,6 +4779,34 @@ function buildSeq(){
     plmaToggleA.textContent = hidden ? '▲' : '▼';
   }, { passive: true });
 
+  // === PLMA B (expandable overview + sub-tracks) ===
+  const plmaCatB = document.createElement('nightingale-track');
+  const plmaBRow = addRow(tbl, 'PLMA '+DATA.g2, plmaCatB, 14); trackRefs['plmaCatB'] = plmaCatB;
+  const plmaSubRowsB = [];
+  const plmaToggleB = document.createElement('button');
+  plmaToggleB.textContent = '▼'; plmaToggleB.className = 'am-matrix-toggle';
+  plmaBRow.labelCell.appendChild(plmaToggleB);
+
+  const plmaSharedB = document.createElement('nightingale-track');
+  const psBRow = addRow(tbl, 'Shared', plmaSharedB, 10);
+  psBRow.row.style.display = 'none'; plmaSubRowsB.push(psBRow.row); trackRefs['plmaSharedB'] = plmaSharedB;
+  const plmaPairB = document.createElement('nightingale-track');
+  const ppBRow = addRow(tbl, 'Pair excl.', plmaPairB, 10);
+  ppBRow.row.style.display = 'none'; plmaSubRowsB.push(ppBRow.row); trackRefs['plmaPairB'] = plmaPairB;
+  const plmaSpecB = document.createElement('nightingale-track');
+  const pspBRow = addRow(tbl, 'Specific', plmaSpecB, 10);
+  pspBRow.row.style.display = 'none'; plmaSubRowsB.push(pspBRow.row); trackRefs['plmaSpecB'] = plmaSpecB;
+  const plmaFamB = document.createElement('nightingale-track');
+  const pfBRow = addRow(tbl, '+Family', plmaFamB, 10);
+  pfBRow.row.style.display = 'none'; plmaSubRowsB.push(pfBRow.row); trackRefs['plmaFamB'] = plmaFamB;
+
+  plmaToggleB.addEventListener('click', () => {
+    const hidden = plmaSubRowsB[0].style.display === 'none';
+    plmaSubRowsB.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    plmaToggleB.textContent = hidden ? '▲' : '▼';
+  }, { passive: true });
+
+  // === AlphaMissense A ===
   const amA = document.createElement('nightingale-track');
   const amARow = addRow(tbl, 'AlphaMissense '+DATA.g1, amA, 18);
   amARow.row.classList.add('am-main-row');
@@ -4832,12 +4838,14 @@ function buildSeq(){
     toggleA.textContent = hidden ? '▲' : '▼';
   }, { passive:true });
 
+  // === ΔAM ===
   const dam = document.createElement('nightingale-track');
   const damRow = addRow(tbl, 'ΔAM', dam, 18);
   damRow.row.classList.add('am-main-row');
   damRow.labelCell.classList.add('am-main-label');
   damTrack = dam;
 
+  // === AlphaMissense B ===
   const amB = document.createElement('nightingale-track');
   const amBRow = addRow(tbl, 'AlphaMissense '+DATA.g2, amB, 18);
   amBRow.row.classList.add('am-main-row');
@@ -4864,53 +4872,49 @@ function buildSeq(){
     toggleB.textContent = hidden ? '▲' : '▼';
   }, { passive:true });
 
-  // PLMA category track B (expandable overview + sub-tracks) — mirror of A
-  const plmaCatB = document.createElement('nightingale-track');
-  const plmaBRow = addRow(tbl, 'PLMA '+DATA.g2, plmaCatB, 14); trackRefs['plmaCatB'] = plmaCatB;
-  const plmaSubRowsB = [];
-  const plmaToggleB = document.createElement('button');
-  plmaToggleB.textContent = '▼'; plmaToggleB.className = 'am-matrix-toggle';
-  plmaBRow.labelCell.appendChild(plmaToggleB);
-
-  const plmaSharedB = document.createElement('nightingale-track');
-  const psBRow = addRow(tbl, 'Shared', plmaSharedB, 10);
-  psBRow.row.style.display = 'none'; plmaSubRowsB.push(psBRow.row); trackRefs['plmaSharedB'] = plmaSharedB;
-  const plmaPairB = document.createElement('nightingale-track');
-  const ppBRow = addRow(tbl, 'Pair excl.', plmaPairB, 10);
-  ppBRow.row.style.display = 'none'; plmaSubRowsB.push(ppBRow.row); trackRefs['plmaPairB'] = plmaPairB;
-  const plmaSpecB = document.createElement('nightingale-track');
-  const pspBRow = addRow(tbl, 'Specific', plmaSpecB, 10);
-  pspBRow.row.style.display = 'none'; plmaSubRowsB.push(pspBRow.row); trackRefs['plmaSpecB'] = plmaSpecB;
-  const plmaFamB = document.createElement('nightingale-track');
-  const pfBRow = addRow(tbl, '+Family', plmaFamB, 10);
-  pfBRow.row.style.display = 'none'; plmaSubRowsB.push(pfBRow.row); trackRefs['plmaFamB'] = plmaFamB;
-
-  plmaToggleB.addEventListener('click', () => {
-    const hidden = plmaSubRowsB[0].style.display === 'none';
-    plmaSubRowsB.forEach(r => { r.style.display = hidden ? '' : 'none'; });
-    plmaToggleB.textContent = hidden ? '▲' : '▼';
-  }, { passive: true });
-
-  hlTrackB = document.createElement('nightingale-track');
-  addRow(tbl, 'Sel. '+DATA.g2, hlTrackB, 8);
-
-  const seqB = document.createElement('nightingale-sequence');
-  addRow(tbl, DATA.g2+' ('+DATA.a2+') aligned', seqB, 28);
-
-  const helixB = document.createElement('nightingale-track');
-  addRow(tbl, 'α '+DATA.g2, helixB, 12); trackRefs['helixB'] = helixB;
-  const strandB = document.createElement('nightingale-track');
-  addRow(tbl, 'β '+DATA.g2, strandB, 12); trackRefs['strandB'] = strandB;
-
-  const domB = document.createElement('nightingale-track');
-  addRow(tbl, 'Domains '+DATA.g2, domB, 16); trackRefs['domB'] = domB;
-
+  // === Disordered ===
+  const disorderA = document.createElement('nightingale-track');
+  addRow(tbl, 'Disordered '+DATA.g1, disorderA, 16); trackRefs['disorderA'] = disorderA;
   const disorderB = document.createElement('nightingale-track');
   addRow(tbl, 'Disordered '+DATA.g2, disorderB, 16); trackRefs['disorderB'] = disorderB;
 
-  const tedB = document.createElement('nightingale-track');
-  addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
+  // === Alpha helix ===
+  const helixA = document.createElement('nightingale-track');
+  addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
+  const helixB = document.createElement('nightingale-track');
+  addRow(tbl, 'α '+DATA.g2, helixB, 12); trackRefs['helixB'] = helixB;
 
+  // === Beta strand ===
+  const strandA = document.createElement('nightingale-track');
+  addRow(tbl, 'β '+DATA.g1, strandA, 12); trackRefs['strandA'] = strandA;
+  const strandB = document.createElement('nightingale-track');
+  addRow(tbl, 'β '+DATA.g2, strandB, 12); trackRefs['strandB'] = strandB;
+
+  // === Cavities A (expandable) ===
+  const cavA = document.createElement('nightingale-track');
+  const cavARow = addRow(tbl, 'Cavities '+DATA.g1, cavA, 16); trackRefs['cavA'] = cavA;
+  const cavSubRowsA = [];
+  const cavToggleA = document.createElement('button');
+  cavToggleA.textContent = '▼'; cavToggleA.className = 'am-matrix-toggle';
+  cavARow.labelCell.appendChild(cavToggleA);
+
+  const cavStrongA = document.createElement('nightingale-track');
+  const csARow = addRow(tbl, 'Strong', cavStrongA, 10);
+  csARow.row.style.display = 'none'; cavSubRowsA.push(csARow.row); trackRefs['cavStrongA'] = cavStrongA;
+  const cavMediumA = document.createElement('nightingale-track');
+  const cmARow = addRow(tbl, 'Medium', cavMediumA, 10);
+  cmARow.row.style.display = 'none'; cavSubRowsA.push(cmARow.row); trackRefs['cavMediumA'] = cavMediumA;
+  const cavWeakA = document.createElement('nightingale-track');
+  const cwARow = addRow(tbl, 'Weak', cavWeakA, 10);
+  cwARow.row.style.display = 'none'; cavSubRowsA.push(cwARow.row); trackRefs['cavWeakA'] = cavWeakA;
+
+  cavToggleA.addEventListener('click', () => {
+    const hidden = cavSubRowsA[0].style.display === 'none';
+    cavSubRowsA.forEach(r => { r.style.display = hidden ? '' : 'none'; });
+    cavToggleA.textContent = hidden ? '▲' : '▼';
+  }, { passive: true });
+
+  // === Cavities B (expandable) ===
   const cavB = document.createElement('nightingale-track');
   const cavBRow = addRow(tbl, 'Cavities '+DATA.g2, cavB, 16); trackRefs['cavB'] = cavB;
   const cavSubRowsB = [];
@@ -4934,18 +4938,23 @@ function buildSeq(){
     cavToggleB.textContent = hidden ? '▲' : '▼';
   }, { passive: true });
 
+  // === DrugCLIP ===
+  const dcA = document.createElement('nightingale-track');
+  addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
   const dcB = document.createElement('nightingale-track');
   addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
 
   requestAnimationFrame(()=>{
     const allTracks = [
-      nav, hlTrackA, seqA, helixA, strandA,
-      domA, disorderA, tedA, cavA, cavStrongA, cavMediumA, cavWeakA, dcA,
+      nav, hlTrackA, hlTrackB, seqA, seqB,
+      domA, domB, tedA, tedB,
       plmaCatA, plmaSharedA, plmaPairA, plmaSpecA, plmaFamA,
-      amA, dam, amB,
       plmaCatB, plmaSharedB, plmaPairB, plmaSpecB, plmaFamB,
-      hlTrackB, seqB, helixB, strandB,
-      domB, disorderB, tedB, cavB, cavStrongB, cavMediumB, cavWeakB, dcB
+      amA, dam, amB,
+      disorderA, disorderB, helixA, helixB, strandA, strandB,
+      cavA, cavStrongA, cavMediumA, cavWeakA,
+      cavB, cavStrongB, cavMediumB, cavWeakB,
+      dcA, dcB
     ];
     amMatrixTracksA.forEach(obj => allTracks.push(obj.track));
     amMatrixTracksB.forEach(obj => allTracks.push(obj.track));
