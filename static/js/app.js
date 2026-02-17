@@ -4633,7 +4633,9 @@ function updateNightingaleHighlights() {
   if (typeof hlTrackA.requestUpdate === 'function') hlTrackA.requestUpdate();
   if (typeof hlTrackB.requestUpdate === 'function') hlTrackB.requestUpdate();
 
-  console.log('updateNightingaleHighlights:', featA.length, 'A features,', featB.length, 'B features');
+  console.log('updateNightingaleHighlights:', featA.length, 'A features,', featB.length, 'B features',
+    'sel:', sel.length, 'qmap keys:', Object.keys(qmap).length, 'tmap keys:', Object.keys(tmap).length,
+    'sel chains:', sel.map(s => s.chain + ':' + s.start + '-' + s.end));
 }
 
 function toggleFeature(dom, chain) {
