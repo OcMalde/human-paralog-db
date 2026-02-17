@@ -6272,12 +6272,12 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'aligned') {
-    // Aligned=1 (green), gap=0 (grey)
+    // Aligned=1 (grey), gap=0 (black)
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
-        list: { kind: 'set', colors: [0x43a047, 0xcccccc] }
+        list: { kind: 'set', colors: [0x999999, 0x222222] }
       }
     };
   }
@@ -6446,8 +6446,8 @@ function updateColorLegend(mode) {
     aligned: {
       title: 'Aligned vs Gap',
       items: [
-        {color:'#43a047',label:'Aligned'},
-        {color:'#cccccc',label:'Gap'},
+        {color:'#999999',label:'Aligned'},
+        {color:'#222222',label:'Gap'},
       ]
     },
     domains: {
