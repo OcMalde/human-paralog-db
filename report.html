@@ -689,10 +689,11 @@
         <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
         <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
       </div>
-      <div class="row" style="flex-wrap:wrap;gap:6px 16px;padding:6px 0">
+      <div class="row" style="flex-wrap:wrap;gap:6px 16px;padding:6px 0;align-items:center">
         <label>Highlight:</label>
-        <div id="hlDomainsA" style="display:inline-block"></div>
-        <div id="hlDomainsB" style="display:inline-block"></div>
+        <div style="display:flex;align-items:center;gap:6px"><div id="hlDomainsA" style="display:inline-block"></div><label><span id="selLabelA">A</span>: <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px"></label></div>
+        <div style="display:flex;align-items:center;gap:6px"><div id="hlDomainsB" style="display:inline-block"></div><label><span id="selLabelB">B</span>: <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px"></label></div>
+        <button id="clearAllHighlights" style="padding:4px 12px">Clear all</button>
       </div>
       <div id="viewer"></div>
       <div id="colorLegend" style="display:none;padding:8px 16px;border-top:1px solid #f0f0f0;font-size:12px"></div>
@@ -707,11 +708,6 @@
       <button class="collapse-toggle" id="alignmentCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="body" id="alignmentBody">
-      <div class="row" style="flex-wrap:wrap;gap:6px 16px;padding:6px 0">
-        <label><span id="selLabelA">A</span> residues: <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:200px;padding:4px 8px"></label>
-        <label><span id="selLabelB">B</span> residues: <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:200px;padding:4px 8px"></label>
-        <button id="clearAllHighlights" style="padding:4px 12px">Clear all</button>
-      </div>
       <div class="row" id="amModeRow">
         <label>Druggability filter:
           <select id="druggabilityFilter">
