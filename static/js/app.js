@@ -4626,8 +4626,14 @@ function updateNightingaleHighlights() {
 
   const featA = buildFeatures(chainIdA, qmap, '#43a047');
   const featB = buildFeatures(chainIdB, tmap, '#e91e63');
+
+  // Force Nightingale re-render: set data then call requestUpdate if available
   hlTrackA.data = featA;
   hlTrackB.data = featB;
+  if (typeof hlTrackA.requestUpdate === 'function') hlTrackA.requestUpdate();
+  if (typeof hlTrackB.requestUpdate === 'function') hlTrackB.requestUpdate();
+
+  console.log('updateNightingaleHighlights:', featA.length, 'A features,', featB.length, 'B features');
 }
 
 function toggleFeature(dom, chain) {
