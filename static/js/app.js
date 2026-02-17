@@ -6272,12 +6272,12 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'aligned') {
-    // Aligned=1 (grey), gap=0 (black)
+    // Aligned=1 (grey), gap=0 (hot magenta)
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
-        list: { kind: 'set', colors: [0x999999, 0x222222] }
+        list: { kind: 'set', colors: [0x999999, 0xAD1457] }
       }
     };
   }
@@ -6447,7 +6447,7 @@ function updateColorLegend(mode) {
       title: 'Aligned vs Gap',
       items: [
         {color:'#999999',label:'Aligned'},
-        {color:'#222222',label:'Gap'},
+        {color:'#AD1457',label:'Gap'},
       ]
     },
     domains: {
