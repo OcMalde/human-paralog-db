@@ -3271,6 +3271,13 @@ async function initMolstar(){
   window.viewer = viewer;
   window.molstar = molstar;
   window.plugin = plugin;
+  // Enable outline by default
+  try {
+    const pp = plugin.canvas3d?.props?.postprocessing;
+    if (pp) {
+      plugin.canvas3d.setProps({ postprocessing: { ...pp, outline: { name: 'on', params: { scale: 1, threshold: 0.33, color: { r: 0, g: 0, b: 0 }, includeTransparent: true } } } });
+    }
+  } catch(e) { console.warn('Could not enable outline:', e); }
 }
 
 async function loadPDBfromBase64(b64, resetCamera = true){
