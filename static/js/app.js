@@ -942,6 +942,10 @@ let amMode = 'raw';
 let amTrackA = null;
 let amTrackB = null;
 let damTrack = null;
+
+// Track group toggle state (persists across buildSeq rebuilds)
+const trackGroupState = { default: true, structure: false, conservation: false, druggability: false };
+let trackGroupRows = {}; // group name -> [row elements]
 let amMatrixTracksA = [];
 let amMatrixTracksB = [];
 
@@ -4748,9 +4752,9 @@ function buildSeq(){
 
   // === TED ===
   const tedA = document.createElement('nightingale-track');
-  addRow(tbl, 'TED '+DATA.g1, tedA, 16); trackRefs['tedA'] = tedA;
+  const tedARow = addRow(tbl, 'TED '+DATA.g1, tedA, 16); trackRefs['tedA'] = tedA;
   const tedB = document.createElement('nightingale-track');
-  addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
+  const tedBRow = addRow(tbl, 'TED '+DATA.g2, tedB, 16); trackRefs['tedB'] = tedB;
 
   // === PLMA A (expandable overview + sub-tracks) ===
   const plmaCatA = document.createElement('nightingale-track');
@@ -4874,21 +4878,21 @@ function buildSeq(){
 
   // === Disordered ===
   const disorderA = document.createElement('nightingale-track');
-  addRow(tbl, 'Disordered '+DATA.g1, disorderA, 16); trackRefs['disorderA'] = disorderA;
+  const disorderARow = addRow(tbl, 'Disordered '+DATA.g1, disorderA, 16); trackRefs['disorderA'] = disorderA;
   const disorderB = document.createElement('nightingale-track');
-  addRow(tbl, 'Disordered '+DATA.g2, disorderB, 16); trackRefs['disorderB'] = disorderB;
+  const disorderBRow = addRow(tbl, 'Disordered '+DATA.g2, disorderB, 16); trackRefs['disorderB'] = disorderB;
 
   // === Alpha helix ===
   const helixA = document.createElement('nightingale-track');
-  addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
+  const helixARow = addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
   const helixB = document.createElement('nightingale-track');
-  addRow(tbl, 'α '+DATA.g2, helixB, 12); trackRefs['helixB'] = helixB;
+  const helixBRow = addRow(tbl, 'α '+DATA.g2, helixB, 12); trackRefs['helixB'] = helixB;
 
   // === Beta strand ===
   const strandA = document.createElement('nightingale-track');
-  addRow(tbl, 'β '+DATA.g1, strandA, 12); trackRefs['strandA'] = strandA;
+  const strandARow = addRow(tbl, 'β '+DATA.g1, strandA, 12); trackRefs['strandA'] = strandA;
   const strandB = document.createElement('nightingale-track');
-  addRow(tbl, 'β '+DATA.g2, strandB, 12); trackRefs['strandB'] = strandB;
+  const strandBRow = addRow(tbl, 'β '+DATA.g2, strandB, 12); trackRefs['strandB'] = strandB;
 
   // === Cavities A (expandable) ===
   const cavA = document.createElement('nightingale-track');
@@ -4940,9 +4944,33 @@ function buildSeq(){
 
   // === DrugCLIP ===
   const dcA = document.createElement('nightingale-track');
-  addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
+  const dcARow = addRow(tbl, 'DrugCLIP '+DATA.g1, dcA, 16); trackRefs['dcA'] = dcA;
   const dcB = document.createElement('nightingale-track');
-  addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
+  const dcBRow = addRow(tbl, 'DrugCLIP '+DATA.g2, dcB, 16); trackRefs['dcB'] = dcB;
+
+  // Register track rows into toggle groups
+  trackGroupRows = {
+    structure: [
+      tedARow.row, tedBRow.row,
+      disorderARow.row, disorderBRow.row,
+      helixARow.row, helixBRow.row,
+      strandARow.row, strandBRow.row,
+    ],
+    conservation: [
+      plmaARow.row, ...plmaSubRowsA,
+      plmaBRow.row, ...plmaSubRowsB,
+    ],
+    druggability: [
+      cavARow.row, ...cavSubRowsA,
+      cavBRow.row, ...cavSubRowsB,
+      dcARow.row, dcBRow.row,
+    ],
+  };
+  // Apply current group visibility state
+  Object.entries(trackGroupRows).forEach(([group, rows]) => {
+    const visible = trackGroupState[group];
+    rows.forEach(r => { r.style.display = visible ? '' : 'none'; });
+  });
 
   requestAnimationFrame(()=>{
     const allTracks = [
@@ -5136,6 +5164,29 @@ function setupAllCollapsibleSections() {
   setupCollapsibleSection('domainPairsCollapseBtn', 'domainPairsBody', 'domainPairsSection');
   // Drug Hits
   setupCollapsibleSection('drugHitsCollapseBtn', 'drugHitsBody', 'drugHitsSection');
+  // Druggability group wrapper
+  setupCollapsibleSection('druggabilityGroupCollapseBtn', 'druggabilityGroupBody', 'druggabilityGroup');
+}
+
+// Apply default collapse states: expand key sections, collapse secondary ones
+function applyDefaultCollapseStates() {
+  const collapseByDefault = [
+    { btn: 'familyNavCollapseBtn', body: 'familyNavBody', section: 'familyNav' },
+    { btn: 'familyFeaturesCollapseBtn', body: 'familyFeaturesBody', section: 'familyFeaturesSection' },
+    { btn: 'simSearchCollapseBtn', body: 'simSearchBody', section: 'similaritySearchSection' },
+    { btn: 'pdbeCollapseBtn', body: 'pdbeCardBody', section: 'pdbeCard' },
+    { btn: 'druggabilityGroupCollapseBtn', body: 'druggabilityGroupBody', section: 'druggabilityGroup' },
+  ];
+  collapseByDefault.forEach(({ btn, body, section }) => {
+    const b = document.getElementById(body);
+    const bt = document.getElementById(btn);
+    const s = section ? document.getElementById(section) : null;
+    if (b && !b.classList.contains('collapsed')) {
+      b.classList.add('collapsed');
+      if (bt) { bt.setAttribute('aria-expanded', 'false'); bt.textContent = 'Expand'; }
+      if (s) s.classList.add('is-collapsed');
+    }
+  });
 }
 
 // Check data availability and hide empty sections
@@ -5187,6 +5238,16 @@ function updateSectionVisibility() {
     hideSection('similaritySearchSection');
   } else {
     showSection('similaritySearchSection');
+  }
+
+  // Druggability group - hide if all 3 inner sections are hidden
+  const domainsHidden = document.getElementById('domainsSection')?.classList.contains('section-hidden');
+  const domPairsHidden = document.getElementById('domainPairsSection')?.classList.contains('section-hidden');
+  const drugHitsHidden = document.getElementById('drugHitsSection')?.style.display === 'none';
+  if (domainsHidden && domPairsHidden && drugHitsHidden) {
+    hideSection('druggabilityGroup');
+  } else {
+    showSection('druggabilityGroup');
   }
 
   // Update sidebar navigation to match
@@ -6863,6 +6924,7 @@ async function main(){
   setupPdbeCollapse();
   setupPdbeControls();
   setupAllCollapsibleSections();
+  applyDefaultCollapseStates();
   updateSectionVisibility();
 
   document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
@@ -6990,6 +7052,118 @@ async function main(){
     setupHoverInterception();
   }, 1500);
   
+  populateKeyFindingsBanner();
+  setupTrackGroupToggles();
+  setupStickyObserver();
   console.log('Report viewer initialized');
+}
+
+// Populate the key findings banner with headline stats
+function populateKeyFindingsBanner() {
+  const banner = document.getElementById('keyFindingsBanner');
+  if (!banner) return;
+
+  const conservation = SUMMARY.conservation || {};
+  const gene1 = SUMMARY.gene1 || {};
+  const gene2 = SUMMARY.gene2 || {};
+  const pair = SUMMARY.pair || {};
+  const slFunc = SUMMARY.sl_functional || {};
+
+  // Seq identity
+  const seqIdent = conservation.min_sequence_identity;
+  const kfSeqIdent = document.getElementById('kfSeqIdent');
+  if (kfSeqIdent && seqIdent && typeof seqIdent.value === 'number') {
+    kfSeqIdent.textContent = (seqIdent.value * 100).toFixed(0) + '%';
+    kfSeqIdent.className = 'kf-value ' + (seqIdent.value >= 0.5 ? 'positive' : seqIdent.value >= 0.3 ? 'neutral' : 'negative');
+  } else if (kfSeqIdent && DATA.fident != null) {
+    kfSeqIdent.textContent = DATA.fident.toFixed(0) + '%';
+    kfSeqIdent.className = 'kf-value ' + (DATA.fident >= 50 ? 'positive' : DATA.fident >= 30 ? 'neutral' : 'negative');
+  }
+
+  // TM-score
+  const kfTm = document.getElementById('kfTmScore');
+  if (kfTm && DATA.tm != null) {
+    kfTm.textContent = DATA.tm.toFixed(2);
+    kfTm.className = 'kf-value ' + (DATA.tm >= 0.5 ? 'positive' : DATA.tm >= 0.3 ? 'neutral' : 'negative');
+  }
+
+  // Family size
+  const kfFamily = document.getElementById('kfFamilySize');
+  if (kfFamily && pair.family_size != null) {
+    kfFamily.textContent = pair.family_size + ' members';
+  }
+
+  // Essential
+  const kfEssential = document.getElementById('kfEssential');
+  if (kfEssential) {
+    const essA = gene1.is_essential;
+    const essB = gene2.is_essential;
+    if (essA && essB) { kfEssential.textContent = 'Both'; kfEssential.className = 'kf-value negative'; }
+    else if (essA || essB) { kfEssential.textContent = essA ? DATA.g1 : DATA.g2; kfEssential.className = 'kf-value neutral'; }
+    else { kfEssential.textContent = 'Neither'; kfEssential.className = 'kf-value positive'; }
+  }
+
+  // SL status
+  const kfSl = document.getElementById('kfSlStatus');
+  if (kfSl) {
+    if (slFunc.is_sl === true) { kfSl.textContent = 'Yes'; kfSl.className = 'kf-value positive'; }
+    else if (slFunc.is_sl === false) { kfSl.textContent = 'No'; kfSl.className = 'kf-value negative'; }
+    else { kfSl.textContent = '?'; kfSl.className = 'kf-value'; }
+  }
+
+  // Pockets (cavities + DrugCLIP)
+  const kfDrug = document.getElementById('kfDrug');
+  if (kfDrug) {
+    const nCav = (DATA.cavA_alnRects || []).length + (DATA.cavB_alnRects || []).length;
+    const nDc = (DATA.domainsA || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length +
+                (DATA.domainsB || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length;
+    const total = nCav + nDc;
+    kfDrug.textContent = total;
+    kfDrug.className = 'kf-value ' + (total > 0 ? 'positive' : '');
+  }
+
+  // Known drugs
+  const kfKnownDrugs = document.getElementById('kfKnownDrugs');
+  if (kfKnownDrugs) {
+    const nDrugs = (gene1.known_drugs || []).length + (gene2.known_drugs || []).length;
+    kfKnownDrugs.textContent = nDrugs;
+    kfKnownDrugs.className = 'kf-value ' + (nDrugs > 0 ? 'positive' : '');
+  }
+
+  banner.style.display = '';
+}
+
+// Wire track group toggle chips
+function setupTrackGroupToggles() {
+  const row = document.getElementById('trackToggleRow');
+  if (!row) return;
+  const chips = row.querySelectorAll('.track-toggle-chip');
+  chips.forEach(chip => {
+    const group = chip.dataset.group;
+    // Set initial active state from trackGroupState
+    chip.classList.toggle('active', !!trackGroupState[group]);
+    chip.addEventListener('click', () => {
+      if (group === 'default') return; // default is always on
+      trackGroupState[group] = !trackGroupState[group];
+      chip.classList.toggle('active', trackGroupState[group]);
+      const rows = trackGroupRows[group] || [];
+      rows.forEach(r => { r.style.display = trackGroupState[group] ? '' : 'none'; });
+    }, { passive: true });
+  });
+}
+
+// Sticky observer for structure controls
+function setupStickyObserver() {
+  const sticky = document.getElementById('structureStickyControls');
+  if (!sticky) return;
+  // Insert a sentinel div right before the sticky element
+  const sentinel = document.createElement('div');
+  sentinel.style.height = '1px';
+  sentinel.style.marginBottom = '-1px';
+  sticky.parentElement.insertBefore(sentinel, sticky);
+  const observer = new IntersectionObserver(([e]) => {
+    sticky.classList.toggle('is-stuck', !e.isIntersecting);
+  }, { threshold: [1], rootMargin: '-56px 0px 0px 0px' });
+  observer.observe(sentinel);
 }
 
