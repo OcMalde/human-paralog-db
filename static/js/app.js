@@ -5166,16 +5166,16 @@ function setupAllCollapsibleSections() {
   setupCollapsibleSection('drugHitsCollapseBtn', 'drugHitsBody', 'drugHitsSection');
   // Druggability group wrapper
   setupCollapsibleSection('druggabilityGroupCollapseBtn', 'druggabilityGroupBody', 'druggabilityGroup');
+  // Family group wrapper
+  setupCollapsibleSection('familyGroupCollapseBtn', 'familyGroupBody', 'familyGroup');
 }
 
 // Apply default collapse states: expand key sections, collapse secondary ones
 function applyDefaultCollapseStates() {
   const collapseByDefault = [
-    { btn: 'familyNavCollapseBtn', body: 'familyNavBody', section: 'familyNav' },
-    { btn: 'familyFeaturesCollapseBtn', body: 'familyFeaturesBody', section: 'familyFeaturesSection' },
-    { btn: 'simSearchCollapseBtn', body: 'simSearchBody', section: 'similaritySearchSection' },
     { btn: 'pdbeCollapseBtn', body: 'pdbeCardBody', section: 'pdbeCard' },
     { btn: 'druggabilityGroupCollapseBtn', body: 'druggabilityGroupBody', section: 'druggabilityGroup' },
+    { btn: 'familyGroupCollapseBtn', body: 'familyGroupBody', section: 'familyGroup' },
   ];
   collapseByDefault.forEach(({ btn, body, section }) => {
     const b = document.getElementById(body);
@@ -5248,6 +5248,16 @@ function updateSectionVisibility() {
     hideSection('druggabilityGroup');
   } else {
     showSection('druggabilityGroup');
+  }
+
+  // Family group - hide if all inner sections are hidden
+  const familyNavHidden = document.getElementById('familyNav')?.classList.contains('section-hidden') || document.getElementById('familyNav')?.style.display === 'none';
+  const familyFeatHidden = document.getElementById('familyFeaturesSection')?.classList.contains('section-hidden');
+  const simSearchHidden = document.getElementById('similaritySearchSection')?.classList.contains('section-hidden');
+  if (familyNavHidden && familyFeatHidden && simSearchHidden) {
+    hideSection('familyGroup');
+  } else {
+    showSection('familyGroup');
   }
 
   // Update sidebar navigation to match
@@ -7163,7 +7173,7 @@ function setupStickyObserver() {
   sticky.parentElement.insertBefore(sentinel, sticky);
   const observer = new IntersectionObserver(([e]) => {
     sticky.classList.toggle('is-stuck', !e.isIntersecting);
-  }, { threshold: [1], rootMargin: '-56px 0px 0px 0px' });
+  }, { threshold: [1], rootMargin: '-43px 0px 0px 0px' });
   observer.observe(sentinel);
 }
 

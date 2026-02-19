@@ -66,7 +66,8 @@
   .sidebar-nav .nav-title{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.5px;padding:12px 12px 6px;margin-top:8px}
   .sidebar-nav .nav-title:first-child{margin-top:0}
   .sidebar-nav ul ul{margin:0;padding:0;border-left:2px solid #e8e4ff;margin-left:16px}
-  .sidebar-nav ul ul a{font-size:12px;padding:5px 10px;color:#888}
+  .sidebar-nav>ul>li>a{font-weight:700;color:#333;font-size:13px}
+  .sidebar-nav ul ul a{font-size:12px;padding:5px 10px;color:#888;font-weight:400}
   .sidebar-nav ul ul a:hover{color:#555}
   .sidebar-nav ul ul a.active{color:#4f46e5}
   .main-content{flex:1;min-width:0}
@@ -339,12 +340,13 @@
   .kf-value.neutral{color:#ef6c00}
 
   /* Druggability Group */
-  .druggability-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04);overflow:hidden}
-  .druggability-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
-  .druggability-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1f1b16}
-  .druggability-group>.section-body{padding:12px 22px 22px}
-  .druggability-group>.section-body.collapsed{display:none}
-  .druggability-group .card{box-shadow:none;border-color:#f0ece0}
+  .section-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04);overflow:hidden}
+  .section-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
+  .section-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1f1b16}
+  .section-group>.section-body{padding:12px 22px 22px}
+  .section-group>.section-body.collapsed{display:none}
+  .section-group .card{box-shadow:none;border-color:#f0ece0}
+  .section-group .new-section{box-shadow:none;border-color:#f0ece0}
 
   /* Track Toggle Chips */
   .track-toggle-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
@@ -354,8 +356,9 @@
   .track-toggle-chip[data-group="default"]{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5;cursor:default;opacity:0.7}
 
   /* Sticky Controls */
-  .sticky-controls{position:sticky;top:55px;z-index:50;background:#fff;padding:8px 0 4px;border-bottom:1px solid transparent;margin:0 -12px;padding-left:12px;padding-right:12px}
-  .sticky-controls.is-stuck{border-bottom-color:#eee;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+  #structureAlignScope{display:grid;gap:12px}
+  .sticky-controls{position:sticky;top:42px;z-index:50;background:#fff;padding:8px 12px 4px;border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
+  .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.1)}
 
   /* Responsive: small screens */
   @media(max-width:700px){
@@ -377,11 +380,11 @@
     .kf-items{gap:4px 8px}
     .kf-value{font-size:15px}
     .kf-label{font-size:9px}
-    .sticky-controls{top:48px;padding:6px 8px 2px;margin:0 -8px}
+    .sticky-controls{top:38px;padding:6px 8px 2px}
     .sticky-controls .row{gap:4px 8px;font-size:12px}
     .track-toggle-row{gap:4px}
     .track-toggle-chip{padding:3px 8px;font-size:10px}
-    .druggability-group>.section-header{padding:12px 14px}
+    .section-group>.section-header{padding:12px 14px}
   }
   @media(max-width:480px){
     .top-nav .search-box{display:none}
@@ -432,8 +435,9 @@
         </ul>
       </li>
       <li>
-        <a href="#familyNav" data-section="familyNav">Paralog Family</a>
+        <a href="#familyGroup" data-section="familyGroup">Paralog Family</a>
         <ul>
+          <li><a href="#familyNav" data-section="familyNav">Family Network</a></li>
           <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Alignment</a></li>
           <li><a href="#similaritySearchSection" data-section="similaritySearchSection">Similarity Searches</a></li>
         </ul>
@@ -637,6 +641,9 @@
     </div>
   </section>
 
+  <!-- Structure + Alignment sticky scope -->
+  <div id="structureAlignScope">
+
   <!-- Structure card -->
   <section class="card collapsible" id="structureSection">
     <div class="card-header">
@@ -650,59 +657,6 @@
       <button class="collapse-toggle" id="structureCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="body" id="structureBody">
-      <div class="sticky-controls" id="structureStickyControls">
-      <div class="row" style="flex-wrap:wrap;gap:6px 12px">
-        <label>Color by:
-          <select id="colorBy">
-            <option value="uniform">Uniform</option>
-            <option value="plddt">pLDDT (confidence)</option>
-            <option value="am">AlphaMissense</option>
-            <option value="dam">Δ AlphaMissense</option>
-            <option value="aligned">Aligned vs Gap</option>
-            <option value="domains">Domains</option>
-            <option value="ss">2D Structure (α/β)</option>
-            <option value="cavities">Cavities</option>
-            <option value="drugclip">DrugCLIP</option>
-            <option value="plma">PLMA Categories</option>
-          </select>
-        </label>
-        <label class="chain-toggle">
-          <input type="checkbox" id="showChainA" checked> <span id="chainALabel">Chain A</span>
-        </label>
-        <label class="chain-toggle">
-          <input type="checkbox" id="showChainB" checked> <span id="chainBLabel">Chain B</span>
-        </label>
-        <button id="center">Center</button>
-        <button id="backFull">Back to full</button>
-        <label>Alignment:
-          <select id="alnSelector" style="max-width:220px">
-            <option value="full">Full alignment</option>
-          </select>
-        </label>
-        <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
-        <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
-      </div>
-      <div style="margin-top:10px;padding:6px 0 6px 12px;border-left:3px solid #ccc;font-size:inherit">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <label style="font-weight:600">Highlight</label>
-          <button id="clearAllHighlights" style="padding:2px 8px;font-size:11px">Clear all</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#00e676;flex-shrink:0"></span>
-          <strong><span id="selLabelA">A</span></strong>
-          <div id="hlDomainsA" style="display:inline-block"></div>
-          <span style="color:#888;font-style:italic;font-size:12px">or type</span>
-          <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4081;flex-shrink:0"></span>
-          <strong><span id="selLabelB">B</span></strong>
-          <div id="hlDomainsB" style="display:inline-block"></div>
-          <span style="color:#888;font-style:italic;font-size:12px">or type</span>
-          <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
-        </div>
-      </div>
-      </div>
       <div id="viewer"></div>
       <div id="colorLegend" style="display:none;padding:8px 16px;border-top:1px solid #f0f0f0;font-size:12px"></div>
     </div>
@@ -710,6 +664,61 @@
       Source: <a href="https://alphafold.ebi.ac.uk/" target="_blank">AlphaFold DB</a> · Structural alignment by <a href="https://search.foldseek.com/" target="_blank">Foldseek</a>
     </div>
   </section>
+
+  <!-- Structure & alignment controls (sticky across both sections) -->
+  <div class="sticky-controls" id="structureStickyControls">
+    <div class="row" style="flex-wrap:wrap;gap:6px 12px">
+      <label>Color by:
+        <select id="colorBy">
+          <option value="uniform">Uniform</option>
+          <option value="plddt">pLDDT (confidence)</option>
+          <option value="am">AlphaMissense</option>
+          <option value="dam">Δ AlphaMissense</option>
+          <option value="aligned">Aligned vs Gap</option>
+          <option value="domains">Domains</option>
+          <option value="ss">2D Structure (α/β)</option>
+          <option value="cavities">Cavities</option>
+          <option value="drugclip">DrugCLIP</option>
+          <option value="plma">PLMA Categories</option>
+        </select>
+      </label>
+      <label class="chain-toggle">
+        <input type="checkbox" id="showChainA" checked> <span id="chainALabel">Chain A</span>
+      </label>
+      <label class="chain-toggle">
+        <input type="checkbox" id="showChainB" checked> <span id="chainBLabel">Chain B</span>
+      </label>
+      <button id="center">Center</button>
+      <button id="backFull">Back to full</button>
+      <label>Alignment:
+        <select id="alnSelector" style="max-width:220px">
+          <option value="full">Full alignment</option>
+        </select>
+      </label>
+      <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
+      <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+    </div>
+    <div style="margin-top:10px;padding:6px 0 6px 12px;border-left:3px solid #ccc;font-size:inherit">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <label style="font-weight:600">Highlight</label>
+        <button id="clearAllHighlights" style="padding:2px 8px;font-size:11px">Clear all</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#00e676;flex-shrink:0"></span>
+        <strong><span id="selLabelA">A</span></strong>
+        <div id="hlDomainsA" style="display:inline-block"></div>
+        <span style="color:#888;font-style:italic;font-size:12px">or type</span>
+        <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4081;flex-shrink:0"></span>
+        <strong><span id="selLabelB">B</span></strong>
+        <div id="hlDomainsB" style="display:inline-block"></div>
+        <span style="color:#888;font-style:italic;font-size:12px">or type</span>
+        <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
+      </div>
+    </div>
+  </div>
 
   <!-- PDBe complexes card -->
   <section class="card collapsible" id="pdbeCard">
@@ -790,8 +799,10 @@
     </div>
   </section>
 
+  </div><!-- /structureAlignScope -->
+
   <!-- Druggability Analysis Group -->
-  <section class="druggability-group collapsible" id="druggabilityGroup">
+  <section class="section-group collapsible" id="druggabilityGroup">
     <div class="section-header">
       <h2>Druggability Analysis</h2>
       <button class="collapse-toggle" id="druggabilityGroupCollapseBtn" aria-expanded="false">Expand</button>
@@ -878,10 +889,17 @@
     </div>
   </section>
 
-  <!-- Paralog Family -->
+  <!-- Paralog Family Group -->
+  <section class="section-group collapsible" id="familyGroup">
+    <div class="section-header">
+      <h2>Paralog Family</h2>
+      <button class="collapse-toggle" id="familyGroupCollapseBtn" aria-expanded="false">Expand</button>
+    </div>
+    <div class="section-body collapsed" id="familyGroupBody">
+
   <section class="card collapsible" id="familyNav" style="display:none;">
     <div class="card-header">
-      <h2>Paralog Family</h2>
+      <h2>Family Network</h2>
       <div style="display:flex;align-items:center;gap:12px;">
         <span class="small" id="familySubtitle">Click genes to explore pairs · Orbits show sequence identity distance</span>
         <button class="collapse-toggle" id="familyNavCollapseBtn" aria-expanded="true">Collapse</button>
@@ -955,6 +973,9 @@
       <div class="desc-source" style="padding:8px 0 0;border-top:1px solid #f0f0f0;margin-top:12px">
         Source: Dennler <em>et al.</em>, <a href="https://academic.oup.com/nargab/article/7/2/lqaf051/8120592" target="_blank"><em>NAR Genomics and Bioinformatics</em>, 2025</a>
       </div>
+    </div>
+  </section>
+
     </div>
   </section>
 
