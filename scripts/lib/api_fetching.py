@@ -128,13 +128,13 @@ def fetch_compara_trees_for_pair(
             }
 
     # Neither tree has both genes — collect what we have as separate trees
+    # Only include trees that have >1 human leaf (single-leaf = useless)
     trees = []
     seen_genes = set()
     for res, query_gene in [(result_a, gene_a), (result_b, gene_b)]:
         if res:
             nwk, genes = res
-            # Only include if the query gene is actually in this tree
-            if query_gene in genes and not seen_genes.intersection(genes):
+            if query_gene in genes and len(genes) > 1 and not seen_genes.intersection(genes):
                 trees.append({'newick': nwk, 'genes': genes})
                 seen_genes.update(genes)
 

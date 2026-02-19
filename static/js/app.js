@@ -351,6 +351,24 @@ async function loadFamilyData() {
       familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
     }
 
+    // 2-gene families: just show a note, no tree/network/PLMA
+    if (familyGenes.size <= 2) {
+      const treeContainer = document.getElementById('familyTreeContainer');
+      const netContainer = document.getElementById('constellationContainer');
+      const treeHelp = document.getElementById('familyTreeHelp');
+      const netHelp = document.getElementById('constellationHelp');
+      const toggle = document.getElementById('familyViewToggle');
+      if (treeContainer) treeContainer.style.display = 'none';
+      if (netContainer) netContainer.style.display = 'none';
+      if (treeHelp) treeHelp.innerHTML = 'This pair forms a <strong>2-gene family</strong> — no phylogenetic tree or family alignment to display.';
+      if (netHelp) netHelp.style.display = 'none';
+      if (toggle) toggle.style.display = 'none';
+      // Also hide PLMA section for 2-gene families
+      const plmaSection = document.getElementById('familyFeaturesSection');
+      if (plmaSection) plmaSection.classList.add('section-hidden');
+      return;
+    }
+
     // Initialize tree (default) + constellation (on toggle) + view toggle
     renderFamilyTree();
     setupFamilyViewToggle();
@@ -616,11 +634,11 @@ function renderFamilyTree() {
   const labelW = maxLabelLen * 9 + 20;
 
   const margin = { top: 20, right: labelW, bottom: 20, left: 20 };
-  // Width based on tree depth: use a generous base, capped by container
-  const containerW = svg.parentElement.clientWidth || 700;
-  const minPlotW = 300;
-  const svgWidth = Math.max(minPlotW + margin.left + margin.right, Math.min(containerW, window.innerWidth - 80));
-  const svgHeight = Math.max(160, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
+  const contentH = Math.max(160, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
+  // For slanted trees: ensure width >= 1.5× height so branches fan out as proper triangles
+  const minSlantW = contentH * 1.5;
+  const svgWidth = Math.max(minSlantW, 400);
+  const svgHeight = contentH;
   const plotW = svgWidth - margin.left - margin.right;
 
   let svgContent = '';
