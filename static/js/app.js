@@ -604,13 +604,22 @@ function renderFamilyTree() {
 
   // Layout all trees and compute total dimensions
   const layouts = trees.map(t => layoutTree(t));
-  const margin = { top: 20, right: 140, bottom: 20, left: 20 };
-  const rowHeight = 28;
-  const splitGap = trees.length > 1 ? 30 : 0;
-  const containerW = svg.parentElement.clientWidth || 600;
-  const svgWidth = Math.min(containerW, window.innerWidth - 80);
-
+  const rowHeight = 32;
+  const splitGap = trees.length > 1 ? 36 : 0;
   let totalLeafRows = layouts.reduce((s, l) => s + l.totalLeaves, 0);
+
+  // Compute label width from longest gene name
+  const allNames = [];
+  function collectNames(n) { if (n.children.length === 0) allNames.push(n.name); else n.children.forEach(collectNames); }
+  trees.forEach(collectNames);
+  const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
+  const labelW = maxLabelLen * 9 + 20;
+
+  const margin = { top: 20, right: labelW, bottom: 20, left: 20 };
+  // Width based on tree depth: use a generous base, capped by container
+  const containerW = svg.parentElement.clientWidth || 700;
+  const minPlotW = 300;
+  const svgWidth = Math.max(minPlotW + margin.left + margin.right, Math.min(containerW, window.innerWidth - 80));
   const svgHeight = Math.max(160, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
   const plotW = svgWidth - margin.left - margin.right;
 
@@ -627,12 +636,12 @@ function renderFamilyTree() {
       ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rowHeight) + rowHeight / 2
       : () => yOffset + treeH / 2;
 
+    // Slanted tree: diagonal lines from parent to child
     function drawBranches(node) {
       if (node.children.length > 0) {
-        const top = node.children[0], bot = node.children[node.children.length - 1];
-        svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(top.y)}" x2="${xScale(node.x)}" y2="${yScale(bot.y)}"/>`;
+        const px = xScale(node.x), py = yScale(node.y);
         node.children.forEach(c => {
-          svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(c.y)}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
+          svgContent += `<line class="tree-branch" x1="${px}" y1="${py}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
           drawBranches(c);
         });
       }
@@ -644,9 +653,9 @@ function renderFamilyTree() {
         const isA = node.name === g1, isB = node.name === g2;
         const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
         svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="4"/>`;
-        svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
+        svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 5}" data-gene="${node.name}">${node.name}</text>`;
       } else {
-        svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2"/>`;
+        svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2.5"/>`;
         node.children.forEach(c => drawNodes(c));
       }
     }
