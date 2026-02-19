@@ -369,10 +369,10 @@ async function loadFamilyData() {
       return;
     }
 
-    // Initialize tree (default) + constellation (on toggle) + view toggle
-    renderFamilyTree();
+    // Initialize constellation immediately, defer tree to not block page load
     setupFamilyViewToggle();
     initFamilyConstellation();
+    requestAnimationFrame(() => renderFamilyTree());
 
   } catch (e) {
     console.error('Failed to load family data:', e);
@@ -499,6 +499,8 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
+  // Cladogram layout: x = node depth (ignoring branch lengths for even spacing)
+  // All leaves aligned at the right edge for clean triangular fan-out
   let leafIndex = 0;
 
   function countLeaves(node) {
@@ -506,20 +508,21 @@ function layoutTree(root) {
     return node.children.reduce((s, c) => s + countLeaves(c), 0);
   }
 
-  function maxDepth(node, d) {
-    if (node.children.length === 0) return d + node.branchLength;
-    return Math.max(...node.children.map(c => maxDepth(c, d + node.branchLength)));
+  function maxNodeDepth(node, d) {
+    if (node.children.length === 0) return d;
+    return Math.max(...node.children.map(c => maxNodeDepth(c, d + 1)));
   }
 
   const totalLeaves = countLeaves(root);
-  const totalDepth = maxDepth(root, 0);
+  const totalDepth = maxNodeDepth(root, 0) || 1;
 
   function assign(node, depth) {
-    node.x = depth;
     if (node.children.length === 0) {
+      node.x = totalDepth; // All leaves at right edge
       node.y = leafIndex++;
     } else {
-      node.children.forEach(c => assign(c, depth + node.branchLength));
+      node.children.forEach(c => assign(c, depth + 1));
+      node.x = depth;
       node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
     }
   }
@@ -579,9 +582,21 @@ function renderFamilyTree() {
     }
   }
 
-  // Fallback to UPGMA if no Compara trees
-  if (trees.length === 0 && constellationState && constellationState.allGenes && constellationState.allGenes.length >= 2) {
-    const genes = constellationState.allGenes;
+  // Fallback to UPGMA if no Compara trees (cap at 40 genes for performance)
+  if (trees.length === 0 && constellationState && constellationState.allGenes && constellationState.allGenes.length >= 3) {
+    let genes = constellationState.allGenes;
+    if (genes.length > 40) {
+      // Keep query genes + closest by identity
+      const g1i = genes.indexOf(g1), g2i = genes.indexOf(g2);
+      const scored = genes.map((g, i) => {
+        if (i === g1i || i === g2i) return { g, score: Infinity };
+        const gd = constellationState.geneData[g];
+        const id1 = gd?.identities?.[g1] || 0, id2 = gd?.identities?.[g2] || 0;
+        return { g, score: Math.max(id1, id2) };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      genes = scored.slice(0, 40).map(s => s.g);
+    }
     const identities = {};
     for (const gene of genes) {
       const gd = constellationState.geneData[gene];
