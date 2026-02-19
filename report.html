@@ -23,7 +23,7 @@
   header{padding:18px 24px;background:#fff9f0;border-bottom:1px solid #efe2c3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
   header .title-main{margin:0;font-size:24px;font-weight:700;color:#2f2514}
   header .title-sub{margin-top:4px;font-size:13px;color:#7a6842;letter-spacing:0.08em;text-transform:uppercase}
-  #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto;overflow:hidden}
+  #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto}
   .card{background:var(--pane);border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .card h2{font-size:15px;margin:0;padding:10px 12px;border-bottom:1px solid #eee}
   .card .body{padding:12px}
@@ -65,9 +65,20 @@
   .sidebar-nav a.active{background:#e8e4ff;color:#4f46e5;font-weight:600}
   .sidebar-nav .nav-title{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.5px;padding:12px 12px 6px;margin-top:8px}
   .sidebar-nav .nav-title:first-child{margin-top:0}
+  .sidebar-nav ul ul{margin:0;padding:0;border-left:2px solid #e8e4ff;margin-left:16px}
+  .sidebar-nav ul ul a{font-size:12px;padding:5px 10px;color:#888}
+  .sidebar-nav ul ul a:hover{color:#555}
+  .sidebar-nav ul ul a.active{color:#4f46e5}
   .main-content{flex:1;min-width:0}
+  /* Mobile sidebar toggle */
+  .sidebar-toggle{display:none;position:fixed;bottom:16px;right:16px;z-index:999;width:44px;height:44px;border-radius:50%;background:#4f46e5;color:#fff;border:none;box-shadow:0 2px 12px rgba(79,70,229,0.4);font-size:20px;cursor:pointer;line-height:1}
+  .sidebar-toggle:hover{background:#4338ca}
+  .sidebar-nav.mobile-open{display:block !important;position:fixed;top:0;left:0;right:0;bottom:0;z-index:998;width:100%;max-width:100%;max-height:100vh;border-right:none;padding-top:60px;background:rgba(255,255,255,0.98)}
+  .sidebar-nav.mobile-open .nav-close{display:block;position:absolute;top:12px;right:16px;background:none;border:none;font-size:24px;color:#555;cursor:pointer;padding:4px 8px}
+  .nav-close{display:none}
   @media(max-width:1000px){
     .sidebar-nav{display:none}
+    .sidebar-toggle{display:block}
     .page-layout{display:block}
   }
 
@@ -345,6 +356,42 @@
   /* Sticky Controls */
   .sticky-controls{position:sticky;top:55px;z-index:50;background:#fff;padding:8px 0 4px;border-bottom:1px solid transparent;margin:0 -12px;padding-left:12px;padding-right:12px}
   .sticky-controls.is-stuck{border-bottom-color:#eee;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+
+  /* Responsive: small screens */
+  @media(max-width:700px){
+    .top-nav{padding:8px 12px;gap:8px}
+    .top-nav h1{font-size:14px}
+    .top-nav .search-box{min-width:140px;max-width:none}
+    header{padding:12px 14px}
+    header .title-main{font-size:18px}
+    #wrap{padding:8px;gap:8px}
+    .card .body{padding:8px}
+    .card .card-header{padding:8px 10px}
+    .new-section.collapsible .section-header{padding:12px 14px}
+    .new-section.collapsible .section-body{padding:14px}
+    .summary-section.collapsible .section-header{padding:12px 14px}
+    .summary-section.collapsible .section-body{padding:14px}
+    #viewer{height:320px}
+    .rtab td:first-child{width:80px;min-width:80px}
+    .rowlbl{min-width:80px;font-size:10px}
+    .kf-items{gap:4px 8px}
+    .kf-value{font-size:15px}
+    .kf-label{font-size:9px}
+    .sticky-controls{top:48px;padding:6px 8px 2px;margin:0 -8px}
+    .sticky-controls .row{gap:4px 8px;font-size:12px}
+    .track-toggle-row{gap:4px}
+    .track-toggle-chip{padding:3px 8px;font-size:10px}
+    .druggability-group>.section-header{padding:12px 14px}
+  }
+  @media(max-width:480px){
+    .top-nav .search-box{display:none}
+    header .title-main{font-size:16px}
+    #viewer{height:260px}
+    .rtab td:first-child{width:60px;min-width:60px}
+    .rowlbl{min-width:60px;font-size:9px}
+    .kf-items{flex-direction:row;flex-wrap:wrap;justify-content:center}
+    .kf-item{min-width:55px}
+  }
 </style>
 </head>
 <body>
@@ -358,24 +405,42 @@
 <div class="page-layout">
   <!-- Sidebar Navigation -->
   <nav class="sidebar-nav" id="sidebarNav">
+    <button class="nav-close" id="navClose">&times;</button>
     <div class="nav-title">Sections</div>
     <ul>
-      <li><a href="#summarySection" data-section="summarySection">Pair Summary</a></li>
-      <li style="padding-left:12px"><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
-      <li style="padding-left:12px"><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
-      <li style="padding-left:12px"><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
-      <li><a href="#structureSection" data-section="structureSection">3D Structure</a></li>
-      <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
+      <li>
+        <a href="#summarySection" data-section="summarySection">Pair Summary</a>
+        <ul>
+          <li><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
+          <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
+          <li><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#structureSection" data-section="structureSection">3D Structure</a>
+        <ul>
+          <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
+        </ul>
+      </li>
       <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Alignment</a></li>
-      <li><a href="#druggabilityGroup" data-section="druggabilityGroup">Druggability</a></li>
-      <li style="padding-left:12px"><a href="#domainsSection" data-section="domainsSection">Domains</a></li>
-      <li style="padding-left:12px"><a href="#domainPairsSection" data-section="domainPairsSection">Domain × Domain</a></li>
-      <li style="padding-left:12px"><a href="#drugHitsSection" data-section="drugHitsSection">Drug Hits</a></li>
-      <li><a href="#familyNav" data-section="familyNav">Paralog Family</a></li>
-      <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Alignment</a></li>
-      <li><a href="#similaritySearchSection" data-section="similaritySearchSection">Similarity Searches</a></li>
+      <li>
+        <a href="#druggabilityGroup" data-section="druggabilityGroup">Druggability</a>
+        <ul>
+          <li><a href="#domainsSection" data-section="domainsSection">Domains</a></li>
+          <li><a href="#domainPairsSection" data-section="domainPairsSection">Domain × Domain</a></li>
+          <li><a href="#drugHitsSection" data-section="drugHitsSection">Drug Hits</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="#familyNav" data-section="familyNav">Paralog Family</a>
+        <ul>
+          <li><a href="#familyFeaturesSection" data-section="familyFeaturesSection">Family Alignment</a></li>
+          <li><a href="#similaritySearchSection" data-section="similaritySearchSection">Similarity Searches</a></li>
+        </ul>
+      </li>
     </ul>
   </nav>
+  <button class="sidebar-toggle" id="sidebarToggle" title="Navigate sections">&#9776;</button>
 
   <!-- Main Content -->
   <div class="main-content">
@@ -936,13 +1001,25 @@ window.nightingaleReady = true;
     }
   });
 
-  // Smooth scroll on click
+  // Mobile sidebar toggle
+  const sidebarNav = document.getElementById('sidebarNav');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const navClose = document.getElementById('navClose');
+  if (sidebarToggle && sidebarNav) {
+    sidebarToggle.addEventListener('click', () => { sidebarNav.classList.add('mobile-open'); }, {passive:true});
+  }
+  if (navClose && sidebarNav) {
+    navClose.addEventListener('click', () => { sidebarNav.classList.remove('mobile-open'); }, {passive:true});
+  }
+
+  // Smooth scroll on click (+ close mobile sidebar)
   sidebarLinks.forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const id = link.dataset.section;
       const section = document.getElementById(id);
       if (section) {
+        if (sidebarNav) sidebarNav.classList.remove('mobile-open');
         const yOffset = -80; // Account for sticky header
         const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
         window.scrollTo({ top: y, behavior: 'smooth' });
