@@ -340,10 +340,10 @@
   .kf-value.neutral{color:#ef6c00}
 
   /* Druggability Group */
-  .section-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04);overflow:hidden}
+  .section-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04)}
   .section-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
   .section-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1f1b16}
-  .section-group>.section-body{padding:12px 22px 22px}
+  .section-group>.section-body{padding:16px 22px 22px}
   .section-group>.section-body.collapsed{display:none}
   .section-group .card{box-shadow:none;border-color:#f0ece0}
   .section-group .new-section{box-shadow:none;border-color:#f0ece0}
@@ -355,11 +355,17 @@
   .track-toggle-chip.active{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5}
   .track-toggle-chip[data-group="default"]{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5;cursor:default;opacity:0.7}
 
+  /* Section group subsection spacing */
+  .section-group>.section-body>.card,
+  .section-group>.section-body>.new-section{margin-top:16px}
+  .section-group>.section-body>.card:first-child,
+  .section-group>.section-body>.new-section:first-child,
+  .section-group>.section-body>.sticky-controls+.card{margin-top:0}
+
   /* Sticky Controls */
-  #structureAlignGroup>.section-body{display:grid;gap:12px;padding:12px}
   .sticky-controls{position:sticky;top:42px;z-index:50;background:#fff;padding:8px 12px 4px;border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
-  .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.1)}
-  .sticky-controls-mini{font-size:12px}
+  .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.1);border-color:#d0d0d0}
+  .sticky-controls-mini{font-size:12px;padding:6px 12px !important}
 
   /* Responsive: small screens */
   @media(max-width:700px){
@@ -646,27 +652,6 @@
   <section class="section-group" id="structureAlignGroup">
     <div class="section-body" id="structureAlignGroupBody">
 
-  <!-- Predicted structure alignment -->
-  <section class="card collapsible" id="structureSection">
-    <div class="card-header">
-      <h2>
-        <span id="contextTitle">Predicted Structure Alignment</span>
-        <span class="small" style="margin-left:10px">
-          <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
-          <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
-        </span>
-      </h2>
-      <button class="collapse-toggle" id="structureCollapseBtn" aria-expanded="true">Collapse</button>
-    </div>
-    <div class="body" id="structureBody">
-      <div id="viewer"></div>
-      <div id="colorLegend" style="display:none;padding:8px 16px;border-top:1px solid #f0f0f0;font-size:12px"></div>
-    </div>
-    <div class="desc-source" style="padding:8px 16px 12px;border-top:1px solid #f0f0f0">
-      Source: <a href="https://alphafold.ebi.ac.uk/" target="_blank">AlphaFold DB</a> · Structural alignment by <a href="https://search.foldseek.com/" target="_blank">Foldseek</a>
-    </div>
-  </section>
-
   <!-- Controls bar (sticky across structure + alignment) -->
   <div class="sticky-controls" id="structureStickyControls">
     <div class="sticky-controls-full" id="stickyFull">
@@ -727,10 +712,31 @@
       <div style="display:flex;align-items:center;gap:8px">
         <label>Color: <select id="colorByMini" style="font-size:11px;padding:2px 4px"></select></label>
         <span class="note">TM: <b id="tmScoreMini">–</b></span>
-        <button id="stickyExpand" style="margin-left:auto;font-size:11px;padding:2px 8px;font-weight:600">Highlight +</button>
+        <button id="stickyExpand" style="margin-left:auto;font-size:11px;padding:2px 8px;font-weight:600">Expand +</button>
       </div>
     </div>
   </div>
+
+  <!-- Predicted structure alignment -->
+  <section class="card collapsible" id="structureSection">
+    <div class="card-header">
+      <h2>
+        <span id="contextTitle">Predicted Structure Alignment</span>
+        <span class="small" style="margin-left:10px">
+          <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
+          <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
+        </span>
+      </h2>
+      <button class="collapse-toggle" id="structureCollapseBtn" aria-expanded="true">Collapse</button>
+    </div>
+    <div class="body" id="structureBody">
+      <div id="viewer"></div>
+      <div id="colorLegend" style="display:none;padding:8px 16px;border-top:1px solid #f0f0f0;font-size:12px"></div>
+    </div>
+    <div class="desc-source" style="padding:8px 16px 12px;border-top:1px solid #f0f0f0">
+      Source: <a href="https://alphafold.ebi.ac.uk/" target="_blank">AlphaFold DB</a> · Structural alignment by <a href="https://search.foldseek.com/" target="_blank">Foldseek</a>
+    </div>
+  </section>
 
   <!-- PDBe complexes card -->
   <section class="card collapsible" id="pdbeCard">
