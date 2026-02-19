@@ -366,14 +366,16 @@ function initFamilyConstellation() {
   // Handle HiDPI displays for sharp rendering - use minimum 2x for crisp rendering
   const dpr = Math.max(2, window.devicePixelRatio || 1);
   const container = canvas.parentElement;
-  // Allow larger canvas on big screens for better resolution
-  const displayWidth = Math.min(container.offsetWidth - 20, 1200);
+  // Clamp to the actual container width (avoids overflow when section just expanded)
+  const availableWidth = Math.min(container.offsetWidth, container.clientWidth, window.innerWidth - 100);
+  const displayWidth = Math.min(Math.max(availableWidth - 20, 300), 1200);
   const displayHeight = Math.min(560, Math.max(400, displayWidth * 0.5));
 
   // Set canvas size accounting for device pixel ratio (minimum 2x for crisp text)
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
-  canvas.style.width = displayWidth + 'px';
+  canvas.style.width = '100%';
+  canvas.style.maxWidth = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
 
   // Scale context to match

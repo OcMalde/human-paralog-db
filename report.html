@@ -1099,11 +1099,11 @@ window.nightingaleReady = true;
           const yOffset = -80;
           const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
           window.scrollTo({ top: y, behavior: 'smooth' });
-          // Re-init family constellation if it was just expanded
+          // Re-init family constellation if it was just expanded (double rAF for layout)
           if (typeof initFamilyConstellation === 'function') {
             const fgBody = document.getElementById('familyGroupBody');
             if (fgBody && !fgBody.classList.contains('collapsed')) {
-              initFamilyConstellation();
+              requestAnimationFrame(() => { initFamilyConstellation(); });
             }
           }
         });
