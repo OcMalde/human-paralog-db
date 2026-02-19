@@ -351,7 +351,9 @@ async function loadFamilyData() {
       familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
     }
 
-    // Initialize constellation canvas
+    // Initialize tree (default) + constellation (on toggle) + view toggle
+    renderFamilyTree();
+    setupFamilyViewToggle();
     initFamilyConstellation();
 
   } catch (e) {
@@ -396,6 +398,245 @@ function initFamilyConstellation() {
   // Initial render
   renderFamilyConstellation();
 }
+
+// ============= Family Phylogenetic Tree (UPGMA from identity matrix) =============
+
+function buildUPGMATree(genes, identities) {
+  // Build a UPGMA tree from a pairwise identity matrix.
+  // genes: array of gene names
+  // identities: { gene: { otherGene: identity(0-100) } }
+  // Returns a tree: { name, branchLength, children[], size }
+  if (genes.length === 0) return null;
+  if (genes.length === 1) return { name: genes[0], branchLength: 0, children: [], size: 1 };
+
+  // Build distance matrix (distance = 100 - identity)
+  const n = genes.length;
+  const dist = Array.from({ length: n }, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const id = (identities[genes[i]] && identities[genes[i]][genes[j]]) ||
+                 (identities[genes[j]] && identities[genes[j]][genes[i]]) || 0;
+      const d = 100 - id;
+      dist[i][j] = d;
+      dist[j][i] = d;
+    }
+  }
+
+  // Clusters: each starts as a leaf
+  let clusters = genes.map((g, i) => ({
+    node: { name: g, branchLength: 0, children: [], size: 1 },
+    indices: [i],
+    height: 0,
+  }));
+
+  while (clusters.length > 2) {
+    // Find closest pair
+    let minD = Infinity, mi = -1, mj = -1;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        let sum = 0, count = 0;
+        for (const a of clusters[i].indices) {
+          for (const b of clusters[j].indices) {
+            sum += dist[a][b];
+            count++;
+          }
+        }
+        const avgD = sum / count;
+        if (avgD < minD) { minD = avgD; mi = i; mj = j; }
+      }
+    }
+
+    const newHeight = minD / 2;
+    const ci = clusters[mi], cj = clusters[mj];
+    ci.node.branchLength = newHeight - ci.height;
+    cj.node.branchLength = newHeight - cj.height;
+
+    const merged = {
+      node: { name: '', branchLength: 0, children: [ci.node, cj.node], size: ci.node.size + cj.node.size },
+      indices: ci.indices.concat(cj.indices),
+      height: newHeight,
+    };
+
+    // Remove j first (higher index), then i
+    clusters.splice(mj, 1);
+    clusters.splice(mi, 1);
+    clusters.push(merged);
+  }
+
+  // Final merge of last two clusters
+  if (clusters.length === 2) {
+    let sum = 0, count = 0;
+    for (const a of clusters[0].indices) {
+      for (const b of clusters[1].indices) {
+        sum += dist[a][b];
+        count++;
+      }
+    }
+    const finalH = (sum / count) / 2;
+    clusters[0].node.branchLength = finalH - clusters[0].height;
+    clusters[1].node.branchLength = finalH - clusters[1].height;
+    return { name: '', branchLength: 0, children: [clusters[0].node, clusters[1].node], size: clusters[0].node.size + clusters[1].node.size };
+  }
+  return clusters[0].node;
+}
+
+function layoutTree(root) {
+  let leafIndex = 0;
+
+  function countLeaves(node) {
+    if (node.children.length === 0) return 1;
+    return node.children.reduce((s, c) => s + countLeaves(c), 0);
+  }
+
+  function maxDepth(node, d) {
+    if (node.children.length === 0) return d + node.branchLength;
+    return Math.max(...node.children.map(c => maxDepth(c, d + node.branchLength)));
+  }
+
+  const totalLeaves = countLeaves(root);
+  const totalDepth = maxDepth(root, 0);
+
+  function assign(node, depth) {
+    node.x = depth;
+    if (node.children.length === 0) {
+      node.y = leafIndex++;
+    } else {
+      node.children.forEach(c => assign(c, depth + node.branchLength));
+      node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+    }
+  }
+  assign(root, 0);
+
+  return { totalLeaves, totalDepth };
+}
+
+function renderFamilyTree() {
+  const svg = document.getElementById('familyTreeSvg');
+  if (!svg || !constellationState || !constellationState.allGenes || constellationState.allGenes.length < 2) {
+    // No family data — hide tree view, show network
+    const treeContainer = document.getElementById('familyTreeContainer');
+    const treeHelp = document.getElementById('familyTreeHelp');
+    if (treeContainer) treeContainer.style.display = 'none';
+    if (treeHelp) treeHelp.style.display = 'none';
+    const toggle = document.getElementById('familyViewToggle');
+    if (toggle) toggle.style.display = 'none';
+    const nc = document.getElementById('constellationContainer');
+    const nh = document.getElementById('constellationHelp');
+    if (nc) nc.style.display = 'flex';
+    if (nh) nh.style.display = 'block';
+    return;
+  }
+
+  // Build identity lookup from constellationState.geneData
+  const genes = constellationState.allGenes;
+  const identities = {};
+  for (const gene of genes) {
+    const gd = constellationState.geneData[gene];
+    if (gd && gd.identities) identities[gene] = gd.identities;
+  }
+
+  const tree = buildUPGMATree(genes, identities);
+  if (!tree) return;
+
+  const { totalLeaves, totalDepth } = layoutTree(tree);
+  const g1 = DATA.g1, g2 = DATA.g2;
+  const margin = { top: 20, right: 150, bottom: 20, left: 20 };
+  const rowHeight = 28;
+  const svgWidth = svg.parentElement.clientWidth || 600;
+  const svgHeight = Math.max(160, totalLeaves * rowHeight + margin.top + margin.bottom);
+  const plotW = svgWidth - margin.left - margin.right;
+  const plotH = svgHeight - margin.top - margin.bottom;
+
+  const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
+  const yScale = totalLeaves > 1
+    ? (v) => margin.top + (v / (totalLeaves - 1)) * plotH
+    : () => margin.top + plotH / 2;
+
+  let svgContent = '';
+
+  function drawBranches(node) {
+    if (node.children.length > 0) {
+      const topChild = node.children[0];
+      const botChild = node.children[node.children.length - 1];
+      svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(topChild.y)}" x2="${xScale(node.x)}" y2="${yScale(botChild.y)}"/>`;
+      node.children.forEach(c => {
+        svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(c.y)}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
+        drawBranches(c);
+      });
+    }
+  }
+
+  function drawNodes(node) {
+    const cx = xScale(node.x), cy = yScale(node.y);
+    if (node.children.length === 0) {
+      const isA = node.name === g1;
+      const isB = node.name === g2;
+      const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
+      svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="4"/>`;
+      svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
+    } else {
+      svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2"/>`;
+      node.children.forEach(c => drawNodes(c));
+    }
+  }
+
+  drawBranches(tree);
+  drawNodes(tree);
+
+  svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+  svg.style.height = svgHeight + 'px';
+  svg.innerHTML = svgContent;
+
+  // Wire click on gene labels — navigate to pair report
+  svg.querySelectorAll('.tree-label').forEach(el => {
+    el.addEventListener('click', () => {
+      const gene = el.dataset.gene;
+      if (!gene || (gene === g1 && gene === g2)) return;
+      const other = gene === g1 ? g2 : gene === g2 ? g1 : gene;
+      const anchor = gene === g1 || gene === g2 ? (gene === g1 ? g2 : g1) : null;
+      // Try pair IDs with both query genes
+      const tryIds = anchor
+        ? [`${gene}_${anchor}`, `${anchor}_${gene}`]
+        : [`${g1}_${gene}`, `${gene}_${g1}`, `${g2}_${gene}`, `${gene}_${g2}`];
+      for (const pid of tryIds) {
+        if (constellationState.pairData && constellationState.pairData[pid]) {
+          window.location.href = `?pair=${pid}`;
+          return;
+        }
+      }
+    });
+  });
+}
+
+function setupFamilyViewToggle() {
+  const btns = document.querySelectorAll('#familyViewToggle .fv-btn');
+  const treeContainer = document.getElementById('familyTreeContainer');
+  const treeHelp = document.getElementById('familyTreeHelp');
+  const netContainer = document.getElementById('constellationContainer');
+  const netHelp = document.getElementById('constellationHelp');
+
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const view = btn.dataset.view;
+      if (view === 'tree') {
+        if (treeContainer) treeContainer.style.display = 'flex';
+        if (treeHelp) treeHelp.style.display = 'block';
+        if (netContainer) netContainer.style.display = 'none';
+        if (netHelp) netHelp.style.display = 'none';
+      } else {
+        if (treeContainer) treeContainer.style.display = 'none';
+        if (treeHelp) treeHelp.style.display = 'none';
+        if (netContainer) netContainer.style.display = 'flex';
+        if (netHelp) netHelp.style.display = 'block';
+        initFamilyConstellation();
+      }
+    });
+  });
+}
+
+// ============= End Family Tree =============
 
 function handleConstellationMouseMove(e) {
   const canvas = e.target;
