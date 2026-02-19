@@ -5183,7 +5183,6 @@ function setupAllCollapsibleSections() {
 function applyDefaultCollapseStates() {
   const collapseByDefault = [
     { btn: 'pdbeCollapseBtn', body: 'pdbeCardBody', section: 'pdbeCard' },
-    { btn: 'familyGroupCollapseBtn', body: 'familyGroupBody', section: 'familyGroup' },
   ];
   collapseByDefault.forEach(({ btn, body, section }) => {
     const b = document.getElementById(body);
