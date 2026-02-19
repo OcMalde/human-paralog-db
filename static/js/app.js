@@ -665,8 +665,12 @@ function renderFamilyTree() {
   }
 
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-  svg.setAttribute('width', svgWidth);
-  svg.style.height = svgHeight + 'px';
+  svg.setAttribute('preserveAspectRatio', 'xMidYMin meet');
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  svg.style.width = '100%';
+  svg.style.height = 'auto';
+  svg.style.maxWidth = '100%';
   svg.innerHTML = svgContent;
 
   // Wire click on gene labels
