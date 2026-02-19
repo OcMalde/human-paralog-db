@@ -356,9 +356,10 @@
   .track-toggle-chip[data-group="default"]{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5;cursor:default;opacity:0.7}
 
   /* Sticky Controls */
-  #structureAlignScope{display:grid;gap:12px}
+  #structureAlignGroup>.section-body{display:grid;gap:12px;padding:12px}
   .sticky-controls{position:sticky;top:42px;z-index:50;background:#fff;padding:8px 12px 4px;border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.1)}
+  .sticky-controls-mini{font-size:12px}
 
   /* Responsive: small screens */
   @media(max-width:700px){
@@ -409,7 +410,6 @@
   <!-- Sidebar Navigation -->
   <nav class="sidebar-nav" id="sidebarNav">
     <button class="nav-close" id="navClose">&times;</button>
-    <div class="nav-title">Sections</div>
     <ul>
       <li>
         <a href="#summarySection" data-section="summarySection">Pair Summary</a>
@@ -420,14 +420,15 @@
         </ul>
       </li>
       <li>
-        <a href="#structureSection" data-section="structureSection">3D Structure</a>
+        <a href="#structureAlignGroup" data-section="structureAlignGroup">Structure & Sequences</a>
         <ul>
+          <li><a href="#structureSection" data-section="structureSection">Predicted Alignment</a></li>
           <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
+          <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Tracks</a></li>
         </ul>
       </li>
-      <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Alignment</a></li>
       <li>
-        <a href="#druggabilityGroup" data-section="druggabilityGroup">Druggability</a>
+        <a href="#druggabilityGroup" data-section="druggabilityGroup">Regions & Druggability</a>
         <ul>
           <li><a href="#domainsSection" data-section="domainsSection">Domains</a></li>
           <li><a href="#domainPairsSection" data-section="domainPairsSection">Domain × Domain</a></li>
@@ -641,14 +642,15 @@
     </div>
   </section>
 
-  <!-- Structure + Alignment sticky scope -->
-  <div id="structureAlignScope">
+  <!-- Structure & Sequence Analysis Group -->
+  <section class="section-group" id="structureAlignGroup">
+    <div class="section-body" id="structureAlignGroupBody">
 
-  <!-- Structure card -->
+  <!-- Predicted structure alignment -->
   <section class="card collapsible" id="structureSection">
     <div class="card-header">
       <h2>
-        <span id="contextTitle">Full Alignment</span>
+        <span id="contextTitle">Predicted Structure Alignment</span>
         <span class="small" style="margin-left:10px">
           <span class="legend-dot green"></span><span id="legendA">Gene A</span> &nbsp;&nbsp;
           <span class="legend-dot orange"></span><span id="legendB">Gene B</span>
@@ -665,57 +667,67 @@
     </div>
   </section>
 
-  <!-- Structure & alignment controls (sticky across both sections) -->
+  <!-- Controls bar (sticky across structure + alignment) -->
   <div class="sticky-controls" id="structureStickyControls">
-    <div class="row" style="flex-wrap:wrap;gap:6px 12px">
-      <label>Color by:
-        <select id="colorBy">
-          <option value="uniform">Uniform</option>
-          <option value="plddt">pLDDT (confidence)</option>
-          <option value="am">AlphaMissense</option>
-          <option value="dam">Δ AlphaMissense</option>
-          <option value="aligned">Aligned vs Gap</option>
-          <option value="domains">Domains</option>
-          <option value="ss">2D Structure (α/β)</option>
-          <option value="cavities">Cavities</option>
-          <option value="drugclip">DrugCLIP</option>
-          <option value="plma">PLMA Categories</option>
-        </select>
-      </label>
-      <label class="chain-toggle">
-        <input type="checkbox" id="showChainA" checked> <span id="chainALabel">Chain A</span>
-      </label>
-      <label class="chain-toggle">
-        <input type="checkbox" id="showChainB" checked> <span id="chainBLabel">Chain B</span>
-      </label>
-      <button id="center">Center</button>
-      <button id="backFull">Back to full</button>
-      <label>Alignment:
-        <select id="alnSelector" style="max-width:220px">
-          <option value="full">Full alignment</option>
-        </select>
-      </label>
-      <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
-      <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+    <div class="sticky-controls-full" id="stickyFull">
+      <div class="row" style="flex-wrap:wrap;gap:6px 12px">
+        <label>Color by:
+          <select id="colorBy">
+            <option value="uniform">Uniform</option>
+            <option value="plddt">pLDDT (confidence)</option>
+            <option value="am">AlphaMissense</option>
+            <option value="dam">Δ AlphaMissense</option>
+            <option value="aligned">Aligned vs Gap</option>
+            <option value="domains">Domains</option>
+            <option value="ss">2D Structure (α/β)</option>
+            <option value="cavities">Cavities</option>
+            <option value="drugclip">DrugCLIP</option>
+            <option value="plma">PLMA Categories</option>
+          </select>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainA" checked> <span id="chainALabel">Chain A</span>
+        </label>
+        <label class="chain-toggle">
+          <input type="checkbox" id="showChainB" checked> <span id="chainBLabel">Chain B</span>
+        </label>
+        <button id="center">Center</button>
+        <button id="backFull">Back to full</button>
+        <label>Alignment:
+          <select id="alnSelector" style="max-width:220px">
+            <option value="full">Full alignment</option>
+          </select>
+        </label>
+        <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
+        <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
+        <button id="stickyMinimize" title="Minimize controls" style="margin-left:auto;font-size:14px;min-width:24px;padding:2px 6px;font-weight:700">−</button>
+      </div>
+      <div style="margin-top:10px;padding:6px 0 6px 12px;border-left:3px solid #ccc;font-size:inherit">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <label style="font-weight:600">Highlight</label>
+          <button id="clearAllHighlights" style="padding:2px 8px;font-size:11px">Clear all</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#00e676;flex-shrink:0"></span>
+          <strong><span id="selLabelA">A</span></strong>
+          <div id="hlDomainsA" style="display:inline-block"></div>
+          <span style="color:#888;font-style:italic;font-size:12px">or type</span>
+          <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4081;flex-shrink:0"></span>
+          <strong><span id="selLabelB">B</span></strong>
+          <div id="hlDomainsB" style="display:inline-block"></div>
+          <span style="color:#888;font-style:italic;font-size:12px">or type</span>
+          <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
+        </div>
+      </div>
     </div>
-    <div style="margin-top:10px;padding:6px 0 6px 12px;border-left:3px solid #ccc;font-size:inherit">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-        <label style="font-weight:600">Highlight</label>
-        <button id="clearAllHighlights" style="padding:2px 8px;font-size:11px">Clear all</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#00e676;flex-shrink:0"></span>
-        <strong><span id="selLabelA">A</span></strong>
-        <div id="hlDomainsA" style="display:inline-block"></div>
-        <span style="color:#888;font-style:italic;font-size:12px">or type</span>
-        <input type="text" id="manualSelA" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4081;flex-shrink:0"></span>
-        <strong><span id="selLabelB">B</span></strong>
-        <div id="hlDomainsB" style="display:inline-block"></div>
-        <span style="color:#888;font-style:italic;font-size:12px">or type</span>
-        <input type="text" id="manualSelB" placeholder="e.g. 1-50,55,100-120" style="width:180px;padding:4px 8px">
+    <div class="sticky-controls-mini" id="stickyMini" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label>Color: <select id="colorByMini" style="font-size:11px;padding:2px 4px"></select></label>
+        <span class="note">TM: <b id="tmScoreMini">–</b></span>
+        <button id="stickyExpand" style="margin-left:auto;font-size:11px;padding:2px 8px;font-weight:600">Highlight +</button>
       </div>
     </div>
   </div>
@@ -723,8 +735,8 @@
   <!-- PDBe complexes card -->
   <section class="card collapsible" id="pdbeCard">
     <div class="card-header">
-      <h2>Experimental Structures &amp; Complexes (PDBe-KB)</h2>
-      <button class="collapse-toggle" id="pdbeCollapseBtn" aria-expanded="true" aria-controls="pdbeCardBody">Collapse section</button>
+      <h2>Experimental Structures (PDBe-KB)</h2>
+      <button class="collapse-toggle" id="pdbeCollapseBtn" aria-expanded="true" aria-controls="pdbeCardBody">Collapse</button>
     </div>
     <div class="body" id="pdbeCardBody">
       <div class="pdbe-controls">
@@ -757,10 +769,10 @@
     </div>
   </section>
 
-  <!-- Alignment section -->
+  <!-- Sequence alignment -->
   <section class="card collapsible" id="alignmentSection">
     <div class="card-header">
-      <h2>Alignment-axis sequences, domains &amp; secondary structure</h2>
+      <h2>Sequence Alignment</h2>
       <button class="collapse-toggle" id="alignmentCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="body" id="alignmentBody">
@@ -799,12 +811,13 @@
     </div>
   </section>
 
-  </div><!-- /structureAlignScope -->
+    </div>
+  </section>
 
-  <!-- Druggability Analysis Group -->
+  <!-- Regions & Druggability Group -->
   <section class="section-group collapsible" id="druggabilityGroup">
     <div class="section-header">
-      <h2>Druggability Analysis</h2>
+      <h2>Regions & Druggability</h2>
       <button class="collapse-toggle" id="druggabilityGroupCollapseBtn" aria-expanded="false">Expand</button>
     </div>
     <div class="section-body collapsed" id="druggabilityGroupBody">
@@ -1033,7 +1046,43 @@ window.nightingaleReady = true;
     navClose.addEventListener('click', () => { sidebarNav.classList.remove('mobile-open'); }, {passive:true});
   }
 
-  // Smooth scroll on click (+ close mobile sidebar)
+  // Auto-expand collapsed sections/groups when sidebar link is clicked
+  function expandToSection(sectionEl) {
+    // Walk up the DOM to find any collapsed parent groups
+    let el = sectionEl;
+    while (el) {
+      // Check if this element's body is collapsed
+      const body = el.querySelector(':scope > .section-body.collapsed, :scope > .body.collapsed');
+      if (body) {
+        body.classList.remove('collapsed');
+        const btn = el.querySelector(':scope > .section-header .collapse-toggle, :scope > .card-header .collapse-toggle');
+        if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.textContent = 'Collapse'; }
+        el.classList.remove('is-collapsed');
+      }
+      // Also check if we're inside a collapsed parent
+      const parentBody = el.closest('.section-body.collapsed, .body.collapsed');
+      if (parentBody) {
+        parentBody.classList.remove('collapsed');
+        const parentSection = parentBody.closest('.collapsible');
+        if (parentSection) {
+          parentSection.classList.remove('is-collapsed');
+          const pbtn = parentSection.querySelector(':scope > .section-header .collapse-toggle, :scope > .card-header .collapse-toggle');
+          if (pbtn) { pbtn.setAttribute('aria-expanded', 'true'); pbtn.textContent = 'Collapse'; }
+        }
+      }
+      el = el.parentElement;
+    }
+    // Also expand the section itself if it's collapsed
+    const ownBody = sectionEl.querySelector(':scope > .section-body.collapsed, :scope > .body.collapsed');
+    if (ownBody) {
+      ownBody.classList.remove('collapsed');
+      const btn = sectionEl.querySelector(':scope > .section-header .collapse-toggle, :scope > .card-header .collapse-toggle');
+      if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.textContent = 'Collapse'; }
+      sectionEl.classList.remove('is-collapsed');
+    }
+  }
+
+  // Smooth scroll on click (+ close mobile sidebar + auto-expand)
   sidebarLinks.forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault();
@@ -1041,9 +1090,20 @@ window.nightingaleReady = true;
       const section = document.getElementById(id);
       if (section) {
         if (sidebarNav) sidebarNav.classList.remove('mobile-open');
-        const yOffset = -80; // Account for sticky header
-        const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
-        window.scrollTo({ top: y, behavior: 'smooth' });
+        expandToSection(section);
+        // Small delay for DOM to update after expand
+        requestAnimationFrame(() => {
+          const yOffset = -80;
+          const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+          // Re-init family constellation if it was just expanded
+          if (typeof initFamilyConstellation === 'function') {
+            const fgBody = document.getElementById('familyGroupBody');
+            if (fgBody && !fgBody.classList.contains('collapsed')) {
+              initFamilyConstellation();
+            }
+          }
+        });
       }
     });
   });

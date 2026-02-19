@@ -5166,8 +5166,20 @@ function setupAllCollapsibleSections() {
   setupCollapsibleSection('drugHitsCollapseBtn', 'drugHitsBody', 'drugHitsSection');
   // Druggability group wrapper
   setupCollapsibleSection('druggabilityGroupCollapseBtn', 'druggabilityGroupBody', 'druggabilityGroup');
-  // Family group wrapper
+  // Family group wrapper — with re-init constellation on first expand
   setupCollapsibleSection('familyGroupCollapseBtn', 'familyGroupBody', 'familyGroup');
+  let familyConstellationNeedsInit = true;
+  const familyGroupBtn = document.getElementById('familyGroupCollapseBtn');
+  if (familyGroupBtn) {
+    familyGroupBtn.addEventListener('click', () => {
+      const body = document.getElementById('familyGroupBody');
+      if (body && !body.classList.contains('collapsed') && familyConstellationNeedsInit) {
+        familyConstellationNeedsInit = false;
+        // Delay to allow layout reflow after un-collapsing
+        requestAnimationFrame(() => { initFamilyConstellation(); });
+      }
+    }, { passive: true });
+  }
 }
 
 // Apply default collapse states: expand key sections, collapse secondary ones
@@ -5962,7 +5974,7 @@ async function fillDomPairs(){
     tr.innerHTML = `<td>${r.Aname} ${r.Arng}</td><td>${r.Bname} ${r.Brng}</td><td>${r.fident!=null?r.fident.toFixed(1)+'%':'–'}</td><td>${r.tm!=null?r.tm.toFixed(3):'–'}</td><td>${r.damPct!=null?r.damPct.toFixed(1)+'%':'–'}</td>`;
     tr.addEventListener('click', async ()=>{
       await reloadViewerWith(r.pdb64);
-      document.getElementById('tmScore').textContent = (r.tm!=null ? r.tm.toFixed(3) : '–');
+      setTmScoreDisplay(r.tm);
       const title = `Domain: ${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
       document.getElementById('contextTitle').textContent = title;
 
@@ -6764,7 +6776,7 @@ function populateAlnSelector() {
       const r = DATA.domPairs[idx];
       if (!r) return;
       await reloadViewerWith(r.pdb64);
-      document.getElementById('tmScore').textContent = (r.tm!=null ? r.tm.toFixed(3) : '–');
+      setTmScoreDisplay(r.tm);
       document.getElementById('contextTitle').textContent = `Domain: ${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
       selection.clear();
       const domA = (DATA.domainsA||[]).find(d => (d.label===r.Aname) || (`${d.start}-${d.end}`===r.Arng));
@@ -6919,7 +6931,7 @@ async function main(){
   recolorRects(DATA.tedA_alnRects, DATA.domainsA);
   recolorRects(DATA.tedB_alnRects, DATA.domainsB);
 
-  document.getElementById('tmScore').textContent = (DATA.tm!=null ? DATA.tm.toFixed(3) : '–');
+  setTmScoreDisplay(DATA.tm);
   document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
   await reloadViewerWith(PDB64_FULL);
 
@@ -6949,7 +6961,7 @@ async function main(){
     selection.clear();
     pendingHighlightLoci = null;
     await reloadViewerWith(PDB64_FULL);
-    document.getElementById('tmScore').textContent = (DATA.tm!=null ? DATA.tm.toFixed(3) : '–');
+    setTmScoreDisplay(DATA.tm);
     document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
     Object.values(trackRefs).forEach(track => {
       if (track && track._originalData) track.data = [...track._originalData];
@@ -7065,6 +7077,7 @@ async function main(){
   populateKeyFindingsBanner();
   setupTrackGroupToggles();
   setupStickyObserver();
+  setupStickyMinimize();
   console.log('Report viewer initialized');
 }
 
@@ -7175,5 +7188,50 @@ function setupStickyObserver() {
     sticky.classList.toggle('is-stuck', !e.isIntersecting);
   }, { threshold: [1], rootMargin: '-43px 0px 0px 0px' });
   observer.observe(sentinel);
+}
+
+// Helper: update TM-score in both main and mini views
+function setTmScoreDisplay(val) {
+  const txt = val != null ? val.toFixed(3) : '–';
+  const el = document.getElementById('tmScore');
+  const mini = document.getElementById('tmScoreMini');
+  if (el) el.textContent = txt;
+  if (mini) mini.textContent = txt;
+}
+
+// Sticky minimize / expand wiring
+function setupStickyMinimize() {
+  const full = document.getElementById('stickyFull');
+  const mini = document.getElementById('stickyMini');
+  const btnMin = document.getElementById('stickyMinimize');
+  const btnExp = document.getElementById('stickyExpand');
+  const colorByMain = document.getElementById('colorBy');
+  const colorByMini = document.getElementById('colorByMini');
+  if (!full || !mini || !btnMin || !btnExp) return;
+
+  // Populate colorByMini from main colorBy options
+  if (colorByMain && colorByMini) {
+    colorByMini.innerHTML = colorByMain.innerHTML;
+    colorByMini.value = colorByMain.value;
+    // Sync mini → main
+    colorByMini.addEventListener('change', (e) => {
+      colorByMain.value = e.target.value;
+      colorBy(e.target.value);
+    }, { passive: true });
+    // Sync main → mini
+    colorByMain.addEventListener('change', () => {
+      colorByMini.value = colorByMain.value;
+    }, { passive: true });
+  }
+
+  btnMin.addEventListener('click', () => {
+    full.style.display = 'none';
+    mini.style.display = '';
+  }, { passive: true });
+
+  btnExp.addEventListener('click', () => {
+    mini.style.display = 'none';
+    full.style.display = '';
+  }, { passive: true });
 }
 
