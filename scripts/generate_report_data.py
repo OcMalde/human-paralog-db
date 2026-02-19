@@ -36,7 +36,8 @@ from lib.data_loading import (
     get_sl_functional_overlap, get_gene_descriptions
 )
 from lib.api_fetching import (
-    fetch_am_hotspots, build_am_matrix_scores, fetch_pdbe_complexes
+    fetch_am_hotspots, build_am_matrix_scores, fetch_pdbe_complexes,
+    fetch_compara_trees_for_pair
 )
 from lib.am_processing import compute_am_rects_all_modes
 from lib.domain_parsing import (
@@ -576,6 +577,17 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         if seq_alignment:
             log(f"  Sequence alignment: {len(seq_alignment['qaln'])} cols, identity={seq_alignment['identity']*100:.1f}%")
 
+    # Fetch Ensembl Compara gene tree (pruned to human)
+    log(f"  Fetching Compara gene tree for {gene_a}/{gene_b}...")
+    compara_result = fetch_compara_trees_for_pair(gene_a, gene_b)
+    compara_trees = compara_result.get('trees', [])
+    compara_source = compara_result.get('source', 'none')
+    if compara_trees:
+        genes_str = ', '.join(compara_trees[0].get('genes', []))
+        log(f"  Compara tree ({compara_source}): {len(compara_trees)} tree(s), genes: {genes_str}")
+    else:
+        log(f"  No usable Compara tree found — JS will use UPGMA fallback")
+
     # Build DATA_OBJ
     DATA_OBJ = {
         "PAIR": pair_id,
@@ -612,6 +624,8 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
         "seq1": seq1,
         "seq2": seq2,
         "seqAlignment": seq_alignment,
+        "comparaTrees": compara_trees,
+        "comparaSource": compara_source,
         **am_rects,  # Unpack all AM rect data
     }
     

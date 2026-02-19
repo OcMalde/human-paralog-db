@@ -35,6 +35,119 @@ def http_get_binary(url: str, timeout: int = 60) -> Optional[bytes]:
     return None
 
 
+# ============= Ensembl Compara Gene Tree =============
+
+ENSEMBL_REST = "https://rest.ensembl.org"
+
+
+def _json_tree_to_newick(node) -> str:
+    """Convert Ensembl JSON tree node to Newick string with gene names."""
+    if not node.get('children'):
+        name = node.get('sequence', {}).get('name', '')
+        name = name.split('-')[0]  # Strip transcript version (ENO1-201 → ENO1)
+        bl = node.get('branch_length', 0)
+        return f"{name}:{bl}"
+    children = ','.join(_json_tree_to_newick(c) for c in node['children'])
+    bl = node.get('branch_length', 0)
+    return f"({children}):{bl}"
+
+
+def _collect_leaves(node) -> List[str]:
+    """Collect gene names from leaves of a JSON tree."""
+    if not node.get('children'):
+        name = node.get('sequence', {}).get('name', '')
+        return [name.split('-')[0]]
+    leaves = []
+    for c in node['children']:
+        leaves.extend(_collect_leaves(c))
+    return leaves
+
+
+def fetch_compara_human_tree(gene_symbol: str) -> Optional[tuple]:
+    """Fetch Ensembl Compara gene tree pruned to human only.
+
+    Returns (newick_str, gene_list) or None on failure.
+    """
+    url = (
+        f"{ENSEMBL_REST}/genetree/member/symbol/homo_sapiens/{gene_symbol}"
+        "?prune_species=homo_sapiens"
+    )
+    try:
+        resp = requests.get(url, timeout=30, headers={
+            "Content-Type": "application/json",
+        })
+        if not resp.ok:
+            return None
+        data = resp.json()
+        tree = data.get('tree')
+        if not tree:
+            return None
+        genes = _collect_leaves(tree)
+        nwk = _json_tree_to_newick(tree) + ';'
+        return nwk, genes
+    except Exception as e:
+        log(f"  Compara tree fetch failed for {gene_symbol}: {e}")
+    return None
+
+
+def fetch_compara_trees_for_pair(
+    gene_a: str, gene_b: str
+) -> Dict[str, Any]:
+    """Fetch Compara trees for a paralog pair.
+
+    Returns dict with:
+      - trees: list of {newick, genes} dicts
+      - source: 'compara' if real tree found, 'compara_split' if separate trees
+      - has_both: True if both genes appear in a single tree
+    """
+    import time
+
+    result_a = fetch_compara_human_tree(gene_a)
+    time.sleep(0.2)  # Rate limit
+
+    # Check if gene_a's tree contains both genes
+    if result_a:
+        nwk_a, genes_a = result_a
+        if gene_a in genes_a and gene_b in genes_a:
+            return {
+                'trees': [{'newick': nwk_a, 'genes': genes_a}],
+                'source': 'compara',
+                'has_both': True,
+            }
+
+    # Try gene_b's tree
+    result_b = fetch_compara_human_tree(gene_b)
+
+    if result_b:
+        nwk_b, genes_b = result_b
+        if gene_a in genes_b and gene_b in genes_b:
+            return {
+                'trees': [{'newick': nwk_b, 'genes': genes_b}],
+                'source': 'compara',
+                'has_both': True,
+            }
+
+    # Neither tree has both genes — collect what we have as separate trees
+    trees = []
+    seen_genes = set()
+    for res, query_gene in [(result_a, gene_a), (result_b, gene_b)]:
+        if res:
+            nwk, genes = res
+            # Only include if the query gene is actually in this tree
+            if query_gene in genes and not seen_genes.intersection(genes):
+                trees.append({'newick': nwk, 'genes': genes})
+                seen_genes.update(genes)
+
+    if trees:
+        return {
+            'trees': trees,
+            'source': 'compara_split',
+            'has_both': False,
+        }
+
+    return {'trees': [], 'source': 'none', 'has_both': False}
+
+
 # ============= AlphaMissense Hotspot Fetching =============
 
 def _fetch_single_hotspot(acc: str, resi: int) -> Tuple[int, Optional[Dict]]:

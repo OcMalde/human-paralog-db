@@ -510,14 +510,78 @@ function layoutTree(root) {
   return { totalLeaves, totalDepth };
 }
 
+function parseNewick(nwk) {
+  let i = 0;
+  function parse() {
+    const node = { name: '', branchLength: 0, children: [] };
+    if (i < nwk.length && nwk[i] === '(') {
+      i++;
+      while (true) {
+        node.children.push(parse());
+        if (i >= nwk.length || nwk[i] !== ',') break;
+        i++;
+      }
+      if (i < nwk.length && nwk[i] === ')') i++;
+    }
+    let name = '';
+    while (i < nwk.length && !':,);'.includes(nwk[i])) name += nwk[i++];
+    node.name = name.trim();
+    if (i < nwk.length && nwk[i] === ':') {
+      i++;
+      let bl = '';
+      while (i < nwk.length && !',);'.includes(nwk[i])) bl += nwk[i++];
+      node.branchLength = parseFloat(bl) || 0;
+    }
+    return node;
+  }
+  return parse();
+}
+
 function renderFamilyTree() {
   const svg = document.getElementById('familyTreeSvg');
-  if (!svg || !constellationState || !constellationState.allGenes || constellationState.allGenes.length < 2) {
-    // No family data — hide tree view, show network
-    const treeContainer = document.getElementById('familyTreeContainer');
-    const treeHelp = document.getElementById('familyTreeHelp');
-    if (treeContainer) treeContainer.style.display = 'none';
-    if (treeHelp) treeHelp.style.display = 'none';
+  const sourceEl = document.getElementById('treeSourceText');
+  if (!svg) return;
+
+  const g1 = DATA ? DATA.g1 : '', g2 = DATA ? DATA.g2 : '';
+
+  // Decide tree source: Compara trees from DATA, or UPGMA fallback
+  let trees = []; // Array of tree roots to render
+  let treeSource = 'upgma';
+
+  if (DATA && DATA.comparaTrees && DATA.comparaTrees.length > 0) {
+    // Parse Compara Newick trees
+    for (const ct of DATA.comparaTrees) {
+      if (ct.newick) {
+        const parsed = parseNewick(ct.newick);
+        if (parsed) trees.push(parsed);
+      }
+    }
+    if (trees.length > 0) {
+      treeSource = DATA.comparaSource || 'compara';
+    }
+  }
+
+  // Fallback to UPGMA if no Compara trees
+  if (trees.length === 0 && constellationState && constellationState.allGenes && constellationState.allGenes.length >= 2) {
+    const genes = constellationState.allGenes;
+    const identities = {};
+    for (const gene of genes) {
+      const gd = constellationState.geneData[gene];
+      if (gd && gd.identities) identities[gene] = gd.identities;
+    }
+    const upgma = buildUPGMATree(genes, identities);
+    if (upgma) {
+      trees = [upgma];
+      treeSource = 'upgma';
+    }
+  }
+
+  if (trees.length === 0) {
+    // No tree at all — hide tree view
+    const tc = document.getElementById('familyTreeContainer');
+    const th = document.getElementById('familyTreeHelp');
+    if (tc) tc.style.display = 'none';
+    if (th) th.style.display = 'none';
     const toggle = document.getElementById('familyViewToggle');
     if (toggle) toggle.style.display = 'none';
     const nc = document.getElementById('constellationContainer');
@@ -527,79 +591,95 @@ function renderFamilyTree() {
     return;
   }
 
-  // Build identity lookup from constellationState.geneData
-  const genes = constellationState.allGenes;
-  const identities = {};
-  for (const gene of genes) {
-    const gd = constellationState.geneData[gene];
-    if (gd && gd.identities) identities[gene] = gd.identities;
+  // Update source text
+  if (sourceEl) {
+    if (treeSource === 'compara') {
+      sourceEl.innerHTML = 'Phylogenetic tree from <strong>Ensembl Compara</strong> (human paralogs only).';
+    } else if (treeSource === 'compara_split') {
+      sourceEl.innerHTML = 'Separate <strong>Ensembl Compara</strong> sub-trees (genes are in different Compara families).';
+    } else {
+      sourceEl.innerHTML = 'Tree reconstructed by <strong>UPGMA</strong> from pairwise sequence identity.';
+    }
   }
 
-  const tree = buildUPGMATree(genes, identities);
-  if (!tree) return;
-
-  const { totalLeaves, totalDepth } = layoutTree(tree);
-  const g1 = DATA.g1, g2 = DATA.g2;
-  const margin = { top: 20, right: 150, bottom: 20, left: 20 };
+  // Layout all trees and compute total dimensions
+  const layouts = trees.map(t => layoutTree(t));
+  const margin = { top: 20, right: 140, bottom: 20, left: 20 };
   const rowHeight = 28;
-  const svgWidth = svg.parentElement.clientWidth || 600;
-  const svgHeight = Math.max(160, totalLeaves * rowHeight + margin.top + margin.bottom);
-  const plotW = svgWidth - margin.left - margin.right;
-  const plotH = svgHeight - margin.top - margin.bottom;
+  const splitGap = trees.length > 1 ? 30 : 0;
+  const containerW = svg.parentElement.clientWidth || 600;
+  const svgWidth = Math.min(containerW, window.innerWidth - 80);
 
-  const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
-  const yScale = totalLeaves > 1
-    ? (v) => margin.top + (v / (totalLeaves - 1)) * plotH
-    : () => margin.top + plotH / 2;
+  let totalLeafRows = layouts.reduce((s, l) => s + l.totalLeaves, 0);
+  const svgHeight = Math.max(160, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
+  const plotW = svgWidth - margin.left - margin.right;
 
   let svgContent = '';
+  let yOffset = margin.top;
 
-  function drawBranches(node) {
-    if (node.children.length > 0) {
-      const topChild = node.children[0];
-      const botChild = node.children[node.children.length - 1];
-      svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(topChild.y)}" x2="${xScale(node.x)}" y2="${yScale(botChild.y)}"/>`;
-      node.children.forEach(c => {
-        svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(c.y)}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
-        drawBranches(c);
-      });
+  for (let ti = 0; ti < trees.length; ti++) {
+    const tree = trees[ti];
+    const { totalLeaves, totalDepth } = layouts[ti];
+    const treeH = totalLeaves * rowHeight;
+
+    const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
+    const yScale = totalLeaves > 1
+      ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rowHeight) + rowHeight / 2
+      : () => yOffset + treeH / 2;
+
+    function drawBranches(node) {
+      if (node.children.length > 0) {
+        const top = node.children[0], bot = node.children[node.children.length - 1];
+        svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(top.y)}" x2="${xScale(node.x)}" y2="${yScale(bot.y)}"/>`;
+        node.children.forEach(c => {
+          svgContent += `<line class="tree-branch" x1="${xScale(node.x)}" y1="${yScale(c.y)}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
+          drawBranches(c);
+        });
+      }
+    }
+
+    function drawNodes(node) {
+      const cx = xScale(node.x), cy = yScale(node.y);
+      if (node.children.length === 0) {
+        const isA = node.name === g1, isB = node.name === g2;
+        const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
+        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="4"/>`;
+        svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
+      } else {
+        svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2"/>`;
+        node.children.forEach(c => drawNodes(c));
+      }
+    }
+
+    drawBranches(tree);
+    drawNodes(tree);
+    yOffset += treeH;
+
+    // Draw separator between split trees
+    if (ti < trees.length - 1) {
+      const sepY = yOffset + splitGap / 2;
+      svgContent += `<line x1="${margin.left}" y1="${sepY}" x2="${svgWidth - margin.right}" y2="${sepY}" stroke="#ccc" stroke-width="1" stroke-dasharray="6,4"/>`;
+      svgContent += `<text x="${svgWidth / 2}" y="${sepY - 6}" text-anchor="middle" fill="#aaa" font-size="10" font-style="italic">separate Compara trees</text>`;
+      yOffset += splitGap;
     }
   }
-
-  function drawNodes(node) {
-    const cx = xScale(node.x), cy = yScale(node.y);
-    if (node.children.length === 0) {
-      const isA = node.name === g1;
-      const isB = node.name === g2;
-      const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
-      svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="4"/>`;
-      svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
-    } else {
-      svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2"/>`;
-      node.children.forEach(c => drawNodes(c));
-    }
-  }
-
-  drawBranches(tree);
-  drawNodes(tree);
 
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+  svg.setAttribute('width', svgWidth);
   svg.style.height = svgHeight + 'px';
   svg.innerHTML = svgContent;
 
-  // Wire click on gene labels — navigate to pair report
+  // Wire click on gene labels
   svg.querySelectorAll('.tree-label').forEach(el => {
     el.addEventListener('click', () => {
       const gene = el.dataset.gene;
-      if (!gene || (gene === g1 && gene === g2)) return;
-      const other = gene === g1 ? g2 : gene === g2 ? g1 : gene;
-      const anchor = gene === g1 || gene === g2 ? (gene === g1 ? g2 : g1) : null;
-      // Try pair IDs with both query genes
-      const tryIds = anchor
-        ? [`${gene}_${anchor}`, `${anchor}_${gene}`]
-        : [`${g1}_${gene}`, `${gene}_${g1}`, `${g2}_${gene}`, `${gene}_${g2}`];
+      if (!gene) return;
+      const tryIds = [
+        `${g1}_${gene}`, `${gene}_${g1}`,
+        `${g2}_${gene}`, `${gene}_${g2}`,
+      ];
       for (const pid of tryIds) {
-        if (constellationState.pairData && constellationState.pairData[pid]) {
+        if (constellationState && constellationState.pairData && constellationState.pairData[pid]) {
           window.location.href = `?pair=${pid}`;
           return;
         }
