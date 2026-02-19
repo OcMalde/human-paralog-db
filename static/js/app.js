@@ -995,10 +995,11 @@ function initSummarySection() {
   if (ppiLabelB) ppiLabelB.textContent = g2;
   
   // Update domain table headers
-  const domAHeader = document.getElementById('domAHeader');
-  const domBHeader = document.getElementById('domBHeader');
-  if (domAHeader) domAHeader.textContent = `${g1} (${a1}) domain`;
-  if (domBHeader) domBHeader.textContent = `${g2} (${a2}) domain`;
+  // DxD header labels
+  const dxdHA = document.getElementById('dxdHA');
+  const dxdHB = document.getElementById('dxdHB');
+  if (dxdHA) dxdHA.textContent = `${g1} domain`;
+  if (dxdHB) dxdHB.textContent = `${g2} domain`;
   
   // Update UniProt links
   const link1Up = document.getElementById('link1Up');
@@ -3469,7 +3470,7 @@ function renderTableSelections() {
   const sel = getAllSelections();
   const selKeys = new Set(sel.map(s => selectionKey(s.chain, s.id)));
 
-  document.querySelectorAll('table#domA tbody tr, table#domB tbody tr').forEach(tr => {
+  document.querySelectorAll('#regionsTableA tr, #regionsTableB tr, #drugTableA tr, #drugTableB tr').forEach(tr => {
     const uid = tr.getAttribute('data-uid');
     const chain = tr.getAttribute('data-chain');
     const key = selectionKey(chain, uid);
@@ -5160,14 +5161,8 @@ function setupAllCollapsibleSections() {
   setupCollapsibleSection('structureCollapseBtn', 'structureBody', 'structureSection');
   // Alignment
   setupCollapsibleSection('alignmentCollapseBtn', 'alignmentBody', 'alignmentSection');
-  // Domains
-  setupCollapsibleSection('domainsCollapseBtn', 'domainsBody', 'domainsSection');
-  // Domain pairs
-  setupCollapsibleSection('domainPairsCollapseBtn', 'domainPairsBody', 'domainPairsSection');
-  // Drug Hits
-  setupCollapsibleSection('drugHitsCollapseBtn', 'drugHitsBody', 'drugHitsSection');
-  // Druggability group wrapper
-  setupCollapsibleSection('druggabilityGroupCollapseBtn', 'druggabilityGroupBody', 'druggabilityGroup');
+  // Regions & Druggability
+  setupCollapsibleSection('regionsCollapseBtn', 'regionsBody', 'regionsSection');
   // Family group wrapper — with re-init constellation on first expand
   setupCollapsibleSection('familyGroupCollapseBtn', 'familyGroupBody', 'familyGroup');
   let familyConstellationNeedsInit = true;
@@ -5188,7 +5183,6 @@ function setupAllCollapsibleSections() {
 function applyDefaultCollapseStates() {
   const collapseByDefault = [
     { btn: 'pdbeCollapseBtn', body: 'pdbeCardBody', section: 'pdbeCard' },
-    { btn: 'druggabilityGroupCollapseBtn', body: 'druggabilityGroupBody', section: 'druggabilityGroup' },
     { btn: 'familyGroupCollapseBtn', body: 'familyGroupBody', section: 'familyGroup' },
   ];
   collapseByDefault.forEach(({ btn, body, section }) => {
@@ -5221,21 +5215,13 @@ function updateSectionVisibility() {
     showSection('alignmentSection');
   }
 
-  // Domains section - hide if no domains
+  // Regions section - hide if no domains at all
   const hasDomainsA = DATA && DATA.domainsA && DATA.domainsA.length > 0;
   const hasDomainsB = DATA && DATA.domainsB && DATA.domainsB.length > 0;
   if (!hasDomainsA && !hasDomainsB) {
-    hideSection('domainsSection');
+    hideSection('regionsSection');
   } else {
-    showSection('domainsSection');
-  }
-
-  // Domain pairs section - hide if no domain pairs
-  const hasDomainPairs = DATA && DATA.domPairs && DATA.domPairs.length > 0;
-  if (!hasDomainPairs) {
-    hideSection('domainPairsSection');
-  } else {
-    showSection('domainPairsSection');
+    showSection('regionsSection');
   }
 
   // Family features section - hide if no family features data
@@ -5252,16 +5238,6 @@ function updateSectionVisibility() {
     hideSection('similaritySearchSection');
   } else {
     showSection('similaritySearchSection');
-  }
-
-  // Druggability group - hide if all 3 inner sections are hidden
-  const domainsHidden = document.getElementById('domainsSection')?.classList.contains('section-hidden');
-  const domPairsHidden = document.getElementById('domainPairsSection')?.classList.contains('section-hidden');
-  const drugHitsHidden = document.getElementById('drugHitsSection')?.style.display === 'none';
-  if (domainsHidden && domPairsHidden && drugHitsHidden) {
-    hideSection('druggabilityGroup');
-  } else {
-    showSection('druggabilityGroup');
   }
 
   // Family group - hide if all inner sections are hidden
@@ -5878,91 +5854,211 @@ async function recalculateAlignmentTracks() {
 }
 
 function fillDomainTables(){
-  const tA = document.querySelector('#domA tbody'); tA.innerHTML='';
-  const tB = document.querySelector('#domB tbody'); tB.innerHTML='';
+  // Gene panel headers
+  const hA = document.getElementById('regionsPanelAHeader');
+  const hB = document.getElementById('regionsPanelBHeader');
+  if (hA) hA.textContent = DATA.g1 || 'Gene A';
+  if (hB) hB.textContent = DATA.g2 || 'Gene B';
 
-  const addRowDom = (tb, d, chain) => {
-    const tr=document.createElement('tr');
-    tr.className='clickable';
-    tr.setAttribute('data-uid', d.uid || '');
-    tr.setAttribute('data-chain', chain);
+  // Split domains into structural regions vs druggability
+  const isStructural = d => d.type !== 'Cavity' && d.raw_type !== 'Cavity' && d.type !== 'DrugCLIP' && d.raw_type !== 'DrugCLIP';
+  const isDrug = d => !isStructural(d);
 
+  const regA = document.getElementById('regionsTableA'); if (regA) regA.innerHTML = '';
+  const regB = document.getElementById('regionsTableB'); if (regB) regB.innerHTML = '';
+  const drugA = document.getElementById('drugTableA'); if (drugA) drugA.innerHTML = '';
+  const drugB = document.getElementById('drugTableB'); if (drugB) drugB.innerHTML = '';
+
+  // OpenChemLib availability
+  const _oclOk = typeof OCL !== 'undefined' && typeof OCL.Molecule !== 'undefined';
+  function renderSmilesToSvg(container, smiles) {
+    if (!_oclOk || !smiles || !container) return;
+    try {
+      const mol = OCL.Molecule.fromSmiles(smiles);
+      const svgStr = mol.toSVG(200, 150);
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0;overflow:hidden';
+      wrap.innerHTML = svgStr;
+      container.prepend(wrap);
+    } catch(e) {
+      const fallback = document.createElement('div');
+      fallback.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;padding:8px;word-break:break-all;flex-shrink:0';
+      fallback.textContent = smiles.length > 80 ? smiles.slice(0, 80) + '...' : smiles;
+      container.prepend(fallback);
+    }
+  }
+  function drugDbLink(oid) {
+    if (!oid) return null;
+    if (oid.startsWith('ZINC')) return { url: `https://zinc.docking.org/substances/${oid}/`, label: 'ZINC' };
+    return null;
+  }
+
+  // Structural region row
+  const addRegionRow = (tb, d, chain) => {
+    const tr = document.createElement('tr'); tr.className = 'clickable';
+    tr.setAttribute('data-uid', d.uid || ''); tr.setAttribute('data-chain', chain);
     const tdSel = document.createElement('td');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.addEventListener('change', (ev)=>{
-      ev.stopPropagation();
-      toggleFeature(d, chain);
-    }, {passive:true});
+    const cb = document.createElement('input'); cb.type = 'checkbox';
+    cb.addEventListener('change', ev => { ev.stopPropagation(); toggleFeature(d, chain); }, {passive:true});
     tdSel.append(cb);
-
     const tdName = document.createElement('td');
     tdName.textContent = d.label || d.name || d.type || '';
-
-    const tdRange = document.createElement('td');
-    tdRange.textContent = `${d.start}-${d.end}`;
-
-    const tdCav = document.createElement('td');
-    if (d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP') {
-      // DrugCLIP pocket: show expandable drug dropdown
-      const drugs = d.top_drugs || [];
-      const nTotal = d.n_total_hits || 0;
-      if (drugs.length > 0) {
-        const wrap = document.createElement('div');
-        wrap.style.cssText = 'position:relative';
-        const btn = document.createElement('button');
-        btn.style.cssText = 'background:#c62828;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;white-space:nowrap';
-        btn.textContent = `${nTotal} hits ▼`;
-        const dropdown = document.createElement('div');
-        dropdown.className = 'dc-dropdown';
-        dropdown.style.cssText = 'display:none;position:absolute;right:0;top:100%;z-index:100;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);padding:6px;min-width:260px;max-height:240px;overflow-y:auto;font-size:11px';
-        const dtbl = document.createElement('table');
-        dtbl.style.cssText = 'width:100%;border-collapse:collapse';
-        dtbl.innerHTML = '<thead><tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:2px 4px">#</th><th style="text-align:left;padding:2px 4px">SMILES</th><th style="text-align:left;padding:2px 4px">ID</th><th style="text-align:right;padding:2px 4px">Score</th></tr></thead>';
-        const dtbody = document.createElement('tbody');
-        drugs.forEach((drug, idx) => {
-          const dtr = document.createElement('tr');
-          dtr.style.cssText = 'border-bottom:1px solid #f5f5f5';
-          const smi = drug.smiles || '';
-          const smiShort = smi.length > 30 ? smi.slice(0, 30) + '...' : smi;
-          const oid = drug.oid || '';
-          const oidShort = oid.length > 18 ? oid.slice(0, 18) + '...' : oid;
-          dtr.innerHTML = `<td style="padding:2px 4px">${idx + 1}</td><td style="padding:2px 4px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:2px 4px;font-size:10px" title="${oid}">${oidShort}</td><td style="padding:2px 4px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
-          dtbody.append(dtr);
-        });
-        dtbl.append(dtbody);
-        dropdown.append(dtbl);
-        btn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-        });
-        dropdown.addEventListener('click', (ev) => { ev.stopPropagation(); });
-        wrap.append(btn, dropdown);
-        tdCav.append(wrap);
-      } else {
-        tdCav.textContent = 'No hits';
-      }
-    } else if (d.type === 'Cavity' || d.raw_type === 'Cavity') {
-      const ds = d.drug_score || d.drugscore || '';
-      const dg = d.druggability || '';
-      tdCav.textContent = (ds || dg) ? `${ds || ''} ${dg || ''}`.trim() : '';
-    } else {
-      tdCav.textContent = '';
-    }
-
-    tr.append(tdSel, tdName, tdRange, tdCav);
-    tr.addEventListener('click', (ev)=>{
-      // Skip if click originated from checkbox, button, or dropdown
-      if (ev.target.closest('input[type="checkbox"]') || ev.target.closest('button') || ev.target.closest('.dc-dropdown')) return;
+    if (d.color) tdName.style.cssText = `border-left:3px solid ${d.color};padding-left:6px`;
+    const tdRange = document.createElement('td'); tdRange.textContent = `${d.start}-${d.end}`;
+    tr.append(tdSel, tdName, tdRange);
+    tr.addEventListener('click', ev => {
+      if (ev.target.closest('input[type="checkbox"]')) return;
       toggleFeature(d, chain);
     }, {passive:true});
     tb.append(tr);
   };
 
-  (DATA.domainsA||[]).filter(shouldShowDomain).forEach(d=>addRowDom(tA,d,chainIdA));
-  (DATA.domainsB||[]).filter(shouldShowDomain).forEach(d=>addRowDom(tB,d,chainIdB));
+  // Druggability row (cavity or DrugCLIP)
+  const addDrugRow = (tb, d, chain) => {
+    const tr = document.createElement('tr'); tr.className = 'clickable';
+    tr.setAttribute('data-uid', d.uid || ''); tr.setAttribute('data-chain', chain);
+    const tdSel = document.createElement('td');
+    const cb = document.createElement('input'); cb.type = 'checkbox';
+    cb.addEventListener('change', ev => { ev.stopPropagation(); toggleFeature(d, chain); }, {passive:true});
+    tdSel.append(cb);
+    const tdName = document.createElement('td');
+    tdName.textContent = d.label || d.name || d.type || '';
+    const tdRange = document.createElement('td'); tdRange.textContent = `${d.start}-${d.end}`;
+    const tdScore = document.createElement('td');
+
+    if (d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP') {
+      const nTotal = d.n_total_hits || 0;
+      const drugs = d.top_drugs || [];
+      if (drugs.length > 0) {
+        const badge = document.createElement('span');
+        badge.style.cssText = 'background:#c62828;color:#fff;padding:1px 8px;border-radius:10px;font-size:10px;cursor:pointer;white-space:nowrap';
+        badge.textContent = `${nTotal} hits ▾`;
+        tdScore.append(badge);
+        // Expandable detail row below
+        const expandTr = document.createElement('tr'); expandTr.className = 'dc-expand-row';
+        expandTr.style.display = 'none';
+        const expandTd = document.createElement('td'); expandTd.colSpan = 4;
+        expandTd.style.cssText = 'padding:8px 10px';
+        expandTr.append(expandTd);
+
+        const toggleExpand = (ev) => {
+          ev.stopPropagation();
+          const open = expandTr.style.display !== 'none';
+          expandTr.style.display = open ? 'none' : '';
+          badge.textContent = open ? `${nTotal} hits ▾` : `${nTotal} hits ▴`;
+          if (!expandTd._built) {
+            expandTd._built = true;
+            buildDrugExpansion(expandTd, drugs, d, chain, _oclOk, renderSmilesToSvg, drugDbLink);
+          }
+        };
+        badge.addEventListener('click', toggleExpand);
+        tr.addEventListener('click', ev => {
+          if (ev.target.closest('input[type="checkbox"]') || ev.target.closest('span')) return;
+          toggleFeature(d, chain);
+        }, {passive:true});
+        tr.append(tdSel, tdName, tdRange, tdScore);
+        tb.append(tr, expandTr);
+        return;
+      } else {
+        tdScore.textContent = 'No hits';
+      }
+    } else if (d.type === 'Cavity' || d.raw_type === 'Cavity') {
+      const dg = d.druggability || '';
+      const ds = d.drug_score || d.drugscore || '';
+      tdScore.textContent = (ds || dg) ? `${ds || ''} ${dg || ''}`.trim() : '';
+      if (dg === 'strong') tdScore.style.color = '#16a34a';
+      else if (dg === 'medium') tdScore.style.color = '#d97706';
+    }
+
+    tr.append(tdSel, tdName, tdRange, tdScore);
+    tr.addEventListener('click', ev => {
+      if (ev.target.closest('input[type="checkbox"]')) return;
+      toggleFeature(d, chain);
+    }, {passive:true});
+    tb.append(tr);
+  };
+
+  // Fill structural regions
+  (DATA.domainsA||[]).filter(d => isStructural(d) && shouldShowDomain(d)).forEach(d => addRegionRow(regA, d, chainIdA));
+  (DATA.domainsB||[]).filter(d => isStructural(d) && shouldShowDomain(d)).forEach(d => addRegionRow(regB, d, chainIdB));
+  // Fill druggability (cavities + DrugCLIP)
+  (DATA.domainsA||[]).filter(d => isDrug(d) && shouldShowDomain(d)).forEach(d => addDrugRow(drugA, d, chainIdA));
+  (DATA.domainsB||[]).filter(d => isDrug(d) && shouldShowDomain(d)).forEach(d => addDrugRow(drugB, d, chainIdB));
+
+  // Hide DxD section if no domain pairs
+  const dxd = document.getElementById('dxdSection');
+  if (dxd) dxd.style.display = (Array.isArray(DATA.domPairs) && DATA.domPairs.length) ? '' : 'none';
+
+  // Hide regions section if no data at all
+  const hasAny = (DATA.domainsA||[]).length > 0 || (DATA.domainsB||[]).length > 0;
+  const regSection = document.getElementById('regionsSection');
+  if (regSection) regSection.classList.toggle('section-hidden', !hasAny);
 
   renderTableSelections();
+}
+
+// Build the expandable drug hits content for a DrugCLIP pocket
+function buildDrugExpansion(container, drugs, pocket, chain, _oclOk, renderSmilesToSvg, drugDbLink) {
+  const tbl = document.createElement('table');
+  tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:11px';
+  tbl.innerHTML = '<thead><tr style="border-bottom:1px solid #ddd;background:#f9f7f2"><th style="text-align:left;padding:3px 6px">#</th><th style="text-align:left;padding:3px 6px">SMILES</th><th style="text-align:left;padding:3px 6px">ID</th><th style="text-align:right;padding:3px 6px">Score</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  drugs.forEach((drug, idx) => {
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid #f0f0f0;cursor:pointer';
+    tr.addEventListener('mouseenter', () => { if (!tr._expanded) tr.style.background = '#fff5f5'; });
+    tr.addEventListener('mouseleave', () => { if (!tr._expanded) tr.style.background = ''; });
+    const smi = drug.smiles || '';
+    const smiShort = smi.length > 30 ? smi.slice(0, 30) + '...' : smi;
+    const oid = drug.oid || '';
+    const oidShort = oid.length > 18 ? oid.slice(0, 18) + '...' : oid;
+    const dbLnk = drugDbLink(oid);
+    const oidCell = dbLnk
+      ? `<a href="${dbLnk.url}" target="_blank" style="color:#c62828" title="${oid}" onclick="event.stopPropagation()">${oidShort}</a>`
+      : `<span title="${oid}">${oidShort}</span>`;
+    tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px">${oidCell}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
+
+    const detailTr = document.createElement('tr');
+    detailTr.style.display = 'none';
+    const detailTd = document.createElement('td'); detailTd.colSpan = 4;
+    detailTd.style.cssText = 'padding:8px 6px;background:#fafafa;border-bottom:1px solid #e0e0e0';
+    detailTr.append(detailTd);
+
+    tr.addEventListener('click', () => {
+      const wasExpanded = tr._expanded;
+      tbody.querySelectorAll('tr[data-expanded="true"]').forEach(r => {
+        r._expanded = false; r.removeAttribute('data-expanded'); r.style.background = '';
+        const next = r.nextElementSibling;
+        if (next && next.querySelector('td[colspan]')) next.style.display = 'none';
+      });
+      if (!wasExpanded) {
+        tr._expanded = true; tr.setAttribute('data-expanded', 'true'); tr.style.background = '#fff0f0';
+        detailTr.style.display = '';
+        if (!detailTd._built) {
+          detailTd._built = true;
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
+          if (_oclOk && smi) renderSmilesToSvg(wrap, smi);
+          const info = document.createElement('div'); info.style.cssText = 'font-size:11px;min-width:0';
+          const dbLink = drugDbLink(oid);
+          const idHtml = dbLink
+            ? `<a href="${dbLink.url}" target="_blank" style="color:#c62828;text-decoration:underline">${oid}</a> <span style="color:#999">(${dbLink.label})</span>`
+            : oid;
+          info.innerHTML = `<div style="margin-bottom:4px"><strong>Full SMILES:</strong></div><div style="font-family:monospace;font-size:10px;word-break:break-all;background:#fff;padding:4px 6px;border:1px solid #eee;border-radius:4px;margin-bottom:6px">${smi}</div><div><strong>ID:</strong> ${idHtml}</div><div><strong>Score:</strong> ${drug.score ? drug.score.toFixed(4) : '–'}</div>`;
+          const hlBtn = document.createElement('button');
+          hlBtn.style.cssText = 'margin-top:6px;background:#c62828;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px';
+          hlBtn.textContent = 'Highlight pocket in 3D';
+          hlBtn.addEventListener('click', ev => { ev.stopPropagation(); toggleFeature(pocket, chain); });
+          info.append(hlBtn);
+          wrap.append(info);
+          detailTd.append(wrap);
+        }
+      }
+    });
+    tbody.append(tr, detailTr);
+  });
+  tbl.append(tbody);
+  container.append(tbl);
 }
 
 async function fillDomPairs(){
@@ -6002,161 +6098,8 @@ async function fillDomPairs(){
   });
 }
 
-function fillDrugHits(){
-  const dcDomainsA = (DATA.domainsA||[]).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP');
-  const dcDomainsB = (DATA.domainsB||[]).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP');
-
-  const section = document.getElementById('drugHitsSection');
-  if (!dcDomainsA.length && !dcDomainsB.length) {
-    if (section) section.style.display = 'none';
-    return;
-  }
-  if (section) section.style.display = '';
-
-  document.getElementById('drugHitsAHeader').textContent = DATA.g1 || 'Gene A';
-  document.getElementById('drugHitsBHeader').textContent = DATA.g2 || 'Gene B';
-
-  // OpenChemLib availability check
-  const _oclOk = typeof OCL !== 'undefined' && typeof OCL.Molecule !== 'undefined';
-  console.log('OpenChemLib:', { ok: _oclOk, version: _oclOk ? (OCL.version || 'loaded') : 'N/A' });
-
-  // Render SMILES as SVG into a container element using OpenChemLib
-  function renderSmilesToSvg(container, smiles) {
-    if (!_oclOk || !smiles || !container) return;
-    try {
-      const mol = OCL.Molecule.fromSmiles(smiles);
-      const svgStr = mol.toSVG(200, 150);
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;flex-shrink:0;overflow:hidden';
-      wrap.innerHTML = svgStr;
-      container.prepend(wrap);
-      console.log('SMILES rendered (OCL) for:', smiles.slice(0, 30));
-    } catch(e) {
-      console.warn('SMILES render error:', e, smiles.slice(0, 50));
-      const fallback = document.createElement('div');
-      fallback.style.cssText = 'width:200px;height:150px;border:1px solid #eee;border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;text-align:center;padding:8px;word-break:break-all;flex-shrink:0';
-      fallback.textContent = smiles.length > 80 ? smiles.slice(0, 80) + '...' : smiles;
-      container.prepend(fallback);
-    }
-  }
-
-  // Build link to external drug database from oid (only ZINC has reliable direct URLs)
-  function drugDbLink(oid) {
-    if (!oid) return null;
-    if (oid.startsWith('ZINC')) return { url: `https://zinc.docking.org/substances/${oid}/`, label: 'ZINC' };
-    return null;
-  }
-
-  const buildPocketCards = (domains, container, chain) => {
-    container.innerHTML = '';
-    if (!domains.length) {
-      container.innerHTML = '<div class="small" style="color:#999">No DrugCLIP pockets found for this gene.</div>';
-      return;
-    }
-    domains.forEach(d => {
-      const card = document.createElement('div');
-      card.style.cssText = 'border:1px solid #e0e0e0;border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fafbfc';
-
-      const header = document.createElement('div');
-      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-      const title = document.createElement('div');
-      title.style.cssText = 'font-weight:600;font-size:13px;color:#c62828';
-      title.textContent = d.label || 'Pocket';
-      const badge = document.createElement('span');
-      badge.style.cssText = 'background:#c62828;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px';
-      badge.textContent = `${d.n_total_hits || 0} hits`;
-      header.append(title, badge);
-
-      const meta = document.createElement('div');
-      meta.style.cssText = 'font-size:11px;color:#777;margin-bottom:6px';
-      meta.textContent = `Residues: ${d.start}-${d.end} (${(d.residues||[]).length} contact residues)`;
-      if (d.top_score) meta.textContent += ` | Top score: ${d.top_score.toFixed(2)}`;
-
-      const tbl = document.createElement('table');
-      tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:11px';
-      tbl.innerHTML = '<thead><tr style="border-bottom:1px solid #ddd;background:#f5f5f5"><th style="text-align:left;padding:3px 6px">#</th><th style="text-align:left;padding:3px 6px">SMILES</th><th style="text-align:left;padding:3px 6px">ID</th><th style="text-align:right;padding:3px 6px">Score</th></tr></thead>';
-      const tbody = document.createElement('tbody');
-      (d.top_drugs || []).forEach((drug, idx) => {
-        const tr = document.createElement('tr');
-        tr.style.cssText = 'border-bottom:1px solid #f0f0f0;cursor:pointer';
-        tr.addEventListener('mouseenter', () => { if (!tr._expanded) tr.style.background = '#fff5f5'; });
-        tr.addEventListener('mouseleave', () => { if (!tr._expanded) tr.style.background = ''; });
-        const smi = drug.smiles || '';
-        const smiShort = smi.length > 35 ? smi.slice(0, 35) + '...' : smi;
-        const oid = drug.oid || '';
-        const oidShort = oid.length > 20 ? oid.slice(0, 20) + '...' : oid;
-        const dbLnk = drugDbLink(oid);
-        const oidCell = dbLnk
-          ? `<a href="${dbLnk.url}" target="_blank" style="color:#c62828" title="${oid} (${dbLnk.label})" onclick="event.stopPropagation()">${oidShort}</a>`
-          : `<span title="${oid}">${oidShort}</span>`;
-        tr.innerHTML = `<td style="padding:3px 6px">${idx + 1}</td><td style="padding:3px 6px;font-family:monospace;font-size:10px" title="${smi}">${smiShort}</td><td style="padding:3px 6px;font-size:10px">${oidCell}</td><td style="padding:3px 6px;text-align:right;font-weight:600">${drug.score ? drug.score.toFixed(2) : '–'}</td>`;
-
-        // Expandable detail row
-        const detailTr = document.createElement('tr');
-        detailTr.style.cssText = 'display:none';
-        detailTr.classList.add('dc-detail');
-        const detailTd = document.createElement('td');
-        detailTd.colSpan = 4;
-        detailTd.style.cssText = 'padding:8px 6px;background:#fafafa;border-bottom:1px solid #e0e0e0';
-        detailTr.append(detailTd);
-
-        tr.addEventListener('click', () => {
-          const wasExpanded = tr._expanded;
-          // Close all other expanded rows in this card
-          tbody.querySelectorAll('tr[data-expanded="true"]').forEach(r => {
-            r._expanded = false;
-            r.removeAttribute('data-expanded');
-            r.style.background = '';
-            const next = r.nextElementSibling;
-            if (next && next.classList.contains('dc-detail')) next.style.display = 'none';
-          });
-          if (!wasExpanded) {
-            tr._expanded = true;
-            tr.setAttribute('data-expanded', 'true');
-            tr.style.background = '#fff0f0';
-            detailTr.style.display = '';
-            // Build detail content on first expand
-            if (!detailTd._built) {
-              detailTd._built = true;
-              const wrap = document.createElement('div');
-              wrap.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
-              // 2D structure via OpenChemLib
-              if (_oclOk && smi) {
-                renderSmilesToSvg(wrap, smi);
-              }
-              // Details
-              const info = document.createElement('div');
-              info.style.cssText = 'font-size:11px;min-width:0';
-              // Database link
-              const dbLink = drugDbLink(oid);
-              const idHtml = dbLink
-                ? `<a href="${dbLink.url}" target="_blank" style="color:#c62828;text-decoration:underline">${oid}</a> <span style="color:#999">(${dbLink.label})</span>`
-                : oid;
-              info.innerHTML = `<div style="margin-bottom:4px"><strong>Full SMILES:</strong></div><div style="font-family:monospace;font-size:10px;word-break:break-all;background:#fff;padding:4px 6px;border:1px solid #eee;border-radius:4px;margin-bottom:6px">${smi}</div><div><strong>ID:</strong> ${idHtml}</div><div><strong>Score:</strong> ${drug.score ? drug.score.toFixed(4) : '–'}</div>`;
-              // Highlight pocket button
-              const hlBtn = document.createElement('button');
-              hlBtn.style.cssText = 'margin-top:6px;background:#c62828;color:#fff;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px';
-              hlBtn.textContent = 'Highlight pocket in 3D';
-              hlBtn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleFeature(d, chain); });
-              info.append(hlBtn);
-              wrap.append(info);
-              detailTd.append(wrap);
-            }
-          }
-        });
-
-        tbody.append(tr, detailTr);
-      });
-      tbl.append(tbody);
-
-      card.append(header, meta, tbl);
-      container.append(card);
-    });
-  };
-
-  buildPocketCards(dcDomainsA, document.getElementById('drugHitsAContent'), chainIdA);
-  buildPocketCards(dcDomainsB, document.getElementById('drugHitsBContent'), chainIdB);
-}
+// fillDrugHits is now absorbed into fillDomainTables
+function fillDrugHits() { /* no-op — drug hits are rendered inline in fillDomainTables */ }
 
 let currentColorMode = 'uniform';
 
@@ -6950,6 +6893,18 @@ async function main(){
   setupAllCollapsibleSections();
   applyDefaultCollapseStates();
   updateSectionVisibility();
+
+  // Band toggle headers in regions section
+  document.querySelectorAll('.band-header[data-band]').forEach(header => {
+    header.addEventListener('click', () => {
+      const bandId = header.dataset.band;
+      const body = document.querySelector(`[data-band-body="${bandId}"]`);
+      if (body) {
+        const collapsed = body.classList.toggle('collapsed');
+        header.classList.toggle('collapsed', collapsed);
+      }
+    }, { passive: true });
+  });
 
   document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
   document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); }}, {passive:true});

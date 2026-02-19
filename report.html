@@ -355,6 +355,27 @@
   .track-toggle-chip.active{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5}
   .track-toggle-chip[data-group="default"]{background:#e8e4ff;border-color:#4f46e5;color:#4f46e5;cursor:default;opacity:0.7}
 
+  /* Regions & Druggability unified card */
+  .regions-grid{display:grid;gap:16px;grid-template-columns:1fr 1fr}
+  @media(max-width:900px){.regions-grid{grid-template-columns:1fr}}
+  .gene-panel{border:1px solid #e8e4d7;border-radius:10px;overflow:hidden}
+  .gene-panel-header{padding:8px 12px;font-weight:700;font-size:13px;background:#f9f7f2;border-bottom:1px solid #e8e4d7}
+  .band-header{display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;cursor:pointer;user-select:none;border-bottom:1px solid #f0ece0}
+  .band-header:hover{filter:brightness(0.97)}
+  .band-header .band-toggle{font-size:9px;color:#999;margin-left:auto;transition:transform 0.15s}
+  .band-header.collapsed .band-toggle{transform:rotate(-90deg)}
+  .band-regions{background:#f0f4ff;color:#4338ca;border-left:3px solid #818cf8}
+  .band-druggability{background:#fef9ee;color:#92400e;border-left:3px solid #f59e0b}
+  .band-body{padding:0}
+  .band-body.collapsed{display:none}
+  .band-body table{width:100%;border-collapse:collapse;font-size:12px}
+  .band-body th{text-align:left;padding:4px 8px;font-size:10px;color:#888;border-bottom:1px solid #eee;font-weight:600}
+  .band-body td{padding:4px 8px;border-bottom:1px solid #f5f5f5;vertical-align:top}
+  .band-body tr.clickable:hover{background:#f5f5f5}
+  .dc-expand-row{background:#fef9ee}
+  .dc-expand-row td{padding:8px 12px;border-bottom:1px solid #e8e4d7}
+  .dxd-section{margin-top:16px;border-top:1px solid #e8e4d7;padding-top:12px}
+
   /* Section group subsection spacing */
   .section-group>.section-body>.card,
   .section-group>.section-body>.new-section{margin-top:16px}
@@ -432,14 +453,7 @@
           <li><a href="#structureSection" data-section="structureSection">Predicted Alignment</a></li>
           <li><a href="#pdbeCard" data-section="pdbeCard">PDBe Structures</a></li>
           <li><a href="#alignmentSection" data-section="alignmentSection">Sequence Tracks</a></li>
-        </ul>
-      </li>
-      <li>
-        <a href="#druggabilityGroup" data-section="druggabilityGroup">Regions & Druggability</a>
-        <ul>
-          <li><a href="#domainsSection" data-section="domainsSection">Domains</a></li>
-          <li><a href="#domainPairsSection" data-section="domainPairsSection">Domain × Domain</a></li>
-          <li><a href="#drugHitsSection" data-section="drugHitsSection">Drug Hits</a></li>
+          <li><a href="#regionsSection" data-section="regionsSection">Regions & Druggability</a></li>
         </ul>
       </li>
       <li>
@@ -814,91 +828,66 @@
     </div>
   </section>
 
-    </div>
-  </section>
-
-  <!-- Regions & Druggability Group -->
-  <section class="section-group collapsible" id="druggabilityGroup">
-    <div class="section-header">
+  <!-- Regions & Druggability (unified) -->
+  <section class="card collapsible" id="regionsSection">
+    <div class="card-header">
       <h2>Regions & Druggability</h2>
-      <button class="collapse-toggle" id="druggabilityGroupCollapseBtn" aria-expanded="false">Expand</button>
-    </div>
-    <div class="section-body collapsed" id="druggabilityGroupBody">
-
-  <!-- Domain tables -->
-  <section class="card collapsible" id="domainsSection">
-    <div class="card-header">
-      <h2>Domains (filtered)</h2>
-      <button class="collapse-toggle" id="domainsCollapseBtn" aria-expanded="true">Collapse</button>
-    </div>
-    <div class="body" id="domainsBody" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
-      <div>
-        <table id="domA">
-          <thead>
-            <tr>
-              <th>Sel</th>
-              <th id="domAHeader">Gene A domain</th>
-              <th>range</th>
-              <th>cavity / drug</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div>
-        <table id="domB">
-          <thead>
-            <tr>
-              <th>Sel</th>
-              <th id="domBHeader">Gene B domain</th>
-              <th>range</th>
-              <th>cavity / drug</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:11px">Cavities:
+          <select id="druggabilityFilter" style="font-size:11px;padding:2px 4px">
+            <option value="all">All</option>
+            <option value="medium+" selected>Medium+</option>
+            <option value="strong">Strong only</option>
+          </select>
+        </label>
+        <button class="collapse-toggle" id="regionsCollapseBtn" aria-expanded="true">Collapse</button>
       </div>
     </div>
-    <div class="desc-source" style="padding:8px 16px 12px;border-top:1px solid #f0f0f0">
-      Source: <a href="https://bioserv.rpbs.univ-paris-diderot.fr/services/CavitySpace" target="_blank">CavitySpace</a> –
-      Cavities are three-dimensional pockets on the protein surface, identified by scanning AlphaFold structures for shape and physicochemical properties. Each cavity is accompanied by a druggability score predicted from its geometric and physicochemical properties using a machine-learning model trained on known drug-binding sites.
-    </div>
-  </section>
-
-  <!-- Domain × Domain sub-alignments -->
-  <section class="card collapsible" id="domainPairsSection">
-    <div class="card-header">
-      <h2>Domain × Domain sub-alignments (Foldseek)</h2>
-      <button class="collapse-toggle" id="domainPairsCollapseBtn" aria-expanded="true">Collapse</button>
-    </div>
-    <div class="body" id="domainPairsBody">
-      <table id="domPairs"><thead><tr><th id="dxdHA">Gene A domain</th><th id="dxdHB">Gene B domain</th><th>fident</th><th>TM</th><th>ΔAM%</th></tr></thead><tbody></tbody></table>
-      <div class="small">Click a row to load the sub-alignment into the viewer. Use "Back to full" to restore.</div>
-    </div>
-  </section>
-
-  <!-- Drug Hits (GenomeScreen / DrugCLIP) -->
-  <section class="card collapsible" id="drugHitsSection" style="display:none">
-    <div class="card-header">
-      <h2>Drug Hits (GenomeScreen)</h2>
-      <button class="collapse-toggle" id="drugHitsCollapseBtn" aria-expanded="true">Collapse</button>
-    </div>
-    <div class="body" id="drugHitsBody" style="display:grid;gap:12px;grid-template-columns:1fr 1fr">
-      <div>
-        <h3 id="drugHitsAHeader" style="margin:0 0 8px;font-size:14px">Gene A</h3>
-        <div id="drugHitsAContent"></div>
+    <div class="body" id="regionsBody">
+      <div class="regions-grid">
+        <div class="gene-panel" id="regionsPanelA">
+          <div class="gene-panel-header" id="regionsPanelAHeader">Gene A</div>
+          <div class="band-header band-regions" data-band="regions-a">
+            <span>Structural Regions</span>
+            <span class="band-toggle">▾</span>
+          </div>
+          <div class="band-body" id="regionsBodyA" data-band-body="regions-a">
+            <table><thead><tr><th style="width:28px"></th><th>Region</th><th>Range</th></tr></thead><tbody id="regionsTableA"></tbody></table>
+          </div>
+          <div class="band-header band-druggability" data-band="drug-a">
+            <span>Pockets & Druggability</span>
+            <span class="band-toggle">▾</span>
+          </div>
+          <div class="band-body" id="drugBodyA" data-band-body="drug-a">
+            <table><thead><tr><th style="width:28px"></th><th>Pocket</th><th>Range</th><th>Score / Hits</th></tr></thead><tbody id="drugTableA"></tbody></table>
+          </div>
+        </div>
+        <div class="gene-panel" id="regionsPanelB">
+          <div class="gene-panel-header" id="regionsPanelBHeader">Gene B</div>
+          <div class="band-header band-regions" data-band="regions-b">
+            <span>Structural Regions</span>
+            <span class="band-toggle">▾</span>
+          </div>
+          <div class="band-body" id="regionsBodyB" data-band-body="regions-b">
+            <table><thead><tr><th style="width:28px"></th><th>Region</th><th>Range</th></tr></thead><tbody id="regionsTableB"></tbody></table>
+          </div>
+          <div class="band-header band-druggability" data-band="drug-b">
+            <span>Pockets & Druggability</span>
+            <span class="band-toggle">▾</span>
+          </div>
+          <div class="band-body" id="drugBodyB" data-band-body="drug-b">
+            <table><thead><tr><th style="width:28px"></th><th>Pocket</th><th>Range</th><th>Score / Hits</th></tr></thead><tbody id="drugTableB"></tbody></table>
+          </div>
+        </div>
       </div>
-      <div>
-        <h3 id="drugHitsBHeader" style="margin:0 0 8px;font-size:14px">Gene B</h3>
-        <div id="drugHitsBContent"></div>
+      <div class="dxd-section" id="dxdSection">
+        <h3 style="margin:0 0 8px;font-size:14px;font-weight:600">Domain × Domain sub-alignments</h3>
+        <table id="domPairs" style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th id="dxdHA" style="text-align:left;padding:4px 8px">Gene A</th><th id="dxdHB" style="text-align:left;padding:4px 8px">Gene B</th><th style="text-align:left;padding:4px 8px">fident</th><th style="text-align:left;padding:4px 8px">TM</th><th style="text-align:left;padding:4px 8px">ΔAM%</th></tr></thead><tbody></tbody></table>
+        <div class="small" style="margin-top:4px;color:#888">Click a row to load the sub-alignment in the 3D viewer.</div>
       </div>
     </div>
     <div class="desc-source" style="padding:8px 16px 12px;border-top:1px solid #f0f0f0">
-      Source: <a href="https://drug-the-whole-genome.yanyanlan.com" target="_blank">DrugCLIP / GenomeScreen</a> –
-      Uses contrastive learning to encode protein binding pockets and small-molecule drugs into a shared representation space.
-      GenomeScreenDB screened ~10,000 AlphaFold-predicted human protein structures against 500 million compounds,
-      identifying potential binders for each detected pocket.
-      Higher score = stronger predicted binding. Click a drug row to expand its full SMILES and 2D structure.
+      Source: <a href="https://bioserv.rpbs.univ-paris-diderot.fr/services/CavitySpace" target="_blank">CavitySpace</a> · <a href="https://drug-the-whole-genome.yanyanlan.com" target="_blank">DrugCLIP / GenomeScreen</a>
     </div>
   </section>
 
