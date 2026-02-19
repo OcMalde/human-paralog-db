@@ -7201,37 +7201,23 @@ function setTmScoreDisplay(val) {
 
 // Sticky minimize / expand wiring
 function setupStickyMinimize() {
+  const sticky = document.getElementById('structureStickyControls');
   const full = document.getElementById('stickyFull');
   const mini = document.getElementById('stickyMini');
   const btnMin = document.getElementById('stickyMinimize');
   const btnExp = document.getElementById('stickyExpand');
-  const colorByMain = document.getElementById('colorBy');
-  const colorByMini = document.getElementById('colorByMini');
-  if (!full || !mini || !btnMin || !btnExp) return;
-
-  // Populate colorByMini from main colorBy options
-  if (colorByMain && colorByMini) {
-    colorByMini.innerHTML = colorByMain.innerHTML;
-    colorByMini.value = colorByMain.value;
-    // Sync mini → main
-    colorByMini.addEventListener('change', (e) => {
-      colorByMain.value = e.target.value;
-      colorBy(e.target.value);
-    }, { passive: true });
-    // Sync main → mini
-    colorByMain.addEventListener('change', () => {
-      colorByMini.value = colorByMain.value;
-    }, { passive: true });
-  }
+  if (!sticky || !full || !mini || !btnMin || !btnExp) return;
 
   btnMin.addEventListener('click', () => {
     full.style.display = 'none';
     mini.style.display = '';
+    sticky.classList.add('is-mini');
   }, { passive: true });
 
   btnExp.addEventListener('click', () => {
     mini.style.display = 'none';
     full.style.display = '';
+    sticky.classList.remove('is-mini');
   }, { passive: true });
 }
 

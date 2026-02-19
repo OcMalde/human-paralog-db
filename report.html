@@ -69,7 +69,7 @@
   .sidebar-nav>ul>li>a{font-weight:700;color:#333;font-size:13px}
   .sidebar-nav ul ul a{font-size:12px;padding:5px 10px;color:#888;font-weight:400}
   .sidebar-nav ul ul a:hover{color:#555}
-  .sidebar-nav ul ul a.active{color:#4f46e5}
+  .sidebar-nav ul ul a.active{color:#4f46e5;font-weight:600;background:#f0edff}
   .main-content{flex:1;min-width:0}
   /* Mobile sidebar toggle */
   .sidebar-toggle{display:none;position:fixed;bottom:16px;right:16px;z-index:999;width:44px;height:44px;border-radius:50%;background:#4f46e5;color:#fff;border:none;box-shadow:0 2px 12px rgba(79,70,229,0.4);font-size:20px;cursor:pointer;line-height:1}
@@ -343,10 +343,10 @@
   .section-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04)}
   .section-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
   .section-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1f1b16}
-  .section-group>.section-body{padding:16px 22px 22px}
+  .section-group>.section-body{padding:16px 22px 22px;max-width:100%}
   .section-group>.section-body.collapsed{display:none}
-  .section-group .card{box-shadow:none;border-color:#f0ece0}
-  .section-group .new-section{box-shadow:none;border-color:#f0ece0}
+  .section-group .card{box-shadow:none;border-color:#f0ece0;max-width:100%;overflow:hidden}
+  .section-group .new-section{box-shadow:none;border-color:#f0ece0;max-width:100%;overflow:hidden}
 
   /* Track Toggle Chips */
   .track-toggle-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
@@ -363,9 +363,10 @@
   .section-group>.section-body>.sticky-controls+.card{margin-top:0}
 
   /* Sticky Controls */
-  .sticky-controls{position:sticky;top:42px;z-index:50;background:#fff;padding:8px 12px 4px;border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
-  .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.1);border-color:#d0d0d0}
-  .sticky-controls-mini{font-size:12px;padding:6px 12px !important}
+  .sticky-controls{position:sticky;top:42px;z-index:50;background:#f8f8f8;padding:8px 12px 4px;border:1.5px solid #444;border-radius:10px}
+  .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.12)}
+  .sticky-controls-mini{display:inline-flex;align-items:center;padding:3px 4px !important}
+  .sticky-controls.is-mini{padding:4px 8px;background:#f4f4f4;display:inline-block;width:auto;border-radius:8px}
 
   /* Responsive: small screens */
   @media(max-width:700px){
@@ -709,11 +710,7 @@
       </div>
     </div>
     <div class="sticky-controls-mini" id="stickyMini" style="display:none">
-      <div style="display:flex;align-items:center;gap:8px">
-        <label>Color: <select id="colorByMini" style="font-size:11px;padding:2px 4px"></select></label>
-        <span class="note">TM: <b id="tmScoreMini">–</b></span>
-        <button id="stickyExpand" style="margin-left:auto;font-size:11px;padding:2px 8px;font-weight:600">Expand +</button>
-      </div>
+      <button id="stickyExpand" style="font-size:11px;padding:2px 10px;font-weight:600;cursor:pointer;border:none;background:transparent;color:#333">Structure Controls +</button>
     </div>
   </div>
 
@@ -925,8 +922,8 @@
       </div>
     </div>
     <div class="body" id="familyNavBody" style="padding:15px;">
-      <div id="constellationContainer" style="display:flex;justify-content:center;">
-        <canvas id="familyNetworkCanvas" width="2400" height="1120" style="border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;max-width:100%;width:1200px;height:560px;"></canvas>
+      <div id="constellationContainer" style="display:flex;justify-content:center;max-width:100%;overflow:hidden">
+        <canvas id="familyNetworkCanvas" width="2400" height="1120" style="border:1px solid #e0e0e0;border-radius:8px;background:#fafafa;max-width:100%;width:100%;height:560px;"></canvas>
       </div>
       <div id="constellationHelp" style="margin-top:12px;padding:10px 15px;background:#f5f5f5;border-radius:6px;font-size:12px;color:#555;border:1px solid #e0e0e0;">
         <strong style="color:#d97706;">How to read:</strong> Center = query gene. Distance from center = sequence identity (closer = more similar).
@@ -1114,36 +1111,69 @@ window.nightingaleReady = true;
     });
   });
 
-  // Update active link on scroll
+  // Update active link on scroll — highlights both subsection AND parent
   function updateActiveLink() {
-    const scrollPos = window.scrollY + 100; // Offset for header
+    const scrollPos = window.scrollY + 120;
 
-    let activeSection = null;
-    for (const { id, el, link } of sections) {
+    // Find the best matching section (prefer deepest/most specific)
+    // Subsection links are in nested <ul>, parent links are in top-level <li>
+    const parentLinks = document.querySelectorAll('.sidebar-nav > ul > li > a[data-section]');
+    const subLinks = document.querySelectorAll('.sidebar-nav ul ul a[data-section]');
+
+    let activeParent = null;
+    let activeSub = null;
+
+    // Check subsections first (more specific)
+    subLinks.forEach(link => {
+      const el = document.getElementById(link.dataset.section);
+      if (!el) return;
       const rect = el.getBoundingClientRect();
       const top = rect.top + window.scrollY;
       const bottom = top + rect.height;
-
       if (scrollPos >= top && scrollPos < bottom) {
-        activeSection = id;
-        break;
+        activeSub = link.dataset.section;
+      }
+    });
+
+    // Fall back: find which parent section we're in
+    parentLinks.forEach(link => {
+      const el = document.getElementById(link.dataset.section);
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const top = rect.top + window.scrollY;
+      const bottom = top + rect.height;
+      if (scrollPos >= top && scrollPos < bottom) {
+        activeParent = link.dataset.section;
+      }
+    });
+
+    // If we have a subsection match but no parent, find the parent
+    if (activeSub && !activeParent) {
+      const subLink = document.querySelector(`.sidebar-nav a[data-section="${activeSub}"]`);
+      if (subLink) {
+        const parentLi = subLink.closest('.sidebar-nav > ul > li');
+        if (parentLi) {
+          const pLink = parentLi.querySelector(':scope > a[data-section]');
+          if (pLink) activeParent = pLink.dataset.section;
+        }
       }
     }
 
-    // If no section found, use the last one that's above the scroll position
-    if (!activeSection) {
+    // If no subsection but have parent, check if we're past the last section above
+    if (!activeParent && !activeSub) {
       for (let i = sections.length - 1; i >= 0; i--) {
         const rect = sections[i].el.getBoundingClientRect();
         if (rect.top + window.scrollY <= scrollPos) {
-          activeSection = sections[i].id;
+          activeParent = sections[i].id;
           break;
         }
       }
     }
 
-    // Update active class
+    // Update classes
     sidebarLinks.forEach(link => {
-      if (link.dataset.section === activeSection) {
+      const id = link.dataset.section;
+      if (id === activeSub || id === activeParent) {
         link.classList.add('active');
       } else {
         link.classList.remove('active');
