@@ -637,7 +637,7 @@ function renderFamilyTree() {
 
   // Layout all trees and compute total dimensions
   const layouts = trees.map(t => layoutTree(t));
-  const rowHeight = 32;
+  const rowHeight = 28;
   const splitGap = trees.length > 1 ? 36 : 0;
   let totalLeafRows = layouts.reduce((s, l) => s + l.totalLeaves, 0);
 
@@ -646,13 +646,11 @@ function renderFamilyTree() {
   function collectNames(n) { if (n.children.length === 0) allNames.push(n.name); else n.children.forEach(collectNames); }
   trees.forEach(collectNames);
   const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
-  const labelW = maxLabelLen * 9 + 20;
+  const labelW = maxLabelLen * 8 + 16;
 
-  const margin = { top: 20, right: labelW, bottom: 20, left: 20 };
-  const contentH = Math.max(160, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
-  // For slanted trees: ensure width >= 1.5× height so branches fan out as proper triangles
-  const minSlantW = contentH * 1.5;
-  const svgWidth = Math.max(minSlantW, 400);
+  const margin = { top: 16, right: labelW, bottom: 16, left: 16 };
+  const contentH = Math.max(120, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
+  const svgWidth = Math.max(contentH * 0.9, 360);
   const svgHeight = contentH;
   const plotW = svgWidth - margin.left - margin.right;
 
@@ -669,12 +667,18 @@ function renderFamilyTree() {
       ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rowHeight) + rowHeight / 2
       : () => yOffset + treeH / 2;
 
-    // Slanted tree: diagonal lines from parent to child
+    // Rectangular cladogram: vertical connector + horizontal arms
     function drawBranches(node) {
       if (node.children.length > 0) {
-        const px = xScale(node.x), py = yScale(node.y);
+        const px = xScale(node.x);
+        // Vertical line spanning from first child y to last child y
+        const firstY = yScale(node.children[0].y);
+        const lastY = yScale(node.children[node.children.length - 1].y);
+        svgContent += `<line class="tree-branch-v" x1="${px}" y1="${firstY}" x2="${px}" y2="${lastY}"/>`;
+        // Horizontal arm from parent x to child x at child's y
         node.children.forEach(c => {
-          svgContent += `<line class="tree-branch" x1="${px}" y1="${py}" x2="${xScale(c.x)}" y2="${yScale(c.y)}"/>`;
+          const cy = yScale(c.y);
+          svgContent += `<line class="tree-branch" x1="${px}" y1="${cy}" x2="${xScale(c.x)}" y2="${cy}"/>`;
           drawBranches(c);
         });
       }
@@ -685,10 +689,9 @@ function renderFamilyTree() {
       if (node.children.length === 0) {
         const isA = node.name === g1, isB = node.name === g2;
         const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
-        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="4"/>`;
-        svgContent += `<text class="tree-label ${cls}" x="${cx + 10}" y="${cy + 5}" data-gene="${node.name}">${node.name}</text>`;
+        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="3.5"/>`;
+        svgContent += `<text class="tree-label ${cls}" x="${cx + 8}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
       } else {
-        svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2.5"/>`;
         node.children.forEach(c => drawNodes(c));
       }
     }
@@ -1904,11 +1907,11 @@ function initSimilaritySearchSection() {
   function setView(idx) {
     simSearchView = idx;
     if (scroll) scroll.style.transform = `translateX(-${idx * 50}%)`;
-    if (btn0) btn0.style.background = idx === 0 ? '#e8e4ff' : '';
-    if (btn0) btn0.style.color = idx === 0 ? '#4f46e5' : '';
+    if (btn0) btn0.style.background = idx === 0 ? '#e0f2f1' : '';
+    if (btn0) btn0.style.color = idx === 0 ? '#00695c' : '';
     if (btn0) btn0.style.fontWeight = idx === 0 ? '600' : '';
-    if (btn1) btn1.style.background = idx === 1 ? '#e8e4ff' : '';
-    if (btn1) btn1.style.color = idx === 1 ? '#4f46e5' : '';
+    if (btn1) btn1.style.background = idx === 1 ? '#e0f2f1' : '';
+    if (btn1) btn1.style.color = idx === 1 ? '#00695c' : '';
     if (btn1) btn1.style.fontWeight = idx === 1 ? '600' : '';
   }
   if (btn0) btn0.addEventListener('click', () => setView(0));
