@@ -8,17 +8,17 @@
 <link rel="apple-touch-icon" href="static/img/favicon.png"/>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f5f5fb;min-height:100vh}
-.top-bar{position:sticky;top:0;z-index:1000;padding:12px 20px;background:#21244d;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.top-bar{position:sticky;top:0;z-index:1000;padding:12px 20px;background:#546e7a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .top-bar h1{margin:0;font-size:18px;font-weight:600;cursor:pointer}
 .top-bar h1:hover{opacity:0.9}
 .search-box{display:flex;gap:8px;flex:1;min-width:250px;max-width:400px}
 .search-box input{flex:1;border:none;border-radius:8px;padding:8px 12px;font-size:14px}
-.search-box button{background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
-.search-box button:hover{background:#4338ca}
+.search-box button{background:#37474f;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
+.search-box button:hover{background:#263238}
 .pair-chips{display:flex;gap:6px;flex-wrap:wrap}
 .pair-chip{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer}
 .pair-chip:hover{background:rgba(255,255,255,0.25)}
-.pair-chip.active{background:#4f46e5;border-color:#4f46e5}
+.pair-chip.active{background:#37474f;border-color:#37474f}
 #reportFrame{width:100%;border:none;min-height:calc(100vh - 60px);display:none}
 .loading{display:flex;align-items:center;justify-content:center;height:200px;font-size:16px;color:#666}
 
@@ -26,7 +26,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .homepage{padding:40px 20px;max-width:900px;margin:0 auto}
 .homepage.hidden{display:none}
 .hero{text-align:center;margin-bottom:50px}
-.hero h2{font-size:32px;color:#21244d;margin:0 0 12px 0}
+.hero h2{font-size:32px;color:#37474f;margin:0 0 12px 0}
 .hero p{font-size:18px;color:#666;margin:0}
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:20px;margin-bottom:50px}
 .stat-card{background:#fff;border-radius:12px;padding:24px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
@@ -44,6 +44,13 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .example-link:hover .desc{color:rgba(255,255,255,0.8)}
 .footer-note{text-align:center;margin-top:40px;padding:20px;color:#888;font-size:13px}
 .footer-note a{color:#4f46e5}
+.search-box{position:relative}
+.search-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;overflow:hidden}
+.search-dropdown .dd-item{padding:8px 12px;cursor:pointer;font-size:13px;color:#333;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+.search-dropdown .dd-item:last-child{border-bottom:none}
+.search-dropdown .dd-item:hover,.search-dropdown .dd-item.active{background:#e8f5e9}
+.search-dropdown .dd-item .dd-type{font-size:10px;color:#999;text-transform:uppercase}
+.search-dropdown .dd-empty{padding:8px 12px;font-size:12px;color:#999;font-style:italic}
 </style>
 </head>
 <body>
@@ -51,9 +58,9 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
   <img src="static/img/logo.png" alt="" style="height:42px;width:auto;cursor:pointer" onclick="goHome()">
   <h1 onclick="goHome()">Human Paralog DB</h1>
   <div class="search-box">
-    <input id="pairInput" type="text" placeholder="Search gene or pair (e.g. ENO1 or ENO1_ENO2)" list="pairOptions" autocomplete="off"/>
-    <datalist id="pairOptions"></datalist>
+    <input id="pairInput" type="text" placeholder="Search gene or pair (e.g. ENO1 or ENO1_ENO2)" autocomplete="off"/>
     <button id="loadBtn">Search</button>
+    <div class="search-dropdown" id="searchDropdown"></div>
   </div>
   <div class="pair-chips" id="pairChips"></div>
 </div>
@@ -192,29 +199,64 @@ function renderExamples() {
   });
 }
 
+// Search index (genes + pairs) built once
+let searchEntries = [];
+
 function renderDatalist() {
-  const dl = document.getElementById('pairOptions');
-  dl.innerHTML = '';
-
-  // Collect unique gene names
+  // Build search entries for autocomplete
   const genes = new Set();
-  pairs.forEach(p => {
-    genes.add(p.geneA);
-    genes.add(p.geneB);
-  });
+  pairs.forEach(p => { genes.add(p.geneA); genes.add(p.geneB); });
+  searchEntries = [];
+  genes.forEach(g => searchEntries.push({ text: g, type: 'gene', id: g }));
+  pairs.forEach(p => searchEntries.push({ text: p.id, type: 'pair', id: p.id, extra: `${p.geneA} / ${p.geneB}` }));
 
-  // Add gene names first (for single gene search)
-  Array.from(genes).sort().forEach(gene => {
-    const opt = document.createElement('option');
-    opt.value = gene;
-    dl.appendChild(opt);
-  });
+  // Wire up autocomplete
+  const input = document.getElementById('pairInput');
+  const dropdown = document.getElementById('searchDropdown');
+  if (!input || !dropdown) return;
 
-  // Then add pair IDs
-  pairs.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    dl.appendChild(opt);
+  let activeIdx = -1;
+
+  function updateDropdown() {
+    const q = input.value.trim().toUpperCase();
+    if (q.length < 3) { dropdown.style.display = 'none'; return; }
+
+    // Score and filter matches
+    const scored = [];
+    for (const entry of searchEntries) {
+      const t = entry.text.toUpperCase();
+      if (t === q) scored.push({ ...entry, score: 100 }); // exact match
+      else if (t.startsWith(q)) scored.push({ ...entry, score: 50 });
+      else if (t.includes(q)) scored.push({ ...entry, score: 10 });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const results = scored.slice(0, 4);
+
+    dropdown.innerHTML = '';
+    activeIdx = -1;
+    if (results.length === 0) {
+      dropdown.innerHTML = '<div class="dd-empty">No matches</div>';
+    } else {
+      results.forEach((r, i) => {
+        const div = document.createElement('div');
+        div.className = 'dd-item';
+        div.dataset.idx = i;
+        div.innerHTML = `<span><strong>${r.text}</strong></span><span class="dd-type">${r.type}</span>`;
+        div.addEventListener('mousedown', (e) => { e.preventDefault(); input.value = r.id; dropdown.style.display = 'none'; loadPair(r.id); });
+        dropdown.appendChild(div);
+      });
+    }
+    dropdown.style.display = 'block';
+  }
+
+  input.addEventListener('input', updateDropdown);
+  input.addEventListener('focus', updateDropdown);
+  input.addEventListener('blur', () => { setTimeout(() => { dropdown.style.display = 'none'; }, 150); });
+  input.addEventListener('keydown', (e) => {
+    const items = dropdown.querySelectorAll('.dd-item');
+    if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); items.forEach((it, i) => it.classList.toggle('active', i === activeIdx)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); items.forEach((it, i) => it.classList.toggle('active', i === activeIdx)); }
+    else if (e.key === 'Enter' && activeIdx >= 0 && items[activeIdx]) { e.preventDefault(); const id = items[activeIdx].querySelector('strong').textContent; input.value = id; dropdown.style.display = 'none'; loadPair(id); }
   });
 }
 

@@ -13,12 +13,12 @@
   body{margin:0;background:var(--bg);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
 
   /* Top navigation bar */
-  .top-nav{position:sticky;top:0;z-index:1000;padding:10px 20px;background:#21244d;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .top-nav{position:sticky;top:0;z-index:1000;padding:10px 20px;background:#546e7a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
   .top-nav h1{margin:0;font-size:16px;font-weight:600}
   .top-nav .search-box{display:flex;gap:8px;flex:1;min-width:200px;max-width:350px}
   .top-nav .search-box input{flex:1;border:none;border-radius:6px;padding:6px 10px;font-size:13px}
-  .top-nav .search-box button{background:#4f46e5;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
-  .top-nav .search-box button:hover{background:#4338ca}
+  .top-nav .search-box button{background:#37474f;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+  .top-nav .search-box button:hover{background:#263238}
 
   header{padding:18px 24px;background:#fff9f0;border-bottom:1px solid #efe2c3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
   header .title-main{margin:0;font-size:24px;font-weight:700;color:#2f2514}
@@ -329,6 +329,28 @@
   .desc-source a{color:#735c29;text-decoration:none}
   .desc-source a:hover{text-decoration:underline}
 
+  /* Known Drugs Table */
+  .drug-table{width:100%;border-collapse:collapse;font-size:12px}
+  .drug-table th{text-align:left;padding:6px 8px;font-size:10px;color:#7a6f55;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e8e4d7;font-weight:700;background:#fdf9f1}
+  .drug-table td{padding:5px 8px;border-bottom:1px solid #f0ece0;vertical-align:middle}
+  .drug-table tr:hover{background:#fef9ee}
+  .drug-table tr.drug-shared{background:#f0f7ff}
+  .drug-table tr.drug-shared:hover{background:#e3f0ff}
+  .drug-table .drug-name{font-weight:600;color:#2f2614;cursor:pointer}
+  .drug-table .drug-name:hover{color:#1565c0;text-decoration:underline}
+  .phase-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.3px}
+  .phase-4{background:#e8f5e9;color:#2e7d32}
+  .phase-3{background:#e3f2fd;color:#1565c0}
+  .phase-2{background:#fff3e0;color:#ef6c00}
+  .phase-1{background:#fffde7;color:#f57f17}
+  .phase-0{background:#f5f5f5;color:#757575}
+  .target-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
+  .target-both{background:#e8eaf6;color:#283593;border:1px solid #c5cae9}
+  .target-single{background:#fafafa;color:#666;border:1px solid #e0e0e0}
+  .drug-phase-header{padding:8px 8px 4px;font-size:11px;font-weight:700;color:#5d4c2f;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #f0e8d8}
+  .drug-expand-btn{background:none;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;margin-top:8px}
+  .drug-expand-btn:hover{background:#f5f1e6}
+
   /* Key Findings Banner */
   .key-findings-banner{background:linear-gradient(135deg,#f8f6f0,#fff9e6);border:1px solid #e8dfc7;border-radius:10px;padding:12px 20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(51,41,16,0.06)}
   .kf-items{display:flex;justify-content:space-around;flex-wrap:wrap;gap:8px 16px}
@@ -459,6 +481,8 @@
       <li>
         <a href="#summarySection" data-section="summarySection">Pair Summary</a>
         <ul>
+          <li><a href="#pairOverviewSection" data-section="pairOverviewSection">Pair Overview</a></li>
+          <li><a href="#knownDrugsSection" data-section="knownDrugsSection">Known Drugs</a></li>
           <li><a href="#ppiSection" data-section="ppiSection">Protein Partners</a></li>
           <li><a href="#slFunctionalSection" data-section="slFunctionalSection">SL & Function</a></li>
           <li><a href="#conservationSection" data-section="conservationSection">Conservation</a></li>
@@ -509,6 +533,9 @@
       <button class="collapse-toggle" id="summaryCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="section-body" id="summaryBody">
+      <!-- Pair Overview subsection -->
+      <div id="pairOverviewSection" style="margin-bottom:22px;">
+      <h3 style="margin:0 0 14px;font-size:16px;color:#2a2620;border-bottom:1px solid #f0e8d8;padding-bottom:8px;">Pair Overview</h3>
       <div class="summary-grid">
       <div class="protein-card">
         <h3><span class="gene-symbol" id="gene1Symbol">–</span><span id="sum-essential1" class="not-essential-badge">Not Essential</span></h3>
@@ -524,10 +551,6 @@
             <button class="desc-toggle" id="gene1DescToggle" style="display:none;">Show more</button>
           </div>
           <div class="desc-source">Source: <a href="#" id="gene1DescSource" target="_blank">UniProt</a></div>
-        </div>
-        <div class="known-drugs" id="gene1Drugs" style="margin-top:6px;padding:6px 10px;background:#fafafa;border-radius:8px;font-size:12px;border:1px dashed #e8e8e8">
-          <strong>Known drugs:</strong> <span id="gene1DrugsList">None</span>
-          <div class="desc-source" style="margin-top:2px">Source: <a href="https://platform.opentargets.org/" target="_blank">Open Targets</a></div>
         </div>
       </div>
       <div class="protein-card">
@@ -545,10 +568,6 @@
           </div>
           <div class="desc-source">Source: <a href="#" id="gene2DescSource" target="_blank">UniProt</a></div>
         </div>
-        <div class="known-drugs" id="gene2Drugs" style="margin-top:6px;padding:6px 10px;background:#fafafa;border-radius:8px;font-size:12px;border:1px dashed #e8e8e8">
-          <strong>Known drugs:</strong> <span id="gene2DrugsList">None</span>
-          <div class="desc-source" style="margin-top:2px">Source: <a href="https://platform.opentargets.org/" target="_blank">Open Targets</a></div>
-        </div>
       </div>
     </div>
     <div class="pair-meta">
@@ -561,6 +580,15 @@
         <div class="meta-item"><div class="value" id="sum-shared-ppi">–</div><div class="label">Shared PPIs</div></div>
       </div>
     </div>
+      </div>
+      <!-- Known Drugs subsection -->
+      <div id="knownDrugsSection" style="margin-bottom:22px;background:#fffdfa;border-radius:12px;padding:16px;border:1px solid #f4ead4;">
+        <h3 style="margin:0 0 12px;font-size:16px;color:#2a2620;border-bottom:1px solid #f0e8d8;padding-bottom:8px;">Known Drugs</h3>
+        <div id="knownDrugsTable" style="font-size:13px;">Loading...</div>
+        <div class="desc-source" style="margin-top:8px;padding-top:6px;border-top:1px solid #f0f0f0">
+          Source: <a href="https://platform.opentargets.org/" target="_blank">Open Targets Platform</a>
+        </div>
+      </div>
     <div class="ppi-highlights" id="ppiSection">
       <div class="ppi-header">
         <div>

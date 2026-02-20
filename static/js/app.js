@@ -1730,78 +1730,139 @@ function initProteinDescriptions() {
     gene2DescEl.style.display = 'block';
   }
 
-  // Known drugs (OpenTargets)
-  const drugsA = gene1.known_drugs || [];
-  const drugsB = gene2.known_drugs || [];
-  const sharedDrugIds = new Set(drugsA.filter(a => drugsB.some(b => b.drugId === a.drugId)).map(a => a.drugId));
-  fillKnownDrugs('gene1DrugsList', drugsA, sharedDrugIds);
-  fillKnownDrugs('gene2DrugsList', drugsB, sharedDrugIds);
+  // Known drugs — now rendered in unified table section
+  initKnownDrugsSection();
 }
 
 // Track selected drug globally (by drugId)
 let _selectedDrugId = null;
 
-function fillKnownDrugs(elId, drugs, sharedDrugIds) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  if (!drugs || drugs.length === 0) {
-    el.textContent = 'None';
+function initKnownDrugsSection() {
+  const container = document.getElementById('knownDrugsTable');
+  if (!container) return;
+
+  const gene1 = SUMMARY.gene1 || {};
+  const gene2 = SUMMARY.gene2 || {};
+  const g1 = DATA.g1 || gene1.symbol || 'Gene A';
+  const g2 = DATA.g2 || gene2.symbol || 'Gene B';
+  const drugsA = gene1.known_drugs || [];
+  const drugsB = gene2.known_drugs || [];
+
+  if (drugsA.length === 0 && drugsB.length === 0) {
+    container.innerHTML = '<p style="color:#888;font-size:13px;margin:0;">No known drugs for either gene.</p>';
     return;
   }
-  el.innerHTML = '';
 
-  // Group by phase (descending), then "unknown" phase at end
-  const byPhase = {};
-  drugs.forEach(d => {
-    const p = d.phase || 0;
-    if (!byPhase[p]) byPhase[p] = [];
-    byPhase[p].push(d);
+  // Build unified drug list with target info
+  const drugMap = new Map();
+  for (const d of drugsA) {
+    drugMap.set(d.drugId, { ...d, targetsA: true, targetsB: false });
+  }
+  for (const d of drugsB) {
+    if (drugMap.has(d.drugId)) {
+      drugMap.get(d.drugId).targetsB = true;
+    } else {
+      drugMap.set(d.drugId, { ...d, targetsA: false, targetsB: true });
+    }
+  }
+  const allDrugs = [...drugMap.values()];
+
+  // Sort: shared first, then by phase desc, then name
+  allDrugs.sort((a, b) => {
+    const sharedA = a.targetsA && a.targetsB ? 1 : 0;
+    const sharedB = b.targetsA && b.targetsB ? 1 : 0;
+    if (sharedB !== sharedA) return sharedB - sharedA;
+    if ((b.phase || 0) !== (a.phase || 0)) return (b.phase || 0) - (a.phase || 0);
+    return (a.name || '').localeCompare(b.name || '');
   });
-  const phases = Object.keys(byPhase).map(Number).sort((a, b) => b - a);
 
-  phases.forEach((phase, pi) => {
-    // Phase header
-    const phaseLabel = document.createElement('div');
-    phaseLabel.style.cssText = 'font-size:10px;color:#999;margin-top:' + (pi > 0 ? '6px' : '0') + ';margin-bottom:2px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px';
-    phaseLabel.textContent = phase > 0 ? `Phase ${phase}` : 'Phase unknown';
-    el.append(phaseLabel);
+  const MAX_VISIBLE = 8;
+  const needsExpand = allDrugs.length > MAX_VISIBLE;
 
-    // Drugs in this phase
-    const line = document.createElement('div');
-    line.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px';
-    byPhase[phase].forEach(d => {
-      const name = d.name || d.drugId || '?';
-      const moa = d.moa ? ` – ${d.moa}` : '';
-      const isShared = sharedDrugIds && sharedDrugIds.has(d.drugId);
-      const span = document.createElement('span');
-      span.className = 'known-drug-chip';
-      span.dataset.drugId = d.drugId || '';
-      span.style.cssText = 'cursor:pointer;padding:2px 8px;border-radius:4px;transition:all 0.15s;border:1.5px solid transparent;display:inline-flex;align-items:center;gap:3px';
-      span.innerHTML = `<strong>${name}</strong>${moa}${isShared ? '<span style="color:#1565c0;font-weight:700;margin-left:2px" title="Also targets the other gene">★</span>' : ''}`;
-      span.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        toggleKnownDrug(d.drugId);
+  // Phase pill helper
+  function phasePill(phase) {
+    const p = phase || 0;
+    const label = p > 0 ? `Phase ${p}` : 'Unknown';
+    return `<span class="phase-pill phase-${p}">${label}</span>`;
+  }
+
+  // Target pill
+  function targetPill(d) {
+    const isShared = d.targetsA && d.targetsB;
+    if (isShared) return `<span class="target-pill target-both">Both</span>`;
+    return `<span class="target-pill target-single">${d.targetsA ? g1 : g2}</span>`;
+  }
+
+  // Build table
+  let html = '<table class="drug-table"><thead><tr>';
+  html += '<th>Drug</th><th>Phase</th><th>Type</th><th>Targets</th><th>Mechanism</th>';
+  html += '</tr></thead><tbody>';
+
+  allDrugs.forEach((d, i) => {
+    const isShared = d.targetsA && d.targetsB;
+    const hidden = needsExpand && i >= MAX_VISIBLE ? ' style="display:none" data-drug-extra="1"' : '';
+    const rowClass = isShared ? 'drug-shared' : '';
+    const name = d.name || d.drugId || '?';
+    const moa = d.moa || '';
+    const moaShort = moa.length > 50 ? moa.substring(0, 47) + '...' : moa;
+    html += `<tr class="${rowClass}" data-drug-id="${d.drugId || ''}"${hidden}>`;
+    html += `<td class="drug-name">${name}</td>`;
+    html += `<td>${phasePill(d.phase)}</td>`;
+    html += `<td style="font-size:11px;color:#666">${d.type || ''}</td>`;
+    html += `<td>${targetPill(d)}</td>`;
+    html += `<td style="font-size:11px;color:#777" title="${moa}">${moaShort}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  if (needsExpand) {
+    html += `<button class="drug-expand-btn" id="drugExpandBtn">Show ${allDrugs.length - MAX_VISIBLE} more drugs</button>`;
+  }
+
+  // Summary line
+  const nShared = allDrugs.filter(d => d.targetsA && d.targetsB).length;
+  const nTotal = allDrugs.length;
+  html = `<div style="font-size:12px;color:#666;margin-bottom:8px;">${nTotal} drugs total (${drugsA.length} for ${g1}, ${drugsB.length} for ${g2}${nShared > 0 ? `, <strong style="color:#283593">${nShared} shared</strong>` : ''})</div>` + html;
+
+  container.innerHTML = html;
+
+  // Expand button
+  if (needsExpand) {
+    const btn = document.getElementById('drugExpandBtn');
+    if (btn) {
+      let expanded = false;
+      btn.addEventListener('click', () => {
+        expanded = !expanded;
+        container.querySelectorAll('[data-drug-extra]').forEach(tr => {
+          tr.style.display = expanded ? '' : 'none';
+        });
+        btn.textContent = expanded ? 'Show fewer' : `Show ${allDrugs.length - MAX_VISIBLE} more drugs`;
       });
-      line.append(span);
+    }
+  }
+
+  // Click handler for drug rows — highlight matching drugs
+  container.querySelectorAll('.drug-name').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const tr = cell.closest('tr');
+      const drugId = tr?.dataset.drugId;
+      if (drugId) toggleKnownDrug(drugId);
     });
-    el.append(line);
   });
 }
 
 function toggleKnownDrug(drugId) {
   if (!drugId) return;
   _selectedDrugId = (_selectedDrugId === drugId) ? null : drugId;
-  document.querySelectorAll('.known-drug-chip').forEach(chip => {
-    if (chip.dataset.drugId === _selectedDrugId) {
-      chip.style.background = '#bbdefb';
-      chip.style.color = '#0d47a1';
-      chip.style.border = '1.5px solid #1976d2';
-      chip.style.fontWeight = '600';
+  // Highlight in drug table
+  document.querySelectorAll('.drug-table tr[data-drug-id]').forEach(tr => {
+    if (tr.dataset.drugId === _selectedDrugId) {
+      tr.style.background = '#bbdefb';
+      tr.style.outline = '2px solid #1976d2';
+      tr.style.outlineOffset = '-1px';
     } else {
-      chip.style.background = '';
-      chip.style.color = '';
-      chip.style.border = '1.5px solid transparent';
-      chip.style.fontWeight = '';
+      tr.style.background = '';
+      tr.style.outline = '';
     }
   });
 }
@@ -2585,6 +2646,32 @@ function drawPlmaAlignment() {
   const nRows = displayRows.length;
   const nBlocks = blocks.length;
 
+  // --- Merge consecutive blocks with same presence+category (simplified view) ---
+  const isSimplified = !showAllParalogs && humanParalogs.length > 2;
+  function blockFingerprint(bi) {
+    const cat = blocks[bi].category;
+    const bits = displayRows.map(row =>
+      row.isGroup
+        ? row.members.map(m => blocks[bi].positions[m.num] ? '1' : '0').join('')
+        : (row.members.some(m => blocks[bi].positions[m.num]) ? '1' : '0')
+    ).join(',');
+    return cat + ':' + bits;
+  }
+  const mergedGroups = [];
+  if (isSimplified && nBlocks > 0) {
+    let i = 0;
+    while (i < nBlocks) {
+      const fp = blockFingerprint(i);
+      const grp = [i];
+      while (i + 1 < nBlocks && blockFingerprint(i + 1) === fp) { i++; grp.push(i); }
+      mergedGroups.push(grp);
+      i++;
+    }
+  } else {
+    for (let i = 0; i < nBlocks; i++) mergedGroups.push([i]);
+  }
+  const nMerged = mergedGroups.length;
+
   // Dynamic label width
   let labelWidth = 90;
   for (const row of displayRows) {
@@ -2607,10 +2694,11 @@ function drawPlmaAlignment() {
     for (const pos of Object.values(b.positions)) mx = Math.max(mx, pos.length || 0);
     return mx;
   });
-  const totalBlockAA = blockMaxLen.reduce((a, b) => a + b, 0) || 1;
+  const groupMaxLen = mergedGroups.map(g => g.reduce((s, bi) => s + blockMaxLen[bi], 0));
+  const totalBlockAA = groupMaxLen.reduce((a, b) => a + b, 0) || 1;
 
-  const nGaps = Math.max(0, nBlocks - 1);
-  const gapWidthBase = nBlocks <= 10 ? 14 : (nBlocks <= 50 ? 8 : 4);
+  const nGaps = Math.max(0, nMerged - 1);
+  const gapWidthBase = nMerged <= 10 ? 14 : (nMerged <= 50 ? 8 : 4);
   const minPxPerAA = 0.6;
   const minBlockArea = totalBlockAA * minPxPerAA;
   const minNeededWidth = labelWidth + padRight + minBlockArea + nGaps * gapWidthBase;
@@ -2622,15 +2710,15 @@ function drawPlmaAlignment() {
   const gapWidth = nGaps > 0 ? (trackAreaWidth - blockAreaWidth) / nGaps : 0;
   const minBlockPx = 3;
 
-  const blockColX = [];
-  const blockColW = [];
+  const groupColX = [];
+  const groupColW = [];
   let curX = labelWidth;
-  for (let bi = 0; bi < nBlocks; bi++) {
-    blockColX.push(curX);
-    const w = Math.max(minBlockPx, (blockMaxLen[bi] / totalBlockAA) * blockAreaWidth);
-    blockColW.push(w);
+  for (let gi = 0; gi < nMerged; gi++) {
+    groupColX.push(curX);
+    const w = Math.max(minBlockPx, (groupMaxLen[gi] / totalBlockAA) * blockAreaWidth);
+    groupColW.push(w);
     curX += w;
-    if (bi < nBlocks - 1) curX += gapWidth;
+    if (gi < nMerged - 1) curX += gapWidth;
   }
 
   // Canvas height
@@ -2677,20 +2765,23 @@ function drawPlmaAlignment() {
     family_only:        'Other family only',
   };
 
-  // Build per-row block indices + coverage
-  const rowBlockIndices = [];
-  const rowBlockCoverage = [];
+  // Build per-row merged group indices + coverage
+  const rowGroupIndices = [];
+  const rowGroupCoverage = [];
   for (const row of displayRows) {
-    const presence = new Map();
-    for (let bi = 0; bi < blocks.length; bi++) {
-      let count = 0;
-      for (const mem of row.members) { if (blocks[bi].positions[mem.num]) count++; }
-      if (count > 0) presence.set(bi, count);
-    }
-    rowBlockIndices.push([...presence.keys()].sort((a, b) => a - b));
+    const indices = [];
     const cov = new Map();
-    for (const [bi, count] of presence) cov.set(bi, count / row.members.length);
-    rowBlockCoverage.push(cov);
+    for (let gi = 0; gi < nMerged; gi++) {
+      const firstBi = mergedGroups[gi][0];
+      let memCount = 0;
+      for (const mem of row.members) { if (blocks[firstBi].positions[mem.num]) memCount++; }
+      if (memCount > 0) {
+        indices.push(gi);
+        cov.set(gi, memCount / row.members.length);
+      }
+    }
+    rowGroupIndices.push(indices);
+    rowGroupCoverage.push(cov);
   }
 
   // Draw tracks
@@ -2700,8 +2791,8 @@ function drawPlmaAlignment() {
   for (let ri = 0; ri < displayRows.length; ri++) {
     const row = displayRows[ri];
     const th = row.isPair ? pairTrackHeight : trackHeight;
-    const myBlockIndices = rowBlockIndices[ri];
-    const myCoverage = rowBlockCoverage[ri];
+    const myGroupIndices = rowGroupIndices[ri];
+    const myCoverage = rowGroupCoverage[ri];
 
     // Label
     ctx.font = row.font;
@@ -2710,25 +2801,28 @@ function drawPlmaAlignment() {
     ctx.textBaseline = 'middle';
     ctx.fillText(row.label, labelWidth - 8, yPos + th / 2);
 
-    // Gap connectors
+    // Gap connectors (between merged groups only)
     const cy = yPos + th / 2;
     ctx.setLineDash([3, 3]);
     ctx.strokeStyle = row.isPair ? '#c0b69e' : '#d5d5d5';
     ctx.lineWidth = row.isPair ? 1.2 : 0.8;
-    for (let k = 0; k < myBlockIndices.length - 1; k++) {
-      const x1 = blockColX[myBlockIndices[k]] + blockColW[myBlockIndices[k]];
-      const x2 = blockColX[myBlockIndices[k + 1]];
+    for (let k = 0; k < myGroupIndices.length - 1; k++) {
+      const gi1 = myGroupIndices[k];
+      const gi2 = myGroupIndices[k + 1];
+      const x1 = groupColX[gi1] + groupColW[gi1];
+      const x2 = groupColX[gi2];
       if (x2 > x1 + 1) { ctx.beginPath(); ctx.moveTo(x1, cy); ctx.lineTo(x2, cy); ctx.stroke(); }
     }
     ctx.setLineDash([]);
 
-    // Draw blocks
-    for (const bi of myBlockIndices) {
-      const block = blocks[bi];
-      const cat = block.category;
-      const bx = blockColX[bi];
-      const bw = blockColW[bi];
-      const coverage = myCoverage.get(bi) || 1;
+    // Draw merged groups
+    for (const gi of myGroupIndices) {
+      const group = mergedGroups[gi];
+      const cat = blocks[group[0]].category;
+      const bx = groupColX[gi];
+      const bw = groupColW[gi];
+      const coverage = myCoverage.get(gi) || 1;
+      const firstBi = group[0];
 
       if (row.isGroup && coverage < 1 && row.members.length <= 4) {
         // === Branching mode: split into lanes ===
@@ -2737,7 +2831,7 @@ function drawPlmaAlignment() {
         for (let li = 0; li < nMem; li++) {
           const mem = row.members[li];
           const ly = yPos + 1 + li * laneH;
-          if (block.positions[mem.num]) {
+          if (blocks[firstBi].positions[mem.num]) {
             ctx.globalAlpha = 1.0;
             ctx.fillStyle = catColors[cat] || '#ccc';
             plmaRoundRect(ctx, bx, ly, bw, laneH - 0.5, 1);
@@ -2746,7 +2840,6 @@ function drawPlmaAlignment() {
             ctx.lineWidth = 0.6;
             ctx.stroke();
           } else {
-            // Empty lane — light grey to show absence
             ctx.globalAlpha = 0.15;
             ctx.fillStyle = '#888';
             plmaRoundRect(ctx, bx, ly, bw, laneH - 0.5, 1);
@@ -2778,39 +2871,52 @@ function drawPlmaAlignment() {
       }
 
       // Tooltip
+      const isMerged = group.length > 1;
       let tooltipHtml;
       if (row.isGroup) {
         const memberNames = row.members.map(mkLabel);
-        const present = row.members.filter(m => block.positions[m.num]);
-        const absent = row.members.filter(m => !block.positions[m.num]);
+        const present = row.members.filter(m => blocks[firstBi].positions[m.num]);
+        const absent = row.members.filter(m => !blocks[firstBi].positions[m.num]);
         const pct = Math.round(coverage * 100);
-        tooltipHtml = `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
+        const blockLabel = isMerged
+          ? `<strong>${group.length} merged blocks</strong> (${group.map(bi => blocks[bi].id).join(', ')})`
+          : `<strong>${blocks[firstBi].id}</strong>`;
+        tooltipHtml = `${blockLabel} · ${catLabels[cat] || cat}<br>`
           + `<span style="color:#2563eb">Group: ${memberNames.join(', ')}</span><br>`
           + `${pct}% coverage (${present.length}/${row.members.length})<br>`;
         if (absent.length > 0 && absent.length <= 5) {
           tooltipHtml += `<span style="color:#dc2626">Missing: ${absent.map(mkLabel).join(', ')}</span><br>`;
         }
         if (present.length > 0) {
-          const fp = block.positions[present[0].num];
-          tooltipHtml += `<span style="color:#888">pos ${fp.start}–${fp.end} (${fp.length} aa)</span>`;
+          const totalAA = group.reduce((s, bi) => s + (blocks[bi].positions[present[0].num]?.length || 0), 0);
+          tooltipHtml += `<span style="color:#888">${totalAA} aa total</span>`;
         }
       } else {
         const seq = row.members[0];
-        const pos = block.positions[seq.num];
-        const aaSeq = pos.seq || '';
-        let aaHtml = '';
-        if (aaSeq.length > 0) {
-          const wrapped = aaSeq.match(/.{1,40}/g) || [aaSeq];
-          aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
+        if (isMerged) {
+          const totalAA = group.reduce((s, bi) => s + (blocks[bi].positions[seq.num]?.length || 0), 0);
+          const firstPos = blocks[group[0]].positions[seq.num];
+          const lastPos = blocks[group[group.length - 1]].positions[seq.num];
+          tooltipHtml = `<strong>${group.length} merged blocks</strong> (${group.map(bi => blocks[bi].id).join(', ')}) · ${catLabels[cat] || cat}<br>`
+            + `${row.label}: pos ${firstPos?.start || '?'}–${lastPos?.end || '?'} (${totalAA} aa)<br>`
+            + `<span style="color:#888">${blocks[firstBi].n_human || blocks[firstBi].n_seqs} of ${nHumanAll} human paralogs</span>`;
+        } else {
+          const pos = blocks[firstBi].positions[seq.num];
+          const aaSeq = pos.seq || '';
+          let aaHtml = '';
+          if (aaSeq.length > 0) {
+            const wrapped = aaSeq.match(/.{1,40}/g) || [aaSeq];
+            aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
+          }
+          const nHuman = blocks[firstBi].n_human || blocks[firstBi].n_seqs;
+          const nTotal = blocks[firstBi].n_seqs;
+          const memberInfo = nTotal > nHuman
+            ? `${nHuman} of ${nHumanAll} human paralogs (+${nTotal - nHuman} orthologs)`
+            : `${nHuman} of ${nHumanAll} human paralogs`;
+          tooltipHtml = `<strong>${blocks[firstBi].id}</strong> · ${catLabels[cat] || cat}<br>`
+            + `${row.label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
+            + `<span style="color:#888">${memberInfo}</span>` + aaHtml;
         }
-        const nHuman = block.n_human || block.n_seqs;
-        const nTotal = block.n_seqs;
-        const memberInfo = nTotal > nHuman
-          ? `${nHuman} of ${nHumanAll} human paralogs (+${nTotal - nHuman} orthologs)`
-          : `${nHuman} of ${nHumanAll} human paralogs`;
-        tooltipHtml = `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
-          + `${row.label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
-          + `<span style="color:#888">${memberInfo}</span>` + aaHtml;
       }
       plmaHitRegions.push({ x: bx, y: yPos, w: bw, h: th, tooltip: tooltipHtml });
     }
@@ -2867,6 +2973,7 @@ function drawPlmaAlignment() {
     if (s.b_with_family) parts.push(`${s.b_with_family} aa ${geneB}+fam`);
     if (s.family_only) parts.push(`${s.family_only} aa family only`);
 
+    const nMergedCount = isSimplified ? mergedGroups.filter(g => g.length > 1).length : 0;
     let seqDesc;
     if (!showAllParalogs && humanParalogs.length > 2) {
       const nGroups = displayRows.filter(r => r.isGroup).length;
@@ -2880,7 +2987,9 @@ function drawPlmaAlignment() {
     } else {
       seqDesc = nOrthoShown > 0 ? `${nHuman} human + ${nOrthoShown} orthologs` : `${nHuman} family members`;
     }
-    summaryEl.textContent = `${blocks.length} conserved blocks across ${seqDesc}` +
+    let blockDesc = `${blocks.length} conserved blocks`;
+    if (nMergedCount > 0) blockDesc += ` (${nMergedCount} merged into ${nMerged} visual groups)`;
+    summaryEl.textContent = `${blockDesc} across ${seqDesc}` +
       (parts.length ? ` · ${parts.join(' · ')}` : '');
   }
 }
