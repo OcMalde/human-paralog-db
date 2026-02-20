@@ -954,7 +954,12 @@
       <button class="collapse-toggle" id="familyFeaturesCollapseBtn" aria-expanded="true">Collapse</button>
     </div>
     <div class="section-body" id="familyFeaturesBody">
-      <p class="small" style="color:#666;margin-bottom:12px;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <p class="small" style="color:#666;margin:0;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#666;white-space:nowrap;cursor:pointer;margin-left:16px;">
+          <input type="checkbox" id="plmaShowOrthologs"> Show orthologs
+        </label>
+      </div>
       <div id="plmaScrollWrapper" style="position:relative;overflow:auto;max-height:600px;max-width:100%;border:1px solid #eee;border-radius:10px;">
         <div id="plmaCanvasInner" style="display:inline-block;">
           <canvas id="plmaAlignCanvas" width="900" height="400" style="display:block;"></canvas>

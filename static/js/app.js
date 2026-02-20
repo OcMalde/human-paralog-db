@@ -2392,6 +2392,12 @@ function initFamilyFeaturesSection() {
 
   drawPlmaAlignment();
 
+  // Ortholog toggle
+  const orthoCheckbox = document.getElementById('plmaShowOrthologs');
+  if (orthoCheckbox) {
+    orthoCheckbox.addEventListener('change', () => { drawPlmaAlignment(); });
+  }
+
   // Tooltip handling
   const tooltip = document.getElementById('plmaTooltip');
   if (tooltip) {
@@ -2439,14 +2445,17 @@ function drawPlmaAlignment() {
   const geneA = plma.gene_a;
   const geneB = plma.gene_b;
 
-  // Reorder: gene A first, gene B second, then others
+  // Reorder: gene A first, gene B second, then others (filter orthologs unless checkbox is checked)
+  const showOrthologs = document.getElementById('plmaShowOrthologs')?.checked || false;
   const orderedSeqs = [];
   const seqA = sequences.find(s => s.num === geneASeq);
   const seqB = sequences.find(s => s.num === geneBSeq);
   if (seqA) orderedSeqs.push(seqA);
   if (seqB) orderedSeqs.push(seqB);
   for (const s of sequences) {
-    if (s.num !== geneASeq && s.num !== geneBSeq) orderedSeqs.push(s);
+    if (s.num === geneASeq || s.num === geneBSeq) continue;
+    if (!showOrthologs && s.is_human === false) continue;
+    orderedSeqs.push(s);
   }
 
   const nSeqs = orderedSeqs.length;
@@ -2614,11 +2623,18 @@ function drawPlmaAlignment() {
         aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
       }
 
+      const nHuman = block.n_human || block.n_seqs;
+      const nTotal = block.n_seqs;
+      const nHumanAll = sequences.filter(s => s.is_human !== false).length;
+      const memberInfo = nTotal > nHuman
+        ? `${nHuman} of ${nHumanAll} human paralogs (+${nTotal - nHuman} orthologs)`
+        : `${nHuman} of ${nHumanAll} human paralogs`;
+
       plmaHitRegions.push({
         x: bx, y: yPos, w: bw, h: th,
         tooltip: `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
           + `${label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
-          + `<span style="color:#888">${block.n_seqs} of ${nSeqs} family members</span>`
+          + `<span style="color:#888">${memberInfo}</span>`
           + aaHtml,
       });
     }
