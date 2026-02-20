@@ -2392,9 +2392,15 @@ function initFamilyFeaturesSection() {
 
   drawPlmaAlignment();
 
-  // Ortholog toggle
+  // Ortholog toggle — grey out if no orthologs present
   const orthoCheckbox = document.getElementById('plmaShowOrthologs');
   if (orthoCheckbox) {
+    const hasOrthologs = (PLMA_DATA.sequences || []).some(s => s.is_human === false);
+    if (!hasOrthologs) {
+      orthoCheckbox.disabled = true;
+      orthoCheckbox.parentElement.style.opacity = '0.4';
+      orthoCheckbox.parentElement.title = 'No orthologs in this alignment';
+    }
     orthoCheckbox.addEventListener('change', () => { drawPlmaAlignment(); });
   }
 
@@ -2531,28 +2537,28 @@ function drawPlmaAlignment() {
     specific_a:         '#EF5350',
     specific_b:         '#AB47BC',
     pair_exclusive:     '#26A69A',
-    a_with_family:      '#FFA726',
+    a_with_family:      '#FF7043',
     b_with_family:      '#7E57C2',
-    shared_with_family: '#FFCA28',
+    shared_with_family: '#78909C',
     family_only:        '#BDBDBD',
   };
   const catBorders = {
     specific_a:         '#C62828',
     specific_b:         '#6A1B9A',
     pair_exclusive:     '#00796B',
-    a_with_family:      '#E65100',
+    a_with_family:      '#BF360C',
     b_with_family:      '#4527A0',
-    shared_with_family: '#F9A825',
+    shared_with_family: '#546E7A',
     family_only:        '#9E9E9E',
   };
   const catLabels = {
-    shared_with_family: 'Shared (pair + family)',
-    pair_exclusive:     'Pair exclusive',
-    specific_a:         `${geneA} specific`,
-    specific_b:         `${geneB} specific`,
-    a_with_family:      `${geneA} + family (no ${geneB})`,
-    b_with_family:      `${geneB} + family (no ${geneA})`,
-    family_only:        'Other family members only',
+    pair_exclusive:     'Both paralogs only',
+    shared_with_family: 'Both + other family',
+    specific_a:         `${geneA} only`,
+    specific_b:         `${geneB} only`,
+    a_with_family:      `${geneA} + family (not ${geneB})`,
+    b_with_family:      `${geneB} + family (not ${geneA})`,
+    family_only:        'Other family only',
   };
 
   // For each sequence, build a list of which block indices it participates in
@@ -2610,8 +2616,8 @@ function drawPlmaAlignment() {
       ctx.fillStyle = catColors[cat] || '#ccc';
       plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
       ctx.fill();
-      ctx.strokeStyle = catBorders[cat] || '#999';
-      ctx.lineWidth = isPair ? 1.2 : 0.8;
+      ctx.strokeStyle = isPair ? '#222' : (catBorders[cat] || '#999');
+      ctx.lineWidth = isPair ? 1.6 : 0.8;
       ctx.stroke();
 
       // AA sequence for tooltip (wrap long sequences)
@@ -5151,16 +5157,16 @@ function buildSeq(){
   plmaARow.labelCell.appendChild(plmaToggleA);
 
   const plmaSharedA = document.createElement('nightingale-track');
-  const psARow = addRow(tbl, 'Shared', plmaSharedA, 10);
+  const psARow = addRow(tbl, 'Both + family', plmaSharedA, 10);
   psARow.row.style.display = 'none'; plmaSubRowsA.push(psARow.row); trackRefs['plmaSharedA'] = plmaSharedA;
   const plmaPairA = document.createElement('nightingale-track');
-  const ppARow = addRow(tbl, 'Pair excl.', plmaPairA, 10);
+  const ppARow = addRow(tbl, 'Both only', plmaPairA, 10);
   ppARow.row.style.display = 'none'; plmaSubRowsA.push(ppARow.row); trackRefs['plmaPairA'] = plmaPairA;
   const plmaSpecA = document.createElement('nightingale-track');
-  const pspARow = addRow(tbl, 'Specific', plmaSpecA, 10);
+  const pspARow = addRow(tbl, DATA.g1+' only', plmaSpecA, 10);
   pspARow.row.style.display = 'none'; plmaSubRowsA.push(pspARow.row); trackRefs['plmaSpecA'] = plmaSpecA;
   const plmaFamA = document.createElement('nightingale-track');
-  const pfARow = addRow(tbl, '+Family', plmaFamA, 10);
+  const pfARow = addRow(tbl, DATA.g1+' + family', plmaFamA, 10);
   pfARow.row.style.display = 'none'; plmaSubRowsA.push(pfARow.row); trackRefs['plmaFamA'] = plmaFamA;
 
   plmaToggleA.addEventListener('click', () => {
@@ -5178,16 +5184,16 @@ function buildSeq(){
   plmaBRow.labelCell.appendChild(plmaToggleB);
 
   const plmaSharedB = document.createElement('nightingale-track');
-  const psBRow = addRow(tbl, 'Shared', plmaSharedB, 10);
+  const psBRow = addRow(tbl, 'Both + family', plmaSharedB, 10);
   psBRow.row.style.display = 'none'; plmaSubRowsB.push(psBRow.row); trackRefs['plmaSharedB'] = plmaSharedB;
   const plmaPairB = document.createElement('nightingale-track');
-  const ppBRow = addRow(tbl, 'Pair excl.', plmaPairB, 10);
+  const ppBRow = addRow(tbl, 'Both only', plmaPairB, 10);
   ppBRow.row.style.display = 'none'; plmaSubRowsB.push(ppBRow.row); trackRefs['plmaPairB'] = plmaPairB;
   const plmaSpecB = document.createElement('nightingale-track');
-  const pspBRow = addRow(tbl, 'Specific', plmaSpecB, 10);
+  const pspBRow = addRow(tbl, DATA.g2+' only', plmaSpecB, 10);
   pspBRow.row.style.display = 'none'; plmaSubRowsB.push(pspBRow.row); trackRefs['plmaSpecB'] = plmaSpecB;
   const plmaFamB = document.createElement('nightingale-track');
-  const pfBRow = addRow(tbl, '+Family', plmaFamB, 10);
+  const pfBRow = addRow(tbl, DATA.g2+' + family', plmaFamB, 10);
   pfBRow.row.style.display = 'none'; plmaSubRowsB.push(pfBRow.row); trackRefs['plmaFamB'] = plmaFamB;
 
   plmaToggleB.addEventListener('click', () => {
@@ -5712,13 +5718,13 @@ function buildCavityOverview(rects, alnLen) {
 
 // PLMA category colors: vivid for key categories, muted for background
 const PLMA_CAT_COLORS = {
-  specific_a:         '#EF5350',  // vivid red
-  specific_b:         '#AB47BC',  // vivid purple
-  pair_exclusive:     '#26A69A',  // vivid teal
-  a_with_family:      '#FFA726',  // vivid orange
-  b_with_family:      '#7E57C2',  // vivid deep purple
-  shared_with_family: '#FFCA28',  // warm amber
-  family_only:        '#BDBDBD',  // gray
+  specific_a:         '#EF5350',  // red — gene A only
+  specific_b:         '#AB47BC',  // purple — gene B only
+  pair_exclusive:     '#26A69A',  // teal — both paralogs only
+  a_with_family:      '#FF7043',  // deep orange — gene A + family
+  b_with_family:      '#7E57C2',  // deep purple — gene B + family
+  shared_with_family: '#78909C',  // blue-grey — both + family
+  family_only:        '#BDBDBD',  // gray — other family only
 };
 // Priority for overview: gene-specific > gene+family > pair > shared > family-only
 const PLMA_CAT_PRI = { specific_a:5, specific_b:5, a_with_family:4, b_with_family:4, pair_exclusive:3, shared_with_family:2, family_only:1 };
