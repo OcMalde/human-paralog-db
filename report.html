@@ -956,9 +956,14 @@
     <div class="section-body" id="familyFeaturesBody">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <p class="small" style="color:#666;margin:0;">Conserved blocks from the Protein-Level Multiple Alignment of the paralog family, colored by conservation pattern.</p>
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#666;white-space:nowrap;cursor:pointer;margin-left:16px;">
-          <input type="checkbox" id="plmaShowOrthologs"> Show orthologs
-        </label>
+        <div style="display:flex;gap:16px;align-items:center;margin-left:16px;">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#666;white-space:nowrap;cursor:pointer;">
+            <input type="checkbox" id="plmaShowAllParalogs"> Show all paralogs
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#666;white-space:nowrap;cursor:pointer;">
+            <input type="checkbox" id="plmaShowOrthologs"> Show orthologs
+          </label>
+        </div>
       </div>
       <div id="plmaScrollWrapper" style="position:relative;overflow:auto;max-height:600px;max-width:100%;border:1px solid #eee;border-radius:10px;">
         <div id="plmaCanvasInner" style="display:inline-block;">

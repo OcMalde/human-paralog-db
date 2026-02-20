@@ -2392,6 +2392,18 @@ function initFamilyFeaturesSection() {
 
   drawPlmaAlignment();
 
+  // "Show all paralogs" toggle — disable if ≤ 2 human members
+  const allParalogsCheckbox = document.getElementById('plmaShowAllParalogs');
+  if (allParalogsCheckbox) {
+    const nHumanTotal = (PLMA_DATA.sequences || []).filter(s => s.is_human !== false).length;
+    if (nHumanTotal <= 2) {
+      allParalogsCheckbox.disabled = true;
+      allParalogsCheckbox.parentElement.style.opacity = '0.4';
+      allParalogsCheckbox.parentElement.title = 'Only 2 family members';
+    }
+    allParalogsCheckbox.addEventListener('change', () => { drawPlmaAlignment(); });
+  }
+
   // Ortholog toggle — grey out if no orthologs present
   const orthoCheckbox = document.getElementById('plmaShowOrthologs');
   if (orthoCheckbox) {
@@ -2433,6 +2445,60 @@ function initFamilyFeaturesSection() {
   }
 }
 
+// --- PLMA grouping helpers ---
+
+function plmaJaccard(setA, setB) {
+  let inter = 0;
+  for (const v of setA) { if (setB.has(v)) inter++; }
+  const union = setA.size + setB.size - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function buildSimplifiedParalogRows(humanSeqs, blocks, geneASeq, geneBSeq) {
+  // Build block-presence sets
+  const blockSets = new Map();
+  for (const seq of humanSeqs) {
+    const myBlocks = new Set();
+    for (let bi = 0; bi < blocks.length; bi++) {
+      if (blocks[bi].positions[seq.num]) myBlocks.add(bi);
+    }
+    blockSets.set(seq.num, myBlocks);
+  }
+  // Pair blocks
+  const pairBlocks = new Set();
+  for (let bi = 0; bi < blocks.length; bi++) {
+    if (blocks[bi].positions[geneASeq] || blocks[bi].positions[geneBSeq]) pairBlocks.add(bi);
+  }
+  // Filter: keep paralogs sharing ≥ 1 block with pair
+  const relevant = humanSeqs.filter(seq => {
+    const myBlocks = blockSets.get(seq.num);
+    for (const bi of myBlocks) { if (pairBlocks.has(bi)) return true; }
+    return false;
+  });
+  // Group by Jaccard ≥ 0.7 (complete-linkage greedy)
+  const THRESHOLD = 0.7;
+  const assigned = new Set();
+  const groups = [];
+  for (const seq of relevant) {
+    if (assigned.has(seq.num)) continue;
+    const group = [seq];
+    assigned.add(seq.num);
+    for (const cand of relevant) {
+      if (assigned.has(cand.num)) continue;
+      let allOk = true;
+      const candSet = blockSets.get(cand.num);
+      for (const mem of group) {
+        if (plmaJaccard(candSet, blockSets.get(mem.num)) < THRESHOLD) { allOk = false; break; }
+      }
+      if (allOk) { group.push(cand); assigned.add(cand.num); }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
+// --- Main PLMA drawing ---
+
 function drawPlmaAlignment() {
   const canvas = document.getElementById('plmaAlignCanvas');
   const legendEl = document.getElementById('plmaLegend');
@@ -2451,36 +2517,91 @@ function drawPlmaAlignment() {
   const geneA = plma.gene_a;
   const geneB = plma.gene_b;
 
-  // Reorder: gene A first, gene B second, then others (filter orthologs unless checkbox is checked)
   const showOrthologs = document.getElementById('plmaShowOrthologs')?.checked || false;
-  const orderedSeqs = [];
+  const showAllParalogs = document.getElementById('plmaShowAllParalogs')?.checked || false;
+
   const seqA = sequences.find(s => s.num === geneASeq);
   const seqB = sequences.find(s => s.num === geneBSeq);
-  if (seqA) orderedSeqs.push(seqA);
-  if (seqB) orderedSeqs.push(seqB);
+  const humanParalogs = [];
+  const orthologs = [];
   for (const s of sequences) {
     if (s.num === geneASeq || s.num === geneBSeq) continue;
-    if (!showOrthologs && s.is_human === false) continue;
-    orderedSeqs.push(s);
+    if (s.is_human === false) orthologs.push(s);
+    else humanParalogs.push(s);
   }
 
-  const nSeqs = orderedSeqs.length;
+  // Build displayRows
+  const displayRows = [];
+  const mkLabel = (s) => s.gene || s.uniprot || `Seq ${s.num}`;
+
+  if (seqA) displayRows.push({
+    label: mkLabel(seqA), labelColor: '#92400e',
+    isPair: true, isPairA: true, isPairB: false, isGroup: false,
+    members: [seqA], seqNums: new Set([seqA.num]),
+    font: 'bold 12px -apple-system, sans-serif',
+  });
+  if (seqB) displayRows.push({
+    label: mkLabel(seqB), labelColor: '#5b21b6',
+    isPair: true, isPairA: false, isPairB: true, isGroup: false,
+    members: [seqB], seqNums: new Set([seqB.num]),
+    font: 'bold 12px -apple-system, sans-serif',
+  });
+
+  if (showAllParalogs || humanParalogs.length <= 2) {
+    for (const s of humanParalogs) {
+      displayRows.push({
+        label: mkLabel(s), labelColor: '#666',
+        isPair: false, isPairA: false, isPairB: false, isGroup: false,
+        members: [s], seqNums: new Set([s.num]),
+        font: '11px -apple-system, sans-serif',
+      });
+    }
+  } else {
+    const groups = buildSimplifiedParalogRows(humanParalogs, blocks, geneASeq, geneBSeq);
+    for (const group of groups) {
+      const names = group.map(mkLabel);
+      const label = names.length === 1 ? names[0] : names.length <= 3 ? names.join(', ') : `${names[0]} +${names.length - 1}`;
+      displayRows.push({
+        label, labelColor: group.length > 1 ? '#2563eb' : '#666',
+        isPair: false, isPairA: false, isPairB: false,
+        isGroup: group.length > 1,
+        members: group, seqNums: new Set(group.map(s => s.num)),
+        font: '11px -apple-system, sans-serif',
+      });
+    }
+  }
+
+  if (showOrthologs) {
+    for (const s of orthologs) {
+      displayRows.push({
+        label: mkLabel(s), labelColor: '#999',
+        isPair: false, isPairA: false, isPairB: false, isGroup: false,
+        members: [s], seqNums: new Set([s.num]),
+        font: '10px -apple-system, sans-serif',
+      });
+    }
+  }
+
+  const nRows = displayRows.length;
   const nBlocks = blocks.length;
 
-  // === Column-based layout ===
-  // Each block gets a column proportional to its max length.
-  // Between blocks: a gap column with dashed connectors.
-  const labelWidth = 90;
+  // Dynamic label width
+  let labelWidth = 90;
+  for (const row of displayRows) {
+    ctx.font = row.font;
+    const w = ctx.measureText(row.label).width;
+    if (w + 16 > labelWidth) labelWidth = Math.min(200, Math.ceil(w + 16));
+  }
+
   const padRight = 16;
   const padTop = 20;
-  const trackHeight = nSeqs <= 6 ? 22 : (nSeqs <= 15 ? 14 : 10);
-  const trackGap = nSeqs <= 6 ? 10 : (nSeqs <= 15 ? 6 : 3);
+  const trackHeight = nRows <= 6 ? 22 : (nRows <= 15 ? 14 : 10);
+  const trackGap = nRows <= 6 ? 10 : (nRows <= 15 ? 6 : 3);
   const pairTrackHeight = trackHeight + 6;
 
   const scrollWrapper = document.getElementById('plmaScrollWrapper');
   const containerWidth = Math.max(700, scrollWrapper?.clientWidth || canvas.parentElement?.clientWidth || 700);
 
-  // Compute max length per block (across all seqs in that block)
   const blockMaxLen = blocks.map(b => {
     let mx = 0;
     for (const pos of Object.values(b.positions)) mx = Math.max(mx, pos.length || 0);
@@ -2488,8 +2609,6 @@ function drawPlmaAlignment() {
   });
   const totalBlockAA = blockMaxLen.reduce((a, b) => a + b, 0) || 1;
 
-  // Ensure a minimum pixel-per-AA so blocks remain readable.
-  // If needed, the canvas expands beyond the container (horizontal scroll).
   const nGaps = Math.max(0, nBlocks - 1);
   const gapWidthBase = nBlocks <= 10 ? 14 : (nBlocks <= 50 ? 8 : 4);
   const minPxPerAA = 0.6;
@@ -2503,7 +2622,6 @@ function drawPlmaAlignment() {
   const gapWidth = nGaps > 0 ? (trackAreaWidth - blockAreaWidth) / nGaps : 0;
   const minBlockPx = 3;
 
-  // Column x positions (start of each block column)
   const blockColX = [];
   const blockColW = [];
   let curX = labelWidth;
@@ -2512,19 +2630,18 @@ function drawPlmaAlignment() {
     const w = Math.max(minBlockPx, (blockMaxLen[bi] / totalBlockAA) * blockAreaWidth);
     blockColW.push(w);
     curX += w;
-    if (bi < nBlocks - 1) curX += gapWidth; // gap between blocks
+    if (bi < nBlocks - 1) curX += gapWidth;
   }
 
   // Canvas height
   const totalTrackHeight = pairTrackHeight * 2 + (trackGap * 2) +
-    Math.max(0, nSeqs - 2) * (trackHeight + trackGap) + padTop + 30;
+    Math.max(0, nRows - 2) * (trackHeight + trackGap) + padTop + 30;
   const displayHeight = Math.max(180, totalTrackHeight);
 
   canvas.width = displayWidth * dpr;
   canvas.height = displayHeight * dpr;
   canvas.style.width = displayWidth + 'px';
   canvas.style.height = displayHeight + 'px';
-  // Ensure the inner wrapper expands so the scroll container works
   const inner = document.getElementById('plmaCanvasInner');
   if (inner) inner.style.minWidth = displayWidth + 'px';
   ctx.scale(dpr, dpr);
@@ -2532,7 +2649,6 @@ function drawPlmaAlignment() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-  // Category colors (match PLMA_CAT_COLORS)
   const catColors = {
     specific_a:         '#EF5350',
     specific_b:         '#AB47BC',
@@ -2561,92 +2677,146 @@ function drawPlmaAlignment() {
     family_only:        'Other family only',
   };
 
-  // For each sequence, build a list of which block indices it participates in
-  const seqBlockIndices = orderedSeqs.map(seq =>
-    blocks.map((b, i) => b.positions[seq.num] ? i : -1).filter(i => i >= 0)
-  );
+  // Build per-row block indices + coverage
+  const rowBlockIndices = [];
+  const rowBlockCoverage = [];
+  for (const row of displayRows) {
+    const presence = new Map();
+    for (let bi = 0; bi < blocks.length; bi++) {
+      let count = 0;
+      for (const mem of row.members) { if (blocks[bi].positions[mem.num]) count++; }
+      if (count > 0) presence.set(bi, count);
+    }
+    rowBlockIndices.push([...presence.keys()].sort((a, b) => a - b));
+    const cov = new Map();
+    for (const [bi, count] of presence) cov.set(bi, count / row.members.length);
+    rowBlockCoverage.push(cov);
+  }
 
   // Draw tracks
   let yPos = padTop;
+  const nHumanAll = sequences.filter(s => s.is_human !== false).length;
 
-  for (let si = 0; si < orderedSeqs.length; si++) {
-    const seq = orderedSeqs[si];
-    const isPairA = seq.num === geneASeq;
-    const isPairB = seq.num === geneBSeq;
-    const isPair = isPairA || isPairB;
-    const th = isPair ? pairTrackHeight : trackHeight;
-    const myBlockIndices = seqBlockIndices[si];
+  for (let ri = 0; ri < displayRows.length; ri++) {
+    const row = displayRows[ri];
+    const th = row.isPair ? pairTrackHeight : trackHeight;
+    const myBlockIndices = rowBlockIndices[ri];
+    const myCoverage = rowBlockCoverage[ri];
 
-    // Track label
-    ctx.font = isPair ? 'bold 12px -apple-system, sans-serif' : '11px -apple-system, sans-serif';
-    ctx.fillStyle = isPairA ? '#92400e' : (isPairB ? '#5b21b6' : '#666');
+    // Label
+    ctx.font = row.font;
+    ctx.fillStyle = row.labelColor;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    const label = seq.gene || seq.uniprot || `Seq ${seq.num}`;
-    ctx.fillText(label, labelWidth - 8, yPos + th / 2);
+    ctx.fillText(row.label, labelWidth - 8, yPos + th / 2);
 
-    // Draw gap connectors (dashed lines between consecutive blocks this seq has)
+    // Gap connectors
     const cy = yPos + th / 2;
     ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = isPair ? '#c0b69e' : '#d5d5d5';
-    ctx.lineWidth = isPair ? 1.2 : 0.8;
-
+    ctx.strokeStyle = row.isPair ? '#c0b69e' : '#d5d5d5';
+    ctx.lineWidth = row.isPair ? 1.2 : 0.8;
     for (let k = 0; k < myBlockIndices.length - 1; k++) {
-      const biLeft = myBlockIndices[k];
-      const biRight = myBlockIndices[k + 1];
-      const x1 = blockColX[biLeft] + blockColW[biLeft]; // right edge of left block
-      const x2 = blockColX[biRight]; // left edge of right block
-      if (x2 > x1 + 1) {
-        ctx.beginPath();
-        ctx.moveTo(x1, cy);
-        ctx.lineTo(x2, cy);
-        ctx.stroke();
-      }
+      const x1 = blockColX[myBlockIndices[k]] + blockColW[myBlockIndices[k]];
+      const x2 = blockColX[myBlockIndices[k + 1]];
+      if (x2 > x1 + 1) { ctx.beginPath(); ctx.moveTo(x1, cy); ctx.lineTo(x2, cy); ctx.stroke(); }
     }
     ctx.setLineDash([]);
 
-    // Draw blocks at their aligned column positions
+    // Draw blocks
     for (const bi of myBlockIndices) {
       const block = blocks[bi];
-      const pos = block.positions[seq.num];
       const cat = block.category;
       const bx = blockColX[bi];
       const bw = blockColW[bi];
+      const coverage = myCoverage.get(bi) || 1;
 
-      ctx.fillStyle = catColors[cat] || '#ccc';
-      plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
-      ctx.fill();
-      ctx.strokeStyle = isPair ? '#222' : (catBorders[cat] || '#999');
-      ctx.lineWidth = isPair ? 1.6 : 0.8;
-      ctx.stroke();
-
-      // AA sequence for tooltip (wrap long sequences)
-      const aaSeq = pos.seq || '';
-      let aaHtml = '';
-      if (aaSeq.length > 0) {
-        // Wrap every 40 chars
-        const wrapped = aaSeq.match(/.{1,40}/g) || [aaSeq];
-        aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
+      if (row.isGroup && coverage < 1 && row.members.length <= 4) {
+        // === Branching mode: split into lanes ===
+        const nMem = row.members.length;
+        const laneH = Math.max(2, (th - 2) / nMem);
+        for (let li = 0; li < nMem; li++) {
+          const mem = row.members[li];
+          const ly = yPos + 1 + li * laneH;
+          if (block.positions[mem.num]) {
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = catColors[cat] || '#ccc';
+            plmaRoundRect(ctx, bx, ly, bw, laneH - 0.5, 1);
+            ctx.fill();
+            ctx.strokeStyle = catBorders[cat] || '#999';
+            ctx.lineWidth = 0.6;
+            ctx.stroke();
+          } else {
+            // Empty lane — light grey to show absence
+            ctx.globalAlpha = 0.15;
+            ctx.fillStyle = '#888';
+            plmaRoundRect(ctx, bx, ly, bw, laneH - 0.5, 1);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+          }
+        }
+      } else if (row.isGroup && coverage < 1) {
+        // === Opacity mode for large groups ===
+        ctx.globalAlpha = 0.3 + 0.7 * coverage;
+        ctx.fillStyle = catColors[cat] || '#ccc';
+        plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.setLineDash([2, 2]);
+        ctx.strokeStyle = catBorders[cat] || '#999';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        // === Normal: singleton or full-coverage group ===
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = catColors[cat] || '#ccc';
+        plmaRoundRect(ctx, bx, yPos + 1, bw, th - 2, 2);
+        ctx.fill();
+        ctx.strokeStyle = row.isPair ? '#222' : (catBorders[cat] || '#999');
+        ctx.lineWidth = row.isPair ? 1.6 : 0.8;
+        ctx.stroke();
       }
 
-      const nHuman = block.n_human || block.n_seqs;
-      const nTotal = block.n_seqs;
-      const nHumanAll = sequences.filter(s => s.is_human !== false).length;
-      const memberInfo = nTotal > nHuman
-        ? `${nHuman} of ${nHumanAll} human paralogs (+${nTotal - nHuman} orthologs)`
-        : `${nHuman} of ${nHumanAll} human paralogs`;
-
-      plmaHitRegions.push({
-        x: bx, y: yPos, w: bw, h: th,
-        tooltip: `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
-          + `${label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
-          + `<span style="color:#888">${memberInfo}</span>`
-          + aaHtml,
-      });
+      // Tooltip
+      let tooltipHtml;
+      if (row.isGroup) {
+        const memberNames = row.members.map(mkLabel);
+        const present = row.members.filter(m => block.positions[m.num]);
+        const absent = row.members.filter(m => !block.positions[m.num]);
+        const pct = Math.round(coverage * 100);
+        tooltipHtml = `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
+          + `<span style="color:#2563eb">Group: ${memberNames.join(', ')}</span><br>`
+          + `${pct}% coverage (${present.length}/${row.members.length})<br>`;
+        if (absent.length > 0 && absent.length <= 5) {
+          tooltipHtml += `<span style="color:#dc2626">Missing: ${absent.map(mkLabel).join(', ')}</span><br>`;
+        }
+        if (present.length > 0) {
+          const fp = block.positions[present[0].num];
+          tooltipHtml += `<span style="color:#888">pos ${fp.start}–${fp.end} (${fp.length} aa)</span>`;
+        }
+      } else {
+        const seq = row.members[0];
+        const pos = block.positions[seq.num];
+        const aaSeq = pos.seq || '';
+        let aaHtml = '';
+        if (aaSeq.length > 0) {
+          const wrapped = aaSeq.match(/.{1,40}/g) || [aaSeq];
+          aaHtml = `<code style="font-size:10px;color:#555;word-break:break-all;line-height:1.3;display:block;margin-top:3px;">${wrapped.join('<br>')}</code>`;
+        }
+        const nHuman = block.n_human || block.n_seqs;
+        const nTotal = block.n_seqs;
+        const memberInfo = nTotal > nHuman
+          ? `${nHuman} of ${nHumanAll} human paralogs (+${nTotal - nHuman} orthologs)`
+          : `${nHuman} of ${nHumanAll} human paralogs`;
+        tooltipHtml = `<strong>${block.id}</strong> · ${catLabels[cat] || cat}<br>`
+          + `${row.label}: pos ${pos.start}–${pos.end} (${pos.length} aa)<br>`
+          + `<span style="color:#888">${memberInfo}</span>` + aaHtml;
+      }
+      plmaHitRegions.push({ x: bx, y: yPos, w: bw, h: th, tooltip: tooltipHtml });
     }
 
     // Separator after pair tracks
-    if (si === 1 && nSeqs > 2) {
+    if (ri === 1 && nRows > 2) {
       yPos += th + trackGap;
       ctx.setLineDash([3, 3]);
       ctx.beginPath();
@@ -2660,21 +2830,26 @@ function drawPlmaAlignment() {
       yPos += th + trackGap;
     }
   }
+  ctx.globalAlpha = 1.0;
 
   // Legend
   if (legendEl) {
     const usedCats = new Set(blocks.map(b => b.category));
     let html = '';
-    for (const [cat, label] of Object.entries(catLabels)) {
+    for (const [cat, lbl] of Object.entries(catLabels)) {
       if (!usedCats.has(cat)) continue;
       html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
         + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:${catColors[cat]};border:1px solid ${catBorders[cat]}"></span>`
-        + `<span>${label}</span></span>`;
+        + `<span>${lbl}</span></span>`;
     }
-    // Add gap connector to legend
     html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
       + `<span style="display:inline-block;width:14px;border-top:1.5px dashed #b0a890;height:0;"></span>`
       + `<span>Gap between blocks</span></span>`;
+    if (!showAllParalogs && displayRows.some(r => r.isGroup)) {
+      html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+        + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#78909C;opacity:0.45;border:1px dashed #546E7A"></span>`
+        + `<span>Partial in group</span></span>`;
+    }
     legendEl.innerHTML = html;
   }
 
@@ -2682,16 +2857,29 @@ function drawPlmaAlignment() {
   if (summaryEl) {
     const s = plma.summary || {};
     const nHuman = sequences.filter(x => x.is_human !== false).length;
-    const nOrtho = nSeqs - nHuman;
+    const nOrthoShown = showOrthologs ? orthologs.length : 0;
     const parts = [];
-    if (s.shared_with_family) parts.push(`${s.shared_with_family} aa shared with family`);
-    if (s.pair_exclusive) parts.push(`${s.pair_exclusive} aa pair-exclusive`);
-    if (s.specific_a) parts.push(`${s.specific_a} aa ${geneA}-specific`);
-    if (s.a_with_family) parts.push(`${s.a_with_family} aa ${geneA}+family`);
-    if (s.specific_b) parts.push(`${s.specific_b} aa ${geneB}-specific`);
-    if (s.b_with_family) parts.push(`${s.b_with_family} aa ${geneB}+family`);
-    if (s.family_only) parts.push(`${s.family_only} aa family-only`);
-    const seqDesc = nOrtho > 0 ? `${nHuman} human + ${nOrtho} orthologs` : `${nSeqs} family members`;
+    if (s.shared_with_family) parts.push(`${s.shared_with_family} aa both+family`);
+    if (s.pair_exclusive) parts.push(`${s.pair_exclusive} aa both only`);
+    if (s.specific_a) parts.push(`${s.specific_a} aa ${geneA} only`);
+    if (s.a_with_family) parts.push(`${s.a_with_family} aa ${geneA}+fam`);
+    if (s.specific_b) parts.push(`${s.specific_b} aa ${geneB} only`);
+    if (s.b_with_family) parts.push(`${s.b_with_family} aa ${geneB}+fam`);
+    if (s.family_only) parts.push(`${s.family_only} aa family only`);
+
+    let seqDesc;
+    if (!showAllParalogs && humanParalogs.length > 2) {
+      const nGroups = displayRows.filter(r => r.isGroup).length;
+      const shownHuman = displayRows.filter(r => !r.isPair).reduce((sum, r) => sum + r.members.filter(m => m.is_human !== false).length, 0);
+      const nHidden = humanParalogs.length - shownHuman;
+      seqDesc = `${nRows} rows (${nHuman} paralogs`;
+      if (nGroups > 0) seqDesc += `, ${nGroups} grouped`;
+      if (nHidden > 0) seqDesc += `, ${nHidden} hidden`;
+      if (nOrthoShown > 0) seqDesc += ` + ${nOrthoShown} orthologs`;
+      seqDesc += ')';
+    } else {
+      seqDesc = nOrthoShown > 0 ? `${nHuman} human + ${nOrthoShown} orthologs` : `${nHuman} family members`;
+    }
     summaryEl.textContent = `${blocks.length} conserved blocks across ${seqDesc}` +
       (parts.length ? ` · ${parts.join(' · ')}` : '');
   }
