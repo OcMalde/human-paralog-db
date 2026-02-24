@@ -499,8 +499,9 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
-  // Slanted cladogram: x = node depth, all leaves at right edge
-  // Evenly spaced depths for clean diagonal fan-out (iTOL normal style)
+  // Slanted cladogram (iTOL normal style):
+  // x = node depth, all leaves at right edge
+  // Internal nodes at y of first (topmost) child → clean triangular fan
   let leafIndex = 0;
 
   function countLeaves(node) {
@@ -523,7 +524,7 @@ function layoutTree(root) {
     } else {
       node.children.forEach(c => assign(c, depth + 1));
       node.x = depth;
-      node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+      node.y = node.children[0].y; // Topmost child → perfect triangles
     }
   }
   assign(root, 0);
