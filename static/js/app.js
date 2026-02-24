@@ -499,8 +499,8 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
-  // Phylogram layout: x = cumulative branch length from root
-  // Falls back to depth-based cladogram if no branch lengths present
+  // Slanted cladogram: x = node depth, all leaves at right edge
+  // Evenly spaced depths for clean diagonal fan-out (iTOL normal style)
   let leafIndex = 0;
 
   function countLeaves(node) {
@@ -508,61 +508,27 @@ function layoutTree(root) {
     return node.children.reduce((s, c) => s + countLeaves(c), 0);
   }
 
-  // Check if tree has meaningful branch lengths
-  let hasBranchLengths = false;
-  function checkBL(node) {
-    if (node.branchLength > 0) hasBranchLengths = true;
-    node.children.forEach(checkBL);
+  function maxNodeDepth(node, d) {
+    if (node.children.length === 0) return d;
+    return Math.max(...node.children.map(c => maxNodeDepth(c, d + 1)));
   }
-  checkBL(root);
 
   const totalLeaves = countLeaves(root);
+  const totalDepth = maxNodeDepth(root, 0) || 1;
 
-  if (hasBranchLengths) {
-    // Phylogram: x = cumulative distance from root
-    function assignBL(node, parentDist) {
-      const myDist = parentDist + (node.branchLength || 0);
-      node.x = myDist;
-      if (node.children.length === 0) {
-        node.y = leafIndex++;
-      } else {
-        node.children.forEach(c => assignBL(c, myDist));
-        node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
-      }
+  function assign(node, depth) {
+    if (node.children.length === 0) {
+      node.x = totalDepth; // All leaves at right edge
+      node.y = leafIndex++;
+    } else {
+      node.children.forEach(c => assign(c, depth + 1));
+      node.x = depth;
+      node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
     }
-    assignBL(root, 0);
-
-    // Find max distance (furthest leaf)
-    let maxDist = 0;
-    function findMax(node) {
-      if (node.x > maxDist) maxDist = node.x;
-      node.children.forEach(findMax);
-    }
-    findMax(root);
-
-    return { totalLeaves, totalDepth: maxDist || 1 };
-  } else {
-    // Cladogram fallback: x = node depth
-    function maxNodeDepth(node, d) {
-      if (node.children.length === 0) return d;
-      return Math.max(...node.children.map(c => maxNodeDepth(c, d + 1)));
-    }
-    const totalDepth = maxNodeDepth(root, 0) || 1;
-
-    function assign(node, depth) {
-      if (node.children.length === 0) {
-        node.x = totalDepth;
-        node.y = leafIndex++;
-      } else {
-        node.children.forEach(c => assign(c, depth + 1));
-        node.x = depth;
-        node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
-      }
-    }
-    assign(root, 0);
-
-    return { totalLeaves, totalDepth };
   }
+  assign(root, 0);
+
+  return { totalLeaves, totalDepth };
 }
 
 function parseNewick(nwk) {
@@ -671,36 +637,30 @@ function renderFamilyTree() {
 
   // Layout all trees and compute total dimensions
   const layouts = trees.map(t => layoutTree(t));
-  const rowHeight = totalLeafRows => totalLeafRows <= 8 ? 24 : (totalLeafRows <= 20 ? 18 : 14);
   const splitGap = trees.length > 1 ? 30 : 0;
   let totalLeafRows = layouts.reduce((s, l) => s + l.totalLeaves, 0);
-  const rh = rowHeight(totalLeafRows);
+  const rh = totalLeafRows <= 8 ? 22 : (totalLeafRows <= 20 ? 16 : 12);
 
   // Compute label width from longest gene name
   const allNames = [];
   function collectNames(n) { if (n.children.length === 0) allNames.push(n.name); else n.children.forEach(collectNames); }
   trees.forEach(collectNames);
   const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
-  const labelW = maxLabelLen * 7.5 + 12;
+  const labelW = maxLabelLen * 7 + 10;
 
-  const scaleBarH = 28;
-  const margin = { top: 12, right: labelW, bottom: scaleBarH + 8, left: 12 };
+  const margin = { top: 10, right: labelW, bottom: 10, left: 10 };
   const treeContentH = totalLeafRows * rh + splitGap * (trees.length - 1);
-  const contentH = Math.max(100, treeContentH + margin.top + margin.bottom);
-  const svgWidth = Math.max(treeContentH * 1.2, 320);
+  const contentH = Math.max(80, treeContentH + margin.top + margin.bottom);
+  const svgWidth = Math.max(contentH * 1.0, 300);
   const svgHeight = contentH;
   const plotW = svgWidth - margin.left - margin.right;
 
   let svgContent = '';
   let yOffset = margin.top;
 
-  // Track max totalDepth for scale bar
-  let globalMaxDepth = 0;
-
   for (let ti = 0; ti < trees.length; ti++) {
     const tree = trees[ti];
     const { totalLeaves, totalDepth } = layouts[ti];
-    if (totalDepth > globalMaxDepth) globalMaxDepth = totalDepth;
     const treeH = totalLeaves * rh;
 
     const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
@@ -708,7 +668,7 @@ function renderFamilyTree() {
       ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rh) + rh / 2
       : () => yOffset + treeH / 2;
 
-    // Slanted/diagonal phylogram: direct lines from parent to child
+    // Slanted cladogram: diagonal lines from parent to child
     function drawBranches(node) {
       if (node.children.length > 0) {
         const px = xScale(node.x), py = yScale(node.y);
@@ -725,8 +685,8 @@ function renderFamilyTree() {
       if (node.children.length === 0) {
         const isA = node.name === g1, isB = node.name === g2;
         const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
-        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="3"/>`;
-        svgContent += `<text class="tree-label ${cls}" x="${cx + 7}" y="${cy + 3.5}" data-gene="${node.name}">${node.name}</text>`;
+        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="2.5"/>`;
+        svgContent += `<text class="tree-label ${cls}" x="${cx + 6}" y="${cy + 3.5}" data-gene="${node.name}">${node.name}</text>`;
       } else {
         node.children.forEach(c => drawNodes(c));
       }
@@ -743,29 +703,6 @@ function renderFamilyTree() {
       svgContent += `<text x="${svgWidth / 2}" y="${sepY - 6}" text-anchor="middle" fill="#aaa" font-size="10" font-style="italic">separate Compara trees</text>`;
       yOffset += splitGap;
     }
-  }
-
-  // Scale bar at bottom-left
-  if (globalMaxDepth > 0) {
-    const barY = svgHeight - 10;
-    // Pick a nice round scale bar value (~20-30% of total depth)
-    const rawLen = globalMaxDepth * 0.25;
-    const mag = Math.pow(10, Math.floor(Math.log10(rawLen)));
-    const nice = [1, 2, 5, 10].map(m => m * mag);
-    const barVal = nice.reduce((best, v) => Math.abs(v - rawLen) < Math.abs(best - rawLen) ? v : best, nice[0]);
-    const barPx = (barVal / globalMaxDepth) * plotW;
-    const barX = margin.left;
-    svgContent += `<line x1="${barX}" y1="${barY}" x2="${barX + barPx}" y2="${barY}" stroke="#333" stroke-width="1.4"/>`;
-    svgContent += `<line x1="${barX}" y1="${barY - 3}" x2="${barX}" y2="${barY + 3}" stroke="#333" stroke-width="1.2"/>`;
-    svgContent += `<line x1="${barX + barPx}" y1="${barY - 3}" x2="${barX + barPx}" y2="${barY + 3}" stroke="#333" stroke-width="1.2"/>`;
-    // Format label: if distance-based show value, if identity-based show as %
-    let barLabel;
-    if (treeSource === 'upgma') {
-      barLabel = barVal >= 1 ? `${barVal.toFixed(0)}` : barVal.toFixed(2);
-    } else {
-      barLabel = barVal >= 0.01 ? (barVal >= 1 ? barVal.toFixed(1) : barVal.toFixed(2)) : barVal.toExponential(1);
-    }
-    svgContent += `<text x="${barX + barPx / 2}" y="${barY - 6}" text-anchor="middle" fill="#555" font-size="10">${barLabel}</text>`;
   }
 
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
