@@ -499,8 +499,8 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
-  // Cladogram layout: x = node depth (ignoring branch lengths for even spacing)
-  // All leaves aligned at the right edge for clean triangular fan-out
+  // Phylogram layout: x = cumulative branch length from root
+  // Falls back to depth-based cladogram if no branch lengths present
   let leafIndex = 0;
 
   function countLeaves(node) {
@@ -508,27 +508,61 @@ function layoutTree(root) {
     return node.children.reduce((s, c) => s + countLeaves(c), 0);
   }
 
-  function maxNodeDepth(node, d) {
-    if (node.children.length === 0) return d;
-    return Math.max(...node.children.map(c => maxNodeDepth(c, d + 1)));
+  // Check if tree has meaningful branch lengths
+  let hasBranchLengths = false;
+  function checkBL(node) {
+    if (node.branchLength > 0) hasBranchLengths = true;
+    node.children.forEach(checkBL);
   }
+  checkBL(root);
 
   const totalLeaves = countLeaves(root);
-  const totalDepth = maxNodeDepth(root, 0) || 1;
 
-  function assign(node, depth) {
-    if (node.children.length === 0) {
-      node.x = totalDepth; // All leaves at right edge
-      node.y = leafIndex++;
-    } else {
-      node.children.forEach(c => assign(c, depth + 1));
-      node.x = depth;
-      node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+  if (hasBranchLengths) {
+    // Phylogram: x = cumulative distance from root
+    function assignBL(node, parentDist) {
+      const myDist = parentDist + (node.branchLength || 0);
+      node.x = myDist;
+      if (node.children.length === 0) {
+        node.y = leafIndex++;
+      } else {
+        node.children.forEach(c => assignBL(c, myDist));
+        node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+      }
     }
-  }
-  assign(root, 0);
+    assignBL(root, 0);
 
-  return { totalLeaves, totalDepth };
+    // Find max distance (furthest leaf)
+    let maxDist = 0;
+    function findMax(node) {
+      if (node.x > maxDist) maxDist = node.x;
+      node.children.forEach(findMax);
+    }
+    findMax(root);
+
+    return { totalLeaves, totalDepth: maxDist || 1 };
+  } else {
+    // Cladogram fallback: x = node depth
+    function maxNodeDepth(node, d) {
+      if (node.children.length === 0) return d;
+      return Math.max(...node.children.map(c => maxNodeDepth(c, d + 1)));
+    }
+    const totalDepth = maxNodeDepth(root, 0) || 1;
+
+    function assign(node, depth) {
+      if (node.children.length === 0) {
+        node.x = totalDepth;
+        node.y = leafIndex++;
+      } else {
+        node.children.forEach(c => assign(c, depth + 1));
+        node.x = depth;
+        node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+      }
+    }
+    assign(root, 0);
+
+    return { totalLeaves, totalDepth };
+  }
 }
 
 function parseNewick(nwk) {
@@ -2683,7 +2717,7 @@ function drawPlmaAlignment() {
     if (w + 16 > labelWidth) labelWidth = Math.min(200, Math.ceil(w + 16));
   }
 
-  const padRight = 16;
+  const padRight = 24;
   const padTop = 20;
   const trackHeight = nRows <= 6 ? 22 : (nRows <= 15 ? 14 : 10);
   const trackGap = nRows <= 6 ? 10 : (nRows <= 15 ? 6 : 3);
@@ -2705,7 +2739,7 @@ function drawPlmaAlignment() {
   const minPxPerAA = 0.6;
   const minBlockArea = totalBlockAA * minPxPerAA;
   const minNeededWidth = labelWidth + padRight + minBlockArea + nGaps * gapWidthBase;
-  const displayWidth = Math.max(containerWidth, minNeededWidth);
+  let displayWidth = Math.max(containerWidth, minNeededWidth);
   const trackAreaWidth = displayWidth - labelWidth - padRight;
 
   const totalGapWidth = nGaps * gapWidthBase;
@@ -2722,6 +2756,11 @@ function drawPlmaAlignment() {
     groupColW.push(w);
     curX += w;
     if (gi < nMerged - 1) curX += gapWidth;
+  }
+  // Ensure canvas is wide enough for all blocks + right padding
+  const actualNeeded = curX + padRight;
+  if (actualNeeded > displayWidth) {
+    displayWidth = Math.ceil(actualNeeded);
   }
 
   // Canvas height
