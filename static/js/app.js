@@ -671,48 +671,50 @@ function renderFamilyTree() {
 
   // Layout all trees and compute total dimensions
   const layouts = trees.map(t => layoutTree(t));
-  const rowHeight = 28;
-  const splitGap = trees.length > 1 ? 36 : 0;
+  const rowHeight = totalLeafRows => totalLeafRows <= 8 ? 24 : (totalLeafRows <= 20 ? 18 : 14);
+  const splitGap = trees.length > 1 ? 30 : 0;
   let totalLeafRows = layouts.reduce((s, l) => s + l.totalLeaves, 0);
+  const rh = rowHeight(totalLeafRows);
 
   // Compute label width from longest gene name
   const allNames = [];
   function collectNames(n) { if (n.children.length === 0) allNames.push(n.name); else n.children.forEach(collectNames); }
   trees.forEach(collectNames);
   const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
-  const labelW = maxLabelLen * 8 + 16;
+  const labelW = maxLabelLen * 7.5 + 12;
 
-  const margin = { top: 16, right: labelW, bottom: 16, left: 16 };
-  const contentH = Math.max(120, totalLeafRows * rowHeight + splitGap * (trees.length - 1) + margin.top + margin.bottom);
-  const svgWidth = Math.max(contentH * 0.9, 360);
+  const scaleBarH = 28;
+  const margin = { top: 12, right: labelW, bottom: scaleBarH + 8, left: 12 };
+  const treeContentH = totalLeafRows * rh + splitGap * (trees.length - 1);
+  const contentH = Math.max(100, treeContentH + margin.top + margin.bottom);
+  const svgWidth = Math.max(treeContentH * 1.2, 320);
   const svgHeight = contentH;
   const plotW = svgWidth - margin.left - margin.right;
 
   let svgContent = '';
   let yOffset = margin.top;
 
+  // Track max totalDepth for scale bar
+  let globalMaxDepth = 0;
+
   for (let ti = 0; ti < trees.length; ti++) {
     const tree = trees[ti];
     const { totalLeaves, totalDepth } = layouts[ti];
-    const treeH = totalLeaves * rowHeight;
+    if (totalDepth > globalMaxDepth) globalMaxDepth = totalDepth;
+    const treeH = totalLeaves * rh;
 
     const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
     const yScale = totalLeaves > 1
-      ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rowHeight) + rowHeight / 2
+      ? (v) => yOffset + (v / (totalLeaves - 1)) * (treeH - rh) + rh / 2
       : () => yOffset + treeH / 2;
 
-    // Rectangular cladogram: vertical connector + horizontal arms
+    // Slanted/diagonal phylogram: direct lines from parent to child
     function drawBranches(node) {
       if (node.children.length > 0) {
-        const px = xScale(node.x);
-        // Vertical line spanning from first child y to last child y
-        const firstY = yScale(node.children[0].y);
-        const lastY = yScale(node.children[node.children.length - 1].y);
-        svgContent += `<line class="tree-branch-v" x1="${px}" y1="${firstY}" x2="${px}" y2="${lastY}"/>`;
-        // Horizontal arm from parent x to child x at child's y
+        const px = xScale(node.x), py = yScale(node.y);
         node.children.forEach(c => {
-          const cy = yScale(c.y);
-          svgContent += `<line class="tree-branch" x1="${px}" y1="${cy}" x2="${xScale(c.x)}" y2="${cy}"/>`;
+          const cx = xScale(c.x), cy = yScale(c.y);
+          svgContent += `<line class="tree-branch" x1="${px}" y1="${py}" x2="${cx}" y2="${cy}"/>`;
           drawBranches(c);
         });
       }
@@ -723,8 +725,8 @@ function renderFamilyTree() {
       if (node.children.length === 0) {
         const isA = node.name === g1, isB = node.name === g2;
         const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
-        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="3.5"/>`;
-        svgContent += `<text class="tree-label ${cls}" x="${cx + 8}" y="${cy + 4}" data-gene="${node.name}">${node.name}</text>`;
+        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="3"/>`;
+        svgContent += `<text class="tree-label ${cls}" x="${cx + 7}" y="${cy + 3.5}" data-gene="${node.name}">${node.name}</text>`;
       } else {
         node.children.forEach(c => drawNodes(c));
       }
@@ -741,6 +743,29 @@ function renderFamilyTree() {
       svgContent += `<text x="${svgWidth / 2}" y="${sepY - 6}" text-anchor="middle" fill="#aaa" font-size="10" font-style="italic">separate Compara trees</text>`;
       yOffset += splitGap;
     }
+  }
+
+  // Scale bar at bottom-left
+  if (globalMaxDepth > 0) {
+    const barY = svgHeight - 10;
+    // Pick a nice round scale bar value (~20-30% of total depth)
+    const rawLen = globalMaxDepth * 0.25;
+    const mag = Math.pow(10, Math.floor(Math.log10(rawLen)));
+    const nice = [1, 2, 5, 10].map(m => m * mag);
+    const barVal = nice.reduce((best, v) => Math.abs(v - rawLen) < Math.abs(best - rawLen) ? v : best, nice[0]);
+    const barPx = (barVal / globalMaxDepth) * plotW;
+    const barX = margin.left;
+    svgContent += `<line x1="${barX}" y1="${barY}" x2="${barX + barPx}" y2="${barY}" stroke="#333" stroke-width="1.4"/>`;
+    svgContent += `<line x1="${barX}" y1="${barY - 3}" x2="${barX}" y2="${barY + 3}" stroke="#333" stroke-width="1.2"/>`;
+    svgContent += `<line x1="${barX + barPx}" y1="${barY - 3}" x2="${barX + barPx}" y2="${barY + 3}" stroke="#333" stroke-width="1.2"/>`;
+    // Format label: if distance-based show value, if identity-based show as %
+    let barLabel;
+    if (treeSource === 'upgma') {
+      barLabel = barVal >= 1 ? `${barVal.toFixed(0)}` : barVal.toFixed(2);
+    } else {
+      barLabel = barVal >= 0.01 ? (barVal >= 1 ? barVal.toFixed(1) : barVal.toFixed(2)) : barVal.toExponential(1);
+    }
+    svgContent += `<text x="${barX + barPx / 2}" y="${barY - 6}" text-anchor="middle" fill="#555" font-size="10">${barLabel}</text>`;
   }
 
   svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
@@ -2757,8 +2782,8 @@ function drawPlmaAlignment() {
     curX += w;
     if (gi < nMerged - 1) curX += gapWidth;
   }
-  // Ensure canvas is wide enough for all blocks + right padding
-  const actualNeeded = curX + padRight;
+  // Ensure canvas is wide enough for all blocks + right padding + stroke buffer
+  const actualNeeded = curX + padRight + 2;
   if (actualNeeded > displayWidth) {
     displayWidth = Math.ceil(actualNeeded);
   }
