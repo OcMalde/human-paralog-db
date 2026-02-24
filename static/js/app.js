@@ -652,7 +652,13 @@ function renderFamilyTree() {
   const margin = { top: 10, right: labelW, bottom: 10, left: 10 };
   const treeContentH = totalLeafRows * rh + splitGap * (trees.length - 1);
   const contentH = Math.max(80, treeContentH + margin.top + margin.bottom);
-  const svgWidth = Math.max(contentH * 1.0, 300);
+
+  // Width: each depth step needs enough horizontal space for clean triangle angles
+  // Ensure each step is at least 2.5× the leaf spacing so the steepest diagonal ≈ 22°
+  const maxDepth = Math.max(...layouts.map(l => l.totalDepth), 1);
+  const minStepW = rh * 2.5;
+  const minPlotW = maxDepth * minStepW;
+  const svgWidth = Math.max(minPlotW + margin.left + margin.right, 300);
   const svgHeight = contentH;
   const plotW = svgWidth - margin.left - margin.right;
 
