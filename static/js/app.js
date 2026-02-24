@@ -499,11 +499,12 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
-  // Perfect triangle slanted cladogram:
-  // Root at y=0, leaves at y=1..n. Internal nodes interpolated on
-  // the straight line from parent to their last descendant leaf,
-  // so every outer diagonal is perfectly straight with no breaks.
-  let leafIndex = 1; // leaves start at y=1
+  // Balanced slanted cladogram with ~90° branching angles:
+  // Leaves get sequential y-positions (1..N), all at x = maxDepth.
+  // Internal nodes at x = depth, y = midpoint of children's y-values.
+  // This centres each node between its children, producing wide,
+  // balanced fork angles (≈90° at the root for symmetric trees).
+  let leafIndex = 1;
 
   function countLeaves(node) {
     if (node.children.length === 0) return 1;
@@ -518,38 +519,18 @@ function layoutTree(root) {
   const totalLeaves = countLeaves(root);
   const totalDepth = maxNodeDepth(root, 0) || 1;
 
-  // Step 1: assign x (depth) and sequential y to leaves only
-  function assignBase(node, depth) {
+  function assign(node, depth) {
     if (node.children.length === 0) {
       node.x = totalDepth;
       node.y = leafIndex++;
     } else {
       node.x = depth;
-      node.children.forEach(c => assignBase(c, depth + 1));
+      node.children.forEach(c => assign(c, depth + 1));
+      // Midpoint of children → balanced fork angles
+      node.y = node.children.reduce((s, c) => s + c.y, 0) / node.children.length;
     }
   }
-  assignBase(root, 0);
-
-  // Step 2: find bottommost leaf y of a subtree
-  function lastLeafY(node) {
-    if (node.children.length === 0) return node.y;
-    return lastLeafY(node.children[node.children.length - 1]);
-  }
-
-  // Step 3: root at y=0, then position each internal node on the
-  // straight line from its parent to its own last descendant leaf
-  root.y = 0;
-  function positionInternal(node) {
-    for (const child of node.children) {
-      if (child.children.length > 0) {
-        const ly = lastLeafY(child);
-        const t = (child.x - node.x) / (totalDepth - node.x);
-        child.y = node.y + t * (ly - node.y);
-        positionInternal(child);
-      }
-    }
-  }
-  positionInternal(root);
+  assign(root, 0);
 
   return { totalLeaves, totalDepth };
 }
@@ -676,9 +657,9 @@ function renderFamilyTree() {
   const contentH = Math.max(80, treeContentH + margin.top + margin.bottom);
 
   // Width: each depth step needs enough horizontal space for clean triangle angles
-  // Ensure each step is at least 2.5× the leaf spacing so the steepest diagonal ≈ 22°
+  // Step width ≈ rh gives ~90° fork angles with midpoint y-positioning
   const maxDepth = Math.max(...layouts.map(l => l.totalDepth), 1);
-  const minStepW = rh * 2.5;
+  const minStepW = rh * 1.0;
   const minPlotW = maxDepth * minStepW;
   const svgWidth = Math.max(minPlotW + margin.left + margin.right, 300);
   const svgHeight = contentH;
@@ -694,7 +675,7 @@ function renderFamilyTree() {
 
     const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
     const yScale = totalLeaves > 1
-      ? (v) => yOffset + (v / totalLeaves) * treeH
+      ? (v) => yOffset + ((v - 1) / (totalLeaves - 1)) * (treeH - rh) + rh / 2
       : () => yOffset + treeH / 2;
 
     // Slanted cladogram: diagonal lines from parent to child
