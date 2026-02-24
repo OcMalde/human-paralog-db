@@ -499,11 +499,11 @@ function buildUPGMATree(genes, identities) {
 }
 
 function layoutTree(root) {
-  // Balanced slanted cladogram with ~90° branching angles:
-  // Leaves get sequential y-positions (1..N), all at x = maxDepth.
-  // Internal nodes at x = depth, y = midpoint of children's y-values.
-  // This centres each node between its children, producing wide,
-  // balanced fork angles (≈90° at the root for symmetric trees).
+  // Spine-interpolation cladogram: straight outer diagonals + 90° branching.
+  // Root at y=0, leaves at y=1..n. Internal nodes interpolated on
+  // the line from parent to their last descendant leaf so every
+  // outer diagonal is perfectly straight. Non-spine branches are
+  // drawn as polylines with a perpendicular initial segment.
   let leafIndex = 1;
 
   function countLeaves(node) {
@@ -519,18 +519,32 @@ function layoutTree(root) {
   const totalLeaves = countLeaves(root);
   const totalDepth = maxNodeDepth(root, 0) || 1;
 
-  function assign(node, depth) {
+  function assignBase(node, depth) {
     if (node.children.length === 0) {
       node.x = totalDepth;
       node.y = leafIndex++;
+      node.lastLeafY = node.y;
     } else {
       node.x = depth;
-      node.children.forEach(c => assign(c, depth + 1));
-      // Midpoint of children → balanced fork angles
-      node.y = node.children.reduce((s, c) => s + c.y, 0) / node.children.length;
+      node.children.forEach(c => assignBase(c, depth + 1));
+      node.lastLeafY = node.children[node.children.length - 1].lastLeafY;
     }
   }
-  assign(root, 0);
+  assignBase(root, 0);
+
+  root.y = 0;
+  function positionInternal(node) {
+    for (const child of node.children) {
+      if (child.children.length > 0) {
+        const ly = child.lastLeafY;
+        const denom = totalDepth - node.x;
+        const t = denom > 0 ? (child.x - node.x) / denom : 0;
+        child.y = node.y + t * (ly - node.y);
+        positionInternal(child);
+      }
+    }
+  }
+  positionInternal(root);
 
   return { totalLeaves, totalDepth };
 }
@@ -652,14 +666,13 @@ function renderFamilyTree() {
   const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
   const labelW = maxLabelLen * 7 + 10;
 
-  const margin = { top: 10, right: labelW, bottom: 10, left: 10 };
+  const margin = { top: 15, right: labelW, bottom: 10, left: 10 };
   const treeContentH = totalLeafRows * rh + splitGap * (trees.length - 1);
   const contentH = Math.max(80, treeContentH + margin.top + margin.bottom);
 
-  // Width: each depth step needs enough horizontal space for clean triangle angles
-  // Step width ≈ rh gives ~90° fork angles with midpoint y-positioning
+  // Width: rh*1.5 per depth step — balanced aspect ratio
   const maxDepth = Math.max(...layouts.map(l => l.totalDepth), 1);
-  const minStepW = rh * 1.0;
+  const minStepW = rh * 1.5;
   const minPlotW = maxDepth * minStepW;
   const svgWidth = Math.max(minPlotW + margin.left + margin.right, 300);
   const svgHeight = contentH;
@@ -675,19 +688,36 @@ function renderFamilyTree() {
 
     const xScale = totalDepth > 0 ? (v) => margin.left + (v / totalDepth) * plotW : () => margin.left;
     const yScale = totalLeaves > 1
-      ? (v) => yOffset + ((v - 1) / (totalLeaves - 1)) * (treeH - rh) + rh / 2
+      ? (v) => yOffset + (v / totalLeaves) * treeH
       : () => yOffset + treeH / 2;
 
-    // Slanted cladogram: diagonal lines from parent to child
+    // Slanted cladogram: spine edges are straight lines (preserving
+    // unbroken outer diagonals). Non-spine edges use a polyline whose
+    // first segment is perpendicular to the spine → 90° fork angle.
     function drawBranches(node) {
-      if (node.children.length > 0) {
-        const px = xScale(node.x), py = yScale(node.y);
-        node.children.forEach(c => {
-          const cx = xScale(c.x), cy = yScale(c.y);
+      if (node.children.length === 0) return;
+      const px = xScale(node.x), py = yScale(node.y);
+      const lastIdx = node.children.length - 1;
+      // Spine direction: this node → its last descendant leaf
+      const llx = xScale(totalDepth), lly = yScale(node.lastLeafY);
+      const sx = llx - px, sy = lly - py;
+      const s2 = sx * sx + sy * sy;
+
+      node.children.forEach((c, i) => {
+        const cx = xScale(c.x), cy = yScale(c.y);
+        if (i === lastIdx || s2 < 1) {
+          // Last child (on spine) or degenerate: straight line
           svgContent += `<line class="tree-branch" x1="${px}" y1="${py}" x2="${cx}" y2="${cy}"/>`;
-          drawBranches(c);
-        });
-      }
+        } else {
+          // Perpendicular elbow: decompose NC into perp + parallel to spine
+          const ncx = cx - px, ncy = cy - py;
+          const perpProj = (ncx * sy - ncy * sx) / s2;
+          const mx = px + perpProj * sy;
+          const my = py - perpProj * sx;
+          svgContent += `<polyline class="tree-branch" points="${px},${py} ${mx},${my} ${cx},${cy}" fill="none"/>`;
+        }
+        drawBranches(c);
+      });
     }
 
     function drawNodes(node) {
