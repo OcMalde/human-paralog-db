@@ -26,6 +26,9 @@ let PLMA_DATA = null;
 // PDBe highlight state
 let isProteinHighlighted = false;
 
+// Set true when family has only 2 genes — prevents updateSectionVisibility from re-showing PLMA
+let isFamily2 = false;
+
 // Lazy section init via IntersectionObserver
 function registerLazySection(elementId, initFn) {
   const el = document.getElementById(elementId);
@@ -360,6 +363,7 @@ async function loadFamilyData() {
     // 2-gene families: hide both family sections, show a simple note
     if (familyGenes.size <= 2) {
       // familyNav stays hidden (display:none by default — do NOT show it)
+      isFamily2 = true; // prevent updateSectionVisibility from re-showing PLMA
       // Hide PLMA section too
       const plmaSection = document.getElementById('familyFeaturesSection');
       if (plmaSection) plmaSection.classList.add('section-hidden');
@@ -2435,7 +2439,7 @@ function drawSimSearchBarViz(mode) {
   const infos = [m.rankInfo, m.selfSPInfo, m.taxidInfo];
 
   const padLeft = 16;
-  const padRight = 50;  // room for "worst" label
+  const padRight = 90;  // room for "worst (N)" label with value
   const barTotalWidth = displayWidth - padLeft - padRight;
   const barHeight = 22;
   const barSpacing = 90;
@@ -2517,26 +2521,32 @@ function drawSimSearchBarViz(mode) {
     ctx.fillStyle = markerColor;
     ctx.fill();
 
-    // "rank 1 (best)" label at left edge, below bar
+    // Small "1" tick at left edge below bar (axis reference)
     ctx.font = '9px -apple-system, sans-serif';
     ctx.fillStyle = '#aaa';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('best (1)', padLeft + 2, by + barHeight + 3);
+    ctx.fillText('1', padLeft, by + barHeight + 3);
 
-    // Protein name + rank at marker position, below bar (avoid collision with "best")
-    const markerLabelX = Math.max(padLeft + 40, Math.min(markerX, padLeft + barTotalWidth - 20));
+    // Protein name + rank centered at marker position, below bar
+    // Clamp so it doesn't collide with "1" on left or "worst" label on right
+    const labelText = `${m.gene2}: ${formatNum(val)}`;
     ctx.font = 'bold 10px -apple-system, sans-serif';
+    const labelW = ctx.measureText(labelText).width;
+    const markerLabelX = Math.min(
+      Math.max(markerX, padLeft + labelW / 2 + 14),
+      padLeft + barTotalWidth - labelW / 2
+    );
     ctx.fillStyle = markerColor;
     ctx.textAlign = 'center';
-    ctx.fillText(`${m.gene2}: ${formatNum(val)}`, markerLabelX, by + barHeight + 3);
+    ctx.fillText(labelText, markerLabelX, by + barHeight + 3);
 
-    // "worst" label at right end (static, always at global max)
+    // "worst (N)" label at right end — always shows global max value
     ctx.font = '9px -apple-system, sans-serif';
     ctx.fillStyle = '#aaa';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('worst', padLeft + barTotalWidth + 6, cy);
+    ctx.fillText(`worst (${formatNum(globalMax)})`, padLeft + barTotalWidth + 6, cy);
 
     // Hit region for tooltip
     const rPos = info?.rank_position ?? null;
@@ -4775,7 +4785,8 @@ async function initPdbeMolstar() {
         _pdbeColorReapplyTimer = setTimeout(async () => {
           try {
             await applyPdbeCustomTheme(getPdbeColorTheme(currentPdbeColorMode));
-            if (pendingPdbeHighlightLoci) reapplyPdbeHighlight();
+            // Reapply both highlight (Gene B) and selection (Gene A) after state change
+            if (pendingPdbeHighlightLoci || pendingPdbeSelectLoci) reapplyPdbeHighlight();
           } catch(e) {}
         }, 150);
       });
@@ -5227,8 +5238,9 @@ async function zoomToPdbeProtein() {
 }
 
 // Pending PDBe highlight loci for hover-lock reapplication and focus
-let pendingPdbeHighlightLoci = null;
-let pendingPdbeFocusLoci = null;  // for pdbeFocusSelection button
+let pendingPdbeHighlightLoci = null;  // Gene B (pink highlight)
+let pendingPdbeSelectLoci = null;     // Gene A (green select)
+let pendingPdbeFocusLoci = null;      // for pdbeFocusSelection button
 let pdbeHoverLockInterval = null;
 
 function focusPdbeSelection() {
@@ -5237,8 +5249,12 @@ function focusPdbeSelection() {
 }
 
 function reapplyPdbeHighlight() {
-  if (pendingPdbeHighlightLoci && viewerLocked && pdbePlugin) {
+  if (!pdbePlugin) return;
+  if (pendingPdbeHighlightLoci) {
     try { pdbePlugin.managers.interactivity.lociHighlights.highlight({ loci: pendingPdbeHighlightLoci }); } catch(e) {}
+  }
+  if (pendingPdbeSelectLoci) {
+    try { pdbePlugin.managers.interactivity.lociSelects.select({ loci: pendingPdbeSelectLoci }); } catch(e) {}
   }
 }
 
@@ -5263,6 +5279,7 @@ function syncSelectionsToPdbe() {
     pdbePlugin.managers.interactivity.lociSelects.deselectAll();
     pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
     pendingPdbeHighlightLoci = null;
+    pendingPdbeSelectLoci = null;
     if (!selPositions.size) return;
     const targetAuthSeqIds = new Set();
     for (const [rs, up] of Object.entries(_pdbeResSeqToUniprot)) {
@@ -5309,13 +5326,15 @@ function syncSelectionsToPdbe() {
       const loci = { kind: 'element-loci', structure: sd, elements: matchingElements };
       pendingPdbeFocusLoci = loci;  // save for Focus button
       if (isGeneB) {
-        // Gene B: pink highlight (fades on hover) — lock it via interval
+        // Gene B: pink highlight — lock via interval to prevent fading on hover
         pdbePlugin.managers.interactivity.lociHighlights.highlight({ loci });
         pendingPdbeHighlightLoci = loci;
+        pendingPdbeSelectLoci = null;
         setupPdbeHoverLock();
       } else {
-        // Gene A: green select (permanent, doesn't fade)
+        // Gene A: green select (more persistent than highlight)
         pdbePlugin.managers.interactivity.lociSelects.select({ loci });
+        pendingPdbeSelectLoci = loci;
         pendingPdbeHighlightLoci = null;
       }
     } else {
@@ -5377,6 +5396,9 @@ async function applyPdbeColorMode(mode) {
     }
     if (cameraSnapshot && pdbePlugin?.canvas3d?.camera) {
       try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
+    } else {
+      // First load — zoom to the target protein chain so it's centered and clipping is right
+      await zoomToPdbeProtein();
     }
     updatePdbeLegend('Context chains in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#00ACC1">teal</span>. Click "Highlight Protein" to highlight specific region.');
     return;
@@ -5920,6 +5942,8 @@ async function loadPdbeByIndex(idx) {
   try {
     await initPdbeMolstar();
     await applyPdbeColorMode('grey');
+    // Sync any existing main viewer selections to PDBe immediately after load
+    try { syncSelectionsToPdbe(); } catch(e2) {}
   } catch(e) {
     console.error('Failed to load PDBe structure for entry:', entry, e);
     updatePdbeLegend(`<strong>Error:</strong> Failed to load structure.`);
@@ -6724,9 +6748,9 @@ function updateSectionVisibility() {
     showSection('regionsSection');
   }
 
-  // Family features section - hide if no family features data
+  // Family features section - hide if no family features data or family of 2
   const hasFamilyFeatures = SUMMARY && SUMMARY.family_features && Object.keys(SUMMARY.family_features).length > 0;
-  if (!hasFamilyFeatures) {
+  if (!hasFamilyFeatures || isFamily2) {
     hideSection('familyFeaturesSection');
   } else {
     showSection('familyFeaturesSection');
