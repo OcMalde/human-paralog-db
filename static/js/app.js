@@ -4879,8 +4879,8 @@ function modifyPdbeBfactorsCif(cifText, targetChainIds, bfMap, targetDefaultBf, 
       if (t > 0 && c.nuc / t > 0.5) nucChains.push(ch); else protChains.push(ch);
     }
     chainBf = {};
-    protChains.forEach((ch, i) => { chainBf[ch] = [-2, -3, -4][i % 3]; });
-    nucChains.forEach(ch => { chainBf[ch] = -5; });
+    protChains.forEach((ch, i) => { chainBf[ch] = [-25, -50, -75][i % 3]; });
+    nucChains.forEach(ch => { chainBf[ch] = -100; });
   }
   const header = cifText.substring(0, dataPos);
   const lines = cifText.substring(dataPos).split('\n');
@@ -4928,8 +4928,8 @@ function modifyPdbeBfactors(text, targetChainIds, bfMap, targetDefaultBf, nonTar
       if (t > 0 && c.nuc / t > 0.5) nucChains.push(ch); else protChains.push(ch);
     }
     chainBf = {};
-    protChains.forEach((ch, i) => { chainBf[ch] = [-2, -3, -4][i % 3]; });
-    nucChains.forEach(ch => { chainBf[ch] = -5; });
+    protChains.forEach((ch, i) => { chainBf[ch] = [-25, -50, -75][i % 3]; });
+    nucChains.forEach(ch => { chainBf[ch] = -100; });
   }
   const out = [];
   for (const line of lines) {
@@ -4964,7 +4964,16 @@ function buildPdbeGenericBfactorMap(resSeqToUniprot, mode, isGeneB) {
   const bfMap = {};
   for (const [resSeqStr, uniprotPos] of Object.entries(resSeqToUniprot)) {
     const val = geneMap[uniprotPos];
-    if (val !== undefined) bfMap[parseInt(resSeqStr)] = (mode === 'plddt') ? (val + 1) * 25 : val;
+    if (val !== undefined) {
+      let sv = val;
+      if (mode === 'plddt') sv = (val + 1) * 25;
+      else if (mode === 'aligned' || mode === 'drugclip') sv = val * 100;
+      else if (mode === 'ss') sv = val * 50;
+      else if (mode === 'cavities') sv = Math.round(val * 33.33);
+      else if (mode === 'plma') sv = val * 20;
+      else if (mode === 'domains') { const nd = Math.max(1, Object.keys(window._domainColorNames || {}).length); sv = Math.round(val * 100 / nd); }
+      bfMap[parseInt(resSeqStr)] = sv;
+    }
   }
   return bfMap;
 }
@@ -4988,38 +4997,45 @@ function getPdbeColorTheme(mode) {
     ]}}};
   }
   if (mode === 'aligned') {
-    return { name: 'uncertainty', params: { domain: [-5, 1], list: { kind: 'set', colors: [
-      0x999999, 0xAD1457, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    // data: 0=gap(grey), 100=aligned(magenta); chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xAD1457, 0xBD5F7F, 0xCCAAAA, 0xCCBBBB, 0x999999,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
   if (mode === 'domains') {
-    const names = window._domainColorNames || {};
-    const nDomains = Object.keys(names).length || 1;
-    const colors = [0xcccccc];
-    for (let i = 0; i < nDomains; i++) colors.push(parseInt(DOMAIN_PALETTE[i % DOMAIN_PALETTE.length].replace('#',''), 16));
-    colors.reverse();
-    colors.push(0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a);
-    return { name: 'uncertainty', params: { domain: [-5, nDomains], list: { kind: 'set', colors }}};
+    // data: 0=no-domain(grey), scaled to [100/N, 200/N, ..., 100]; chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0x1565C0, 0x1976D2, 0x42A5F5, 0x90CAF9, 0xcccccc,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
+    ]}}};
   }
   if (mode === 'ss') {
-    return { name: 'uncertainty', params: { domain: [-5, 2], list: { kind: 'set', colors: [
-      0xFF0066, 0xFFCC00, 0xdddddd, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    // data: 0=coil(grey), 50=strand(yellow), 100=helix(red); chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xFF0066, 0xE06020, 0xFFCC00, 0xCCCC88, 0xdddddd,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
   if (mode === 'cavities') {
-    return { name: 'uncertainty', params: { domain: [-5, 3], list: { kind: 'set', colors: [
-      0xe65100, 0xff9800, 0xffc107, 0xdddddd, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    // data: 0=none(grey), 33=weak, 67=medium, 100=strong; chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xe65100, 0xff6d00, 0xff9800, 0xffcc80, 0xdddddd,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
   if (mode === 'drugclip') {
-    return { name: 'uncertainty', params: { domain: [-5, 1], list: { kind: 'set', colors: [
-      0xc62828, 0xf7f7f7, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    // data: 0=no-pocket(white), 100=pocket(red); chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xc62828, 0xc62828, 0xc62828, 0xEE9999, 0xf7f7f7,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
   if (mode === 'plma') {
-    return { name: 'uncertainty', params: { domain: [-5, 5], list: { kind: 'set', colors: [
-      0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD, 0xEEEEEE,
-      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    // data: 0=none, 20=family-only, ..., 100=specific; chain shading at -25,-50,-75,-100
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
   return { name: 'uniform', params: { value: 0xcccccc } };
@@ -5031,7 +5047,7 @@ function getPdbeColorLegendHtml(mode) {
     plddt:    '<strong>pLDDT:</strong> ' + sw('#0053d6','&gt;90') + sw('#65cbf3','70-90') + sw('#ffdb13','50-70') + sw('#ff7d45','&le;50'),
     am:       '<strong>AlphaMissense:</strong> ' + sw('#d62728','Pathogenic') + sw('#ff7d45','Ambiguous') + sw('#bbbbbb','Benign'),
     dam:      '<strong>&Delta; AlphaMissense:</strong> ' + sw('#d62728','High') + sw('#ff7d45','Med') + sw('#bbbbbb','Low'),
-    aligned:  '<strong>Aligned:</strong> ' + sw('#999999','Aligned') + sw('#AD1457','Gap'),
+    aligned:  '<strong>Aligned/Gap:</strong> ' + sw('#AD1457','Aligned') + sw('#999999','Gap'),
     domains:  '<strong>Domains:</strong> colored by type',
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
@@ -5059,6 +5075,54 @@ async function applyPdbeCustomTheme(theme) {
     await update.commit();
   } catch(e) { console.error('applyPdbeCustomTheme:', e); }
   if (snapshot && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) pdbePlugin.canvas3d.camera.setState(snapshot);
+}
+
+async function zoomToPdbeProtein() {
+  if (!pdbePlugin || !pdbeStructureReady || !currentPdbeEntry) return;
+  const targetChains = getTargetChainIds(currentPdbeEntry);
+  if (!targetChains.size) return;
+  try {
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || !structures.length) return;
+    const structureData = structures[0].cell?.obj?.data;
+    if (!structureData) { try { pdbeViewer.resetCamera(); } catch(e) {} return; }
+
+    const units = structureData.units || [];
+    const matchingElements = [];
+    for (let ui = 0; ui < units.length; ui++) {
+      const unit = units[ui];
+      const model = unit.model;
+      if (!model) continue;
+      const chains = model.atomicHierarchy?.chains;
+      const chainAtomSegments = model.atomicHierarchy?.chainAtomSegments;
+      if (!chains || !chainAtomSegments) continue;
+      const unitElements = unit.elements;
+      if (!unitElements || !unitElements.length) continue;
+      const firstAtomIdx = unitElements[0];
+      const chainOffsets = chainAtomSegments.offsets;
+      let unitChainId = null;
+      for (let ci = 0; ci < chainOffsets.length - 1; ci++) {
+        if (firstAtomIdx >= chainOffsets[ci] && firstAtomIdx < chainOffsets[ci + 1]) {
+          unitChainId = chains.auth_asym_id?.value(ci);
+          break;
+        }
+      }
+      if (unitChainId && targetChains.has(unitChainId)) {
+        const indices = [];
+        for (let i = 0; i < unitElements.length; i++) indices.push(i);
+        matchingElements.push({ unit, indices });
+      }
+    }
+    if (matchingElements.length > 0) {
+      const loci = { kind: 'element-loci', structure: structureData, elements: matchingElements };
+      pdbePlugin.managers.camera.focusLoci(loci);
+    } else {
+      try { pdbeViewer.resetCamera(); } catch(e) {}
+    }
+  } catch(e) {
+    console.warn('zoomToPdbeProtein error:', e);
+    try { pdbeViewer.resetCamera(); } catch(e2) {}
+  }
 }
 
 async function togglePdbeComplexVisibility(visible) {
@@ -5133,7 +5197,7 @@ async function applyPdbeColorMode(mode) {
   }
 
   const targetDefaultBf = getPdbeTargetDefaultBf(mode);
-  const modifiedText = modifyPdbeBfactors(pdbText, targetChains, bfMap, targetDefaultBf, -2, true);
+  const modifiedText = modifyPdbeBfactors(pdbText, targetChains, bfMap, targetDefaultBf, -25, true);
 
   try { await pdbePlugin.clear(); } catch(e) {}
   pdbeStructureReady = false;
@@ -5785,6 +5849,13 @@ function setupPdbeControls() {
           pdbePlugin?.canvas3d?.requestCameraReset();
         }
       }
+    }, { passive: true });
+  }
+
+  const zoomProteinBtn = document.getElementById('pdbeZoomProtein');
+  if (zoomProteinBtn) {
+    zoomProteinBtn.addEventListener('click', async () => {
+      await zoomToPdbeProtein();
     }, { passive: true });
   }
 
