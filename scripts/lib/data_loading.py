@@ -351,10 +351,18 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
     total_pairs = len(df)
 
     # Process each suffix (struct and seq)
+    # Use directional columns (A1 as query) for forward metrics.
+    # A1_A2_rank / A1_nb_human / A1_nb_taxid are the A1-as-query values;
+    # the old min-based selfSP_struct/taxid_struct are kept only as fallback.
+    forward_cols = {
+        '_struct': ('A1_A2_rank',      'A1_nb_human',     'A1_nb_taxid',
+                    'rank_struct',      'selfSP_struct',   'taxid_struct'),
+        '_seq':    ('A1_A2_rank_seq',   'A1_nb_selfSP_seq','A1_nb_taxid_seq',
+                    'rank_seq',         'selfSP_seq',      'taxid_seq'),
+    }
+
     for suffix in ['_struct', '_seq']:
-        rank_col = 'rank' + suffix
-        selfsp_col = 'selfSP' + suffix
-        taxid_col = 'taxid' + suffix
+        rank_col, selfsp_col, taxid_col, out_rank, out_selfsp, out_taxid = forward_cols[suffix]
 
         # Compute global stats (max, p95) for bar scaling
         def col_stats(col):
@@ -380,11 +388,11 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
             pct = compute_percentile(val, df[rank_col])
             # Rank position: how many pairs have a lower rank value
             rank_position = int(np.sum(df[rank_col].dropna() <= val)) if pd.notna(val) else None
-            results[rank_col] = {
+            results[out_rank] = {
                 'value': float(val) if pd.notna(val) else None,
                 'percentile': float(pct),
                 'raw_percentile': float(pct),
-                'label': rank_col,
+                'label': out_rank,
                 'higher_is_better': False,
                 'radar_value': float(100 - pct),
                 'rank_position': rank_position,
@@ -403,12 +411,12 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
             # Position: how many pairs have a lower selfSP value
             selfsp_position = int(np.sum(df[selfsp_col].dropna() <= val)) if pd.notna(val) else None
 
-            results[selfsp_col] = {
+            results[out_selfsp] = {
                 'value': float(val) if pd.notna(val) else None,
                 'percentile': float(pct_overall),
                 'percentile_rank_relative': float(pct_rank_rel),
                 'raw_percentile': float(pct_overall),
-                'label': selfsp_col,
+                'label': out_selfsp,
                 'higher_is_better': False,
                 'radar_value': float(100 - pct_overall),
                 'rank_position': selfsp_position,
@@ -427,12 +435,12 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
             # Position: how many pairs have a lower taxid value
             taxid_position = int(np.sum(df[taxid_col].dropna() <= val)) if pd.notna(val) else None
 
-            results[taxid_col] = {
+            results[out_taxid] = {
                 'value': float(val) if pd.notna(val) else None,
                 'percentile': float(pct_overall),
                 'percentile_rank_relative': float(pct_rank_rel),
                 'raw_percentile': float(pct_overall),
-                'label': taxid_col,
+                'label': out_taxid,
                 'higher_is_better': False,
                 'radar_value': float(100 - pct_overall),
                 'rank_position': taxid_position,

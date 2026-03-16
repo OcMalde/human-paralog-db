@@ -364,21 +364,20 @@ async function loadFamilyData() {
       familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
     }
 
-    // 2-gene families: just show a note, no tree/network/PLMA
+    // 2-gene families: hide both family sections, show a simple note
     if (familyGenes.size <= 2) {
-      const treeContainer = document.getElementById('familyTreeContainer');
-      const netContainer = document.getElementById('constellationContainer');
-      const treeHelp = document.getElementById('familyTreeHelp');
-      const netHelp = document.getElementById('constellationHelp');
-      const toggle = document.getElementById('familyViewToggle');
-      if (treeContainer) treeContainer.style.display = 'none';
-      if (netContainer) netContainer.style.display = 'none';
-      if (treeHelp) treeHelp.innerHTML = 'This pair forms a <strong>family of 2</strong> — tree and alignment not available.';
-      if (netHelp) netHelp.style.display = 'none';
-      if (toggle) toggle.style.display = 'none';
-      // Also hide PLMA section for 2-gene families
+      // Keep familyNav hidden (it's display:none by default)
+      // Hide PLMA section too
       const plmaSection = document.getElementById('familyFeaturesSection');
       if (plmaSection) plmaSection.classList.add('section-hidden');
+      // Show a simple message in the family group body
+      const groupBody = document.getElementById('familyGroupBody');
+      if (groupBody) {
+        const note = document.createElement('p');
+        note.style.cssText = 'padding:14px 18px;color:#666;font-size:13px;background:#f9f9f9;border-radius:6px;margin:12px 0;border:1px solid #e8e8e8;';
+        note.innerHTML = `This pair forms a <strong>family of 2</strong> — phylogenetic tree and family alignment are not available.`;
+        groupBody.insertBefore(note, groupBody.firstChild);
+      }
       // Grey out sidebar nav links for tree and PLMA
       document.querySelectorAll('.sidebar-nav a[href="#familyNav"], .sidebar-nav a[href="#familyFeaturesSection"]')
         .forEach(a => { a.style.opacity = '0.4'; a.style.pointerEvents = 'none'; a.title = 'Family of 2 — not applicable'; });
@@ -2190,7 +2189,7 @@ function rankLinearPct(value, p95) {
   return Math.min(100, (value / p95) * 100);
 }
 
-// ====== VIEW 1: Overview (A - DB - B) ======
+// ====== VIEW 1: Overview (metrics box) ======
 function drawSimSearchRankViz(mode) {
   const canvas = document.getElementById('simSearchRankCanvas');
   const legendEl = document.getElementById('simSearchLegend');
@@ -2208,7 +2207,6 @@ function drawSimSearchRankViz(mode) {
   canvas.style.height = displayHeight + 'px';
   ctx.scale(dpr, dpr);
 
-  // Background matching page
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, displayWidth, displayHeight);
 
@@ -2217,25 +2215,14 @@ function drawSimSearchRankViz(mode) {
   const selfSP = m.selfSPInfo?.value ?? null;
   const taxid = m.taxidInfo?.value ?? null;
 
-  // Linear scale for rank (value / p95_cap)
   const rankP95 = m.rankInfo?.p95_value ?? 500;
   const rankFillPct = rankLinearPct(rank, rankP95);
-
-  // Percentiles for selfSP and taxid
   const selfSPPct = m.selfSPInfo?.percentile ?? 50;
   const selfSPPctRel = m.selfSPInfo?.percentile_rank_relative ?? selfSPPct;
   const taxidPct = m.taxidInfo?.percentile ?? 50;
   const taxidPctRel = m.taxidInfo?.percentile_rank_relative ?? taxidPct;
-
-  // Total pairs for tooltip
   const totalPairs = m.rankInfo?.total_pairs ?? 105107;
 
-  // PPI network-unified colors
-  const geneAColor = '#d97706';   // Amber (PPI center gene)
-  const geneAStroke = '#92400e';
-  const geneBColor = '#7c3aed';   // Purple (PPI partner)
-  const geneBStroke = '#5b21b6';
-  // Page-matching box colors (cream/grey, no coral)
   const dbBoxColor = '#f5f1e6';
   const dbBoxStroke = '#e0d7c2';
   const barBgColor = '#eae6dc';
@@ -2243,31 +2230,28 @@ function drawSimSearchRankViz(mode) {
   const barFillRelColor = '#8b7a5e';
   const barBorderColor = '#333';
 
-  // Layout
-  const centerY = displayHeight / 2;
-  const geneAx = 80;
-  const geneBx = displayWidth - 80;
   const dbCenterX = displayWidth / 2;
-  const geneRadius = 14;  // PPI network size
-
-  // Database box
-  const dbBoxWidth = 260;
-  const dbBoxHeight = 210;
+  const dbBoxWidth = 320;
+  const dbBoxHeight = 220;
   const dbBoxLeft = dbCenterX - dbBoxWidth / 2;
-  const dbBoxTop = centerY - dbBoxHeight / 2;
+  const dbBoxTop = (displayHeight - dbBoxHeight) / 2;
   const dbBoxRadius = 12;
 
-  // Helper: draw bar with black border
+  // Direction label above box
+  ctx.font = '13px -apple-system, sans-serif';
+  ctx.fillStyle = '#555';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`Query: ${m.gene1}  →  ${m.gene2}`, dbCenterX, dbBoxTop - 8);
+
   function drawBar(x, y, width, height, fillPct, fillColor, r) {
     r = r || 5;
-    // Full background
     ssRoundRect(ctx, x, y, width, height, r);
     ctx.fillStyle = barBgColor;
     ctx.fill();
     ctx.strokeStyle = barBorderColor;
     ctx.lineWidth = 1;
     ctx.stroke();
-    // Fill
     if (fillPct > 0) {
       const fw = Math.max(2, (fillPct / 100) * width);
       ssRoundRect(ctx, x, y, fw, height, r);
@@ -2279,7 +2263,6 @@ function drawSimSearchRankViz(mode) {
     }
   }
 
-  // Helper: draw split bar (top + bottom with gap)
   function drawSplitBar(x, y, width, pctTop, pctBottom) {
     const bh = 12;
     const gap = 3;
@@ -2287,56 +2270,7 @@ function drawSimSearchRankViz(mode) {
     drawBar(x, y + bh + gap, width, bh, pctBottom, barFillRelColor, 4);
   }
 
-  // Gene A circle (PPI style: glow + circle + label below)
-  ctx.beginPath();
-  ctx.arc(geneAx, centerY, geneRadius + 6, 0, Math.PI * 2);
-  ctx.fillStyle = geneAColor + '30';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(geneAx, centerY, geneRadius, 0, Math.PI * 2);
-  ctx.fillStyle = geneAColor;
-  ctx.fill();
-  ctx.strokeStyle = geneAStroke;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Label below circle
-  ctx.font = 'bold 12px -apple-system, sans-serif';
-  ctx.fillStyle = geneAStroke;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText(m.gene1, geneAx, centerY + geneRadius + 8);
-
-  // Gene B circle (PPI style)
-  ctx.beginPath();
-  ctx.arc(geneBx, centerY, geneRadius + 6, 0, Math.PI * 2);
-  ctx.fillStyle = geneBColor + '30';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(geneBx, centerY, geneRadius, 0, Math.PI * 2);
-  ctx.fillStyle = geneBColor;
-  ctx.fill();
-  ctx.strokeStyle = geneBStroke;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.font = 'bold 12px -apple-system, sans-serif';
-  ctx.fillStyle = geneBStroke;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText(m.gene2, geneBx, centerY + geneRadius + 8);
-
-  // Connecting lines A <--- DB ---> B
-  ctx.strokeStyle = '#bbb';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(geneAx + geneRadius + 8, centerY);
-  ctx.lineTo(dbBoxLeft - 6, centerY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(dbBoxLeft + dbBoxWidth + 6, centerY);
-  ctx.lineTo(geneBx - geneRadius - 8, centerY);
-  ctx.stroke();
-
-  // Database box (cream, no coral)
+  // Database box
   ssRoundRect(ctx, dbBoxLeft, dbBoxTop, dbBoxWidth, dbBoxHeight, dbBoxRadius);
   ctx.fillStyle = dbBoxColor;
   ctx.fill();
@@ -2353,7 +2287,7 @@ function drawSimSearchRankViz(mode) {
 
   // Metrics inside DB box
   const metricStartY = dbBoxTop + 42;
-  const metricSpacing = 56;
+  const metricSpacing = 58;
   const labelX = dbBoxLeft + 14;
   const barX = dbBoxLeft + 14;
   const barWidth = dbBoxWidth - 28;
@@ -2363,7 +2297,6 @@ function drawSimSearchRankViz(mode) {
     'Human proteins ranking better',
     'Species with proteins ranking better',
   ];
-  const metricValues = [rank, selfSP, taxid];
 
   // --- Rank row ---
   const ry = metricStartY;
@@ -2385,7 +2318,7 @@ function drawSimSearchRankViz(mode) {
     });
   }
 
-  // --- selfSP row (split bar) ---
+  // --- selfSP row ---
   const sy = metricStartY + metricSpacing;
   ctx.font = '12px -apple-system, sans-serif';
   ctx.fillStyle = '#666';
@@ -2406,7 +2339,7 @@ function drawSimSearchRankViz(mode) {
     });
   }
 
-  // --- taxid row (split bar) ---
+  // --- taxid row ---
   const ty = metricStartY + metricSpacing * 2;
   ctx.font = '12px -apple-system, sans-serif';
   ctx.fillStyle = '#666';
@@ -2446,7 +2379,7 @@ function drawSimSearchRankViz(mode) {
   }
 }
 
-// ====== VIEW 2: Scale bars (A====B - - - - z) ======
+// ====== VIEW 2: Scale bars (rank 1 ====▼ - - - worst) ======
 function drawSimSearchBarViz(mode) {
   const canvas = document.getElementById('simSearchBarCanvas');
   if (!canvas || !SUMMARY) return;
@@ -2471,20 +2404,15 @@ function drawSimSearchBarViz(mode) {
   const selfSP = m.selfSPInfo?.value ?? null;
   const taxid = m.taxidInfo?.value ?? null;
 
-  // Use max values from data for the full bar width
   const rankMax = m.rankInfo?.max_value ?? 1;
   const selfSPMax = m.selfSPInfo?.max_value ?? 1;
   const taxidMax = m.taxidInfo?.max_value ?? 1;
   const totalPairs = m.rankInfo?.total_pairs ?? 105107;
 
-  // PPI colors
-  const geneAColor = '#d97706';
-  const geneAStroke = '#92400e';
-  const geneBColor = '#7c3aed';
-  const geneBStroke = '#5b21b6';
   const filledColor = '#e8dcc8';
   const filledBorder = '#333';
   const emptyBorder = '#999';
+  const markerColor = '#4a6741';  // dark green marker
 
   const barLabels = [
     'Rank of the paralog',
@@ -2495,60 +2423,68 @@ function drawSimSearchBarViz(mode) {
   const maxValues = [rankMax, selfSPMax, taxidMax];
   const infos = [m.rankInfo, m.selfSPInfo, m.taxidInfo];
 
-  // Measure gene label widths to compute proper spacing
-  ctx.font = 'bold 11px -apple-system, sans-serif';
-  const labelAWidth = ctx.measureText(m.gene1 || '').width;
-  const labelBWidth = ctx.measureText(m.gene2 || '').width;
-
-  const circleR = 12;
-  // padLeft must be enough so the A label (left-aligned from circle center) doesn't clip
-  const padLeft = Math.max(24, circleR + 4);
-  const padRight = 24;
+  const padLeft = 16;
+  const padRight = 50;  // room for "worst" label
   const barTotalWidth = displayWidth - padLeft - padRight;
-  const barHeight = 28;
+  const barHeight = 22;
   const barSpacing = 82;
-  const startY = 28;
-  // Fixed gap = enough so the two below-circle labels never overlap
-  const fixedGap = Math.max(80, labelAWidth / 2 + labelBWidth / 2 + 20);
+  const startY = 36;
+
+  // Direction label at top
+  ctx.font = 'bold 13px -apple-system, sans-serif';
+  ctx.fillStyle = '#444';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`Query: ${m.gene1}  →  ${m.gene2}`, padLeft, 6);
 
   for (let i = 0; i < 3; i++) {
     const val = values[i];
     const maxVal = maxValues[i];
     const info = infos[i];
     const by = startY + i * barSpacing;
+    const cy = by + barHeight / 2;
 
     // Label above bar
     ctx.font = '12px -apple-system, sans-serif';
     ctx.fillStyle = '#666';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(barLabels[i], padLeft, by - 3);
-    // Value text right-aligned
+    ctx.fillText(barLabels[i], padLeft, by - 2);
+
+    // Value text right-aligned above bar
     ctx.textAlign = 'right';
     ctx.fillStyle = '#888';
-    ctx.fillText(val != null ? `${formatNum(val)} / ${formatNum(maxVal)}` : '-', displayWidth - padRight, by - 3);
+    ctx.fillText(val != null ? `${formatNum(val)} / ${formatNum(maxVal)}` : '-', displayWidth - padRight + 44, by - 2);
 
     if (val == null || maxVal <= 0) continue;
 
-    const fillFrac = Math.min(1, val / maxVal);
-    // Usable bar width after reserving the fixed gap
-    const usableWidth = barTotalWidth - fixedGap;
-    const fillW = fixedGap + Math.max(0, fillFrac * usableWidth);
-    const emptyW = barTotalWidth - fillW;
+    const fillFrac = Math.min(1, Math.max(0, val / maxVal));
+    const markerX = padLeft + fillFrac * barTotalWidth;
 
-    // Filled portion (A====B)
-    if (fillW > 0) {
-      ssRoundRect(ctx, padLeft, by, fillW, barHeight, 5);
+    // Full grey background bar
+    ssRoundRect(ctx, padLeft, by, barTotalWidth, barHeight, 5);
+    ctx.fillStyle = '#f0ece2';
+    ctx.fill();
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Filled portion (rank 1 → pair position)
+    if (fillFrac > 0) {
+      const fw = Math.max(2, fillFrac * barTotalWidth);
+      ssRoundRect(ctx, padLeft, by, fw, barHeight, 5);
       ctx.fillStyle = filledColor;
       ctx.fill();
       ctx.strokeStyle = filledBorder;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1;
       ctx.stroke();
     }
 
-    // Empty portion (- - - z) with dashed border
-    if (emptyW > 2) {
-      ssRoundRect(ctx, padLeft + fillW, by, emptyW, barHeight, 5);
+    // Empty dashed portion (pair position → worst)
+    const emptyStart = padLeft + Math.max(2, fillFrac * barTotalWidth);
+    const emptyW = barTotalWidth - Math.max(2, fillFrac * barTotalWidth);
+    if (emptyW > 4) {
+      ssRoundRect(ctx, emptyStart, by, emptyW, barHeight, 5);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
       ctx.setLineDash([4, 4]);
@@ -2558,54 +2494,35 @@ function drawSimSearchBarViz(mode) {
       ctx.setLineDash([]);
     }
 
-    // Gene A circle at start
-    const ax = padLeft;
-    const cy = by + barHeight / 2;
+    // Marker triangle (pointing down) above the bar at pair's position
+    const triH = 10, triW = 10;
     ctx.beginPath();
-    ctx.arc(ax, cy, circleR, 0, Math.PI * 2);
-    ctx.fillStyle = geneAColor;
+    ctx.moveTo(markerX, by - 2);
+    ctx.lineTo(markerX - triW / 2, by - 2 - triH);
+    ctx.lineTo(markerX + triW / 2, by - 2 - triH);
+    ctx.closePath();
+    ctx.fillStyle = markerColor;
     ctx.fill();
-    ctx.strokeStyle = geneAStroke;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
 
-    // Gene B circle at fill boundary
-    const bx = padLeft + fillW;
-    ctx.beginPath();
-    ctx.arc(bx, cy, circleR, 0, Math.PI * 2);
-    ctx.fillStyle = geneBColor;
-    ctx.fill();
-    ctx.strokeStyle = geneBStroke;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Gene A label below circle (with "rank 1" note)
-    ctx.font = 'bold 11px -apple-system, sans-serif';
-    ctx.fillStyle = geneAStroke;
+    // "rank 1 (best)" label at left edge, below bar
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.fillStyle = '#aaa';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(m.gene1, Math.max(2, ax - labelAWidth / 2), cy + circleR + 4);
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.fillStyle = '#999';
-    ctx.fillText('rank 1 (best)', Math.max(2, ax - labelAWidth / 2), cy + circleR + 17);
+    ctx.fillText('rank 1 (best)', padLeft, by + barHeight + 3);
 
-    // Gene B label below circle (with rank value)
-    ctx.font = 'bold 11px -apple-system, sans-serif';
-    ctx.fillStyle = geneBStroke;
+    // Rank value at marker position, below bar
+    ctx.font = 'bold 10px -apple-system, sans-serif';
+    ctx.fillStyle = markerColor;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(m.gene2, bx, cy + circleR + 4);
-    ctx.font = '9px -apple-system, sans-serif';
-    ctx.fillStyle = '#999';
-    ctx.textAlign = 'center';
-    ctx.fillText(`rank ${formatNum(val)}`, bx, cy + circleR + 17);
+    ctx.fillText(`rank ${formatNum(val)}`, Math.min(markerX, displayWidth - padRight - 20), by + barHeight + 3);
 
-    // "worst" label at end
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.fillStyle = '#bbb';
-    ctx.textAlign = 'right';
+    // "worst" label at right end
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('worst', displayWidth - padRight - 4, cy);
+    ctx.fillText('worst', padLeft + barTotalWidth + 6, cy);
 
     // Hit region for tooltip
     const rPos = info?.rank_position ?? null;
@@ -4355,6 +4272,12 @@ function renderTableSelections() {
 
 let viewerLocked = true; // Default to locked
 let pendingHighlightLoci = null;
+let pendingSelectionLoci = null; // for zoom-to-selection
+
+function focusMainViewerSelection() {
+  if (!plugin || !structureReady || !pendingSelectionLoci) return;
+  try { plugin.managers.camera.focusLoci(pendingSelectionLoci); } catch(e) {}
+}
 
 function setViewerLocked(locked) {
   viewerLocked = locked;
@@ -4467,6 +4390,9 @@ async function applyMolstarSelection() {
     const selections = getAllSelections();
     if (selections.length === 0) {
       pendingHighlightLoci = null;
+      pendingSelectionLoci = null;
+      const focusBtn = document.getElementById('focusSelection');
+      if (focusBtn) focusBtn.style.display = 'none';
       return;
     }
 
@@ -4682,6 +4608,20 @@ async function applyMolstarSelection() {
       }
     } else {
       pendingHighlightLoci = null;
+    }
+
+    // Build combined loci for focus/zoom (union of A and B elements)
+    const allElements = [...elementsChainA, ...elementsChainB];
+    if (allElements.length > 0) {
+      pendingSelectionLoci = { kind: 'element-loci', structure: structureData, elements: allElements };
+      const focusBtn = document.getElementById('focusSelection');
+      if (focusBtn) focusBtn.style.display = '';
+      // Auto-focus on the selection
+      try { plugin.managers.camera.focusLoci(pendingSelectionLoci); } catch(e) {}
+    } else {
+      pendingSelectionLoci = null;
+      const focusBtn = document.getElementById('focusSelection');
+      if (focusBtn) focusBtn.style.display = 'none';
     }
   } catch (e) {
     console.error('applyMolstarSelection failed:', e);
@@ -5112,9 +5052,10 @@ function getPdbeColorTheme(mode) {
     ]}}};
   }
   if (mode === 'aligned') {
-    // 3-way: 0=gap(grey), 50=conservative(teal), 100=radical(green); chain shading at -25,-50,-75,-100
+    // 4-way: 0=gap(burgundy,B=0), 25=identical(grey,B=25), 50=conservative(teal,B=50), 100=radical(green,B=100)
+    // Reversed: high B(100)→first color(index 0), low B(-100)→last color(index 8)
     return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
-      0x4CAF50, 0x26A69A, 0x009688, 0xB2DFDB, 0x999999,
+      0x4CAF50, 0x26A69A, 0x009688, 0xAAAAAA, 0x8B1A1A,
       0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
@@ -5162,7 +5103,7 @@ function getPdbeColorLegendHtml(mode) {
     plddt:    '<strong>pLDDT:</strong> ' + sw('#0053d6','&gt;90') + sw('#65cbf3','70-90') + sw('#ffdb13','50-70') + sw('#ff7d45','&le;50'),
     am:       '<strong>AlphaMissense:</strong> ' + sw('#d62728','Pathogenic') + sw('#ff7d45','Ambiguous') + sw('#bbbbbb','Benign'),
     dam:      '<strong>&Delta; AlphaMissense:</strong> ' + sw('#d62728','High') + sw('#ff7d45','Med') + sw('#bbbbbb','Low'),
-    aligned:  '<strong>Substitution:</strong> ' + sw('#4CAF50','Radical') + sw('#009688','Conservative') + sw('#999999','Gap'),
+    aligned:  '<strong>Substitution:</strong> ' + sw('#4CAF50','Radical') + sw('#009688','Conservative') + sw('#AAAAAA','Identical') + sw('#8B1A1A','Gap'),
     domains:  '<strong>Domains:</strong> colored by type',
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
@@ -5240,12 +5181,26 @@ async function zoomToPdbeProtein() {
   }
 }
 
+// Pending PDBe highlight loci for hover-lock reapplication
+let pendingPdbeHighlightLoci = null;
+let pdbeHoverLockInterval = null;
+
+function reapplyPdbeHighlight() {
+  if (pendingPdbeHighlightLoci && viewerLocked && pdbePlugin) {
+    try { pdbePlugin.managers.interactivity.lociHighlights.highlight({ loci: pendingPdbeHighlightLoci }); } catch(e) {}
+  }
+}
+
+function setupPdbeHoverLock() {
+  if (pdbeHoverLockInterval) return;
+  pdbeHoverLockInterval = setInterval(() => { reapplyPdbeHighlight(); }, 80);
+}
+
 function syncSelectionsToPdbe() {
   if (!pdbePlugin || !pdbeStructureReady || !currentPdbeEntry || !_pdbeResSeqToUniprot) return;
   const sourceAcc = currentPdbeEntry.source_acc || currentPdbeEntry.sourceAcc || '';
   const isGeneB = !!(SUMMARY && SUMMARY.gene2 && SUMMARY.gene2.uniprot === sourceAcc);
   const targetChain = isGeneB ? chainIdB : chainIdA;
-  // Gather selected UniProt positions for the gene in this PDBe structure
   const selPositions = new Set();
   for (const entry of selection.values()) {
     if (entry.chain === targetChain) {
@@ -5253,9 +5208,11 @@ function syncSelectionsToPdbe() {
     }
   }
   try {
+    // Clear both select and highlight first so selection always replaces default
+    pdbePlugin.managers.interactivity.lociSelects.deselectAll();
     pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
+    pendingPdbeHighlightLoci = null;
     if (!selPositions.size) return;
-    // Map selected UniProt positions → PDBe auth_seq_ids
     const targetAuthSeqIds = new Set();
     for (const [rs, up] of Object.entries(_pdbeResSeqToUniprot)) {
       if (selPositions.has(up)) targetAuthSeqIds.add(parseInt(rs));
@@ -5275,7 +5232,6 @@ function syncSelectionsToPdbe() {
       const chainOffsets = ah.chainAtomSegments?.offsets;
       const chains = ah.chains;
       if (!chainOffsets || !chains) continue;
-      // Determine chain for this unit
       const firstAtom = ue[0];
       let unitChainId = null;
       for (let ci = 0; ci < chainOffsets.length - 1; ci++) {
@@ -5287,23 +5243,29 @@ function syncSelectionsToPdbe() {
       const resOffsets = ah.residueAtomSegments?.offsets;
       const authSeqIds = ah.residues?.auth_seq_id;
       if (!resOffsets || !authSeqIds) continue;
-      // Build global atom index → position in unit.elements
       const gToPos = new Map();
       for (let i = 0; i < ue.length; i++) gToPos.set(ue[i], i);
       const indices = [];
       for (let ri = 0, nRes = resOffsets.length - 1; ri < nRes; ri++) {
         if (!targetAuthSeqIds.has(authSeqIds.value(ri))) continue;
         for (let a = resOffsets[ri]; a < resOffsets[ri + 1]; a++) {
-          const pos = gToPos.get(a);
-          if (pos !== undefined) indices.push(pos);
+          const pos = gToPos.get(a); if (pos !== undefined) indices.push(pos);
         }
       }
       if (indices.length) matchingElements.push({ unit, indices });
     }
     if (matchingElements.length) {
-      pdbePlugin.managers.interactivity.lociHighlights.highlight({
-        loci: { kind: 'element-loci', structure: sd, elements: matchingElements }
-      });
+      const loci = { kind: 'element-loci', structure: sd, elements: matchingElements };
+      if (isGeneB) {
+        // Gene B: pink highlight (fades on hover) — lock it via interval
+        pdbePlugin.managers.interactivity.lociHighlights.highlight({ loci });
+        pendingPdbeHighlightLoci = loci;
+        setupPdbeHoverLock();
+      } else {
+        // Gene A: green select (permanent, doesn't fade)
+        pdbePlugin.managers.interactivity.lociSelects.select({ loci });
+        pendingPdbeHighlightLoci = null;
+      }
     }
   } catch(e) { console.warn('syncSelectionsToPdbe error:', e); }
 }
@@ -7661,12 +7623,12 @@ function buildDamBfactorMaps() {
 // Amino acid biochemical class groups for substitution classification
 const AA_CLASSES = {G:0,A:0,V:0,L:0,I:0,P:0,M:0,F:1,W:1,Y:1,S:2,T:2,C:2,N:2,Q:2,K:3,R:3,H:3,D:4,E:4};
 function aaSubType(a, b) {
-  // Returns 0=gap, 0.5=conservative (same class or identical), 1=radical (different class)
+  // Returns 0=gap, 0.25=identical, 0.5=conservative (same class), 1=radical (different class)
   if (!a || a === '-' || !b || b === '-') return 0;
-  if (a === b) return 0.5;
+  if (a.toUpperCase() === b.toUpperCase()) return 0.25; // identical → grey
   const ca = AA_CLASSES[a.toUpperCase()], cb = AA_CLASSES[b.toUpperCase()];
   if (ca === undefined || cb === undefined) return 0.5;
-  return ca === cb ? 0.5 : 1;
+  return ca === cb ? 0.5 : 1; // same class=conservative(teal), different=radical(green)
 }
 
 function buildAlignedBfactorMaps() {
@@ -7691,7 +7653,7 @@ function buildAlignedRects(chain) {
   const qaln = DATA.qaln || '', taln = DATA.taln || '';
   const myAln = chain === 'A' ? qaln : taln;
   const otherAln = chain === 'A' ? taln : qaln;
-  const SUB_COLORS = {0: '#999999', 0.5: '#009688', 1: '#4CAF50'};
+  const SUB_COLORS = {0: '#8B1A1A', 0.25: '#AAAAAA', 0.5: '#009688', 1: '#4CAF50'};
   const rects = [];
   let curType = null, curStart = null;
   for (let col = 0; col < myAln.length; col++) {
@@ -7894,13 +7856,13 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'aligned') {
-    // 3-way: radical=1(green), conservative=0.5(teal), gap=0(grey)
-    // Reverse theme: high B → first color: [green, teal, grey]
+    // 4-way: radical=1(green), conservative=0.5(teal), identical=0.25(grey), gap=0(burgundy)
+    // Reverse theme (high B → first color): [green, teal, grey, burgundy]
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
-        list: { kind: 'set', colors: [0x4CAF50, 0x009688, 0x999999] }
+        list: { kind: 'set', colors: [0x4CAF50, 0x009688, 0xAAAAAA, 0x8B1A1A] }
       }
     };
   }
@@ -8069,9 +8031,10 @@ function updateColorLegend(mode) {
     aligned: {
       title: 'Substitution Type',
       items: [
-        {color:'#4CAF50',label:'Radical'},
-        {color:'#009688',label:'Conservative'},
-        {color:'#999999',label:'Gap'},
+        {color:'#4CAF50',label:'Radical (diff class)'},
+        {color:'#009688',label:'Conservative (same class)'},
+        {color:'#AAAAAA',label:'Identical'},
+        {color:'#8B1A1A',label:'Gap'},
       ]
     },
     domains: {
@@ -8248,7 +8211,12 @@ function populateAlnSelector() {
       const idx = parseInt(sel.value, 10);
       const r = DATA.domPairs[idx];
       if (!r) return;
-      await reloadViewerWith(r.pdb64);
+      await reloadViewerWith(r.pdb64, true);
+      // Reapply color theme (domain PDB may have different B-factors, but theme is preserved)
+      if (currentColorMode && currentColorMode !== 'uniform') {
+        const theme = themeForColorMode(currentColorMode);
+        await applyColorTheme(theme);
+      }
       setTmScoreDisplay(r.tm);
       document.getElementById('contextTitle').textContent = `Domain: ${r.Aname} ${r.Arng} × ${r.Bname} ${r.Brng}`;
       selection.clear();
@@ -8441,6 +8409,7 @@ async function main(){
   document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
   document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); }}, {passive:true});
   document.getElementById('lockViewer').addEventListener('click', ()=>{ toggleViewerLock(); }, {passive:true});
+  document.getElementById('focusSelection').addEventListener('click', ()=>{ focusMainViewerSelection(); }, {passive:true});
 
   // Set initial lock state (delayed to ensure DOM is ready)
   setTimeout(() => {
@@ -8449,7 +8418,11 @@ async function main(){
   document.getElementById('backFull').addEventListener('click', async ()=>{
     selection.clear();
     pendingHighlightLoci = null;
-    await reloadViewerWith(PDB64_FULL);
+    pendingSelectionLoci = null;
+    const focusBtnBF = document.getElementById('focusSelection');
+    if (focusBtnBF) focusBtnBF.style.display = 'none';
+    // applyChainVisibility re-applies color theme correctly
+    await applyChainVisibility();
     setTmScoreDisplay(DATA.tm);
     document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
     Object.values(trackRefs).forEach(track => {
