@@ -357,16 +357,9 @@ async function loadFamilyData() {
     const pairsWithReports = allPairIds.size;
     console.log(`Family: ${familyGenes.size} genes total, ${pairsWithReports} pairs with reports`);
 
-    // Show the family section
-    familyNav.style.display = 'block';
-    const familySubtitle = document.getElementById('familySubtitle');
-    if (familySubtitle) {
-      familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
-    }
-
     // 2-gene families: hide both family sections, show a simple note
     if (familyGenes.size <= 2) {
-      // Keep familyNav hidden (it's display:none by default)
+      // familyNav stays hidden (display:none by default — do NOT show it)
       // Hide PLMA section too
       const plmaSection = document.getElementById('familyFeaturesSection');
       if (plmaSection) plmaSection.classList.add('section-hidden');
@@ -382,6 +375,13 @@ async function loadFamilyData() {
       document.querySelectorAll('.sidebar-nav a[href="#familyNav"], .sidebar-nav a[href="#familyFeaturesSection"]')
         .forEach(a => { a.style.opacity = '0.4'; a.style.pointerEvents = 'none'; a.title = 'Family of 2 — not applicable'; });
       return;
+    }
+
+    // Show family sections (only reached when family size > 2)
+    familyNav.style.display = 'block';
+    const familySubtitle = document.getElementById('familySubtitle');
+    if (familySubtitle) {
+      familySubtitle.textContent = `${familyGenes.size} genes in family · ${pairsWithReports} pairs with reports`;
     }
 
     // Initialize constellation immediately, defer tree to not block page load
@@ -1561,11 +1561,10 @@ function initSummarySection() {
   renderConservationList();
   resetMetricSelection();
 
-  // Initialize new sections
+  // Initialize new sections (non-canvas ones are immediate)
   initProteinDescriptions();
-  initSimilaritySearchSection();
-  initFamilyFeaturesSection();
   initSlFunctionalSection();
+  // Canvas-heavy sections are deferred to lazy loading (registered in main())
 
   const resetBtn = document.getElementById('resetMetricView');
   if (resetBtn && !resetBtn.dataset.bound) {
@@ -2172,12 +2171,26 @@ function ssGetMetrics(mode) {
   const simSearch = SUMMARY?.similarity_search || {};
   const suffix = mode === 'struct' ? '_struct' : '_seq';
   const rev = simSearchQueryGene === 'B' ? '_reverse' : '';
+  const fwdRank = simSearch['rank' + suffix];
+  const revRank = simSearch['rank' + suffix + '_reverse'];
+  const fwdSP   = simSearch['selfSP' + suffix];
+  const revSP   = simSearch['selfSP' + suffix + '_reverse'];
+  const fwdTax  = simSearch['taxid' + suffix];
+  const revTax  = simSearch['taxid' + suffix + '_reverse'];
+  // Global max = worst across both directions (fixed scale regardless of query direction)
+  const globalRankMax   = Math.max(fwdRank?.max_value || 1, revRank?.max_value || 1);
+  const globalSPMax     = Math.max(fwdSP?.max_value   || 1, revSP?.max_value   || 1);
+  const globalTaxidMax  = Math.max(fwdTax?.max_value  || 1, revTax?.max_value  || 1);
+  const curRank = rev ? revRank : fwdRank;
+  const curSP   = rev ? revSP   : fwdSP;
+  const curTax  = rev ? revTax  : fwdTax;
   return {
     suffix,
     dbFullName: mode === 'struct' ? 'AlphaFold DB' : 'UniProt',
-    rankInfo: simSearch['rank' + suffix + rev] || simSearch['rank' + suffix],
-    selfSPInfo: simSearch['selfSP' + suffix + rev] || simSearch['selfSP' + suffix],
-    taxidInfo: simSearch['taxid' + suffix + rev] || simSearch['taxid' + suffix],
+    rankInfo:  curRank  || fwdRank,
+    selfSPInfo: curSP   || fwdSP,
+    taxidInfo:  curTax  || fwdTax,
+    globalRankMax, globalSPMax, globalTaxidMax,
     gene1: simSearchQueryGene === 'B' ? (SUMMARY?.gene2?.symbol || 'B') : (SUMMARY?.gene1?.symbol || 'A'),
     gene2: simSearchQueryGene === 'B' ? (SUMMARY?.gene1?.symbol || 'A') : (SUMMARY?.gene2?.symbol || 'B'),
   };
@@ -2403,11 +2416,10 @@ function drawSimSearchBarViz(mode) {
   const rank = m.rankInfo?.value ?? null;
   const selfSP = m.selfSPInfo?.value ?? null;
   const taxid = m.taxidInfo?.value ?? null;
-
-  const rankMax = m.rankInfo?.max_value ?? 1;
-  const selfSPMax = m.selfSPInfo?.max_value ?? 1;
-  const taxidMax = m.taxidInfo?.max_value ?? 1;
   const totalPairs = m.rankInfo?.total_pairs ?? 105107;
+
+  // Use GLOBAL max (worst across both query directions) so scale is stable
+  const globalMaxValues = [m.globalRankMax || 1, m.globalSPMax || 1, m.globalTaxidMax || 1];
 
   const filledColor = '#e8dcc8';
   const filledBorder = '#333';
@@ -2420,14 +2432,13 @@ function drawSimSearchBarViz(mode) {
     'Species with proteins ranking better',
   ];
   const values = [rank, selfSP, taxid];
-  const maxValues = [rankMax, selfSPMax, taxidMax];
   const infos = [m.rankInfo, m.selfSPInfo, m.taxidInfo];
 
   const padLeft = 16;
   const padRight = 50;  // room for "worst" label
   const barTotalWidth = displayWidth - padLeft - padRight;
   const barHeight = 22;
-  const barSpacing = 82;
+  const barSpacing = 90;
   const startY = 36;
 
   // Direction label at top
@@ -2439,26 +2450,28 @@ function drawSimSearchBarViz(mode) {
 
   for (let i = 0; i < 3; i++) {
     const val = values[i];
-    const maxVal = maxValues[i];
+    const globalMax = globalMaxValues[i];
     const info = infos[i];
     const by = startY + i * barSpacing;
     const cy = by + barHeight / 2;
 
-    // Label above bar
-    ctx.font = '12px -apple-system, sans-serif';
+    // Label right-aligned above bar (avoid overlap with triangle)
+    ctx.font = '11px -apple-system, sans-serif';
     ctx.fillStyle = '#666';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(barLabels[i], padLeft, by - 2);
-
-    // Value text right-aligned above bar
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#888';
-    ctx.fillText(val != null ? `${formatNum(val)} / ${formatNum(maxVal)}` : '-', displayWidth - padRight + 44, by - 2);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(barLabels[i], padLeft + barTotalWidth, by - 2);
 
-    if (val == null || maxVal <= 0) continue;
+    if (val == null || globalMax <= 0) {
+      // Draw empty bar with N/A
+      ssRoundRect(ctx, padLeft, by, barTotalWidth, barHeight, 5);
+      ctx.fillStyle = '#f0ece2';
+      ctx.fill();
+      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1; ctx.stroke();
+      continue;
+    }
 
-    const fillFrac = Math.min(1, Math.max(0, val / maxVal));
+    const fillFrac = Math.min(1, Math.max(0, val / globalMax));
     const markerX = padLeft + fillFrac * barTotalWidth;
 
     // Full grey background bar
@@ -2481,10 +2494,10 @@ function drawSimSearchBarViz(mode) {
     }
 
     // Empty dashed portion (pair position → worst)
-    const emptyStart = padLeft + Math.max(2, fillFrac * barTotalWidth);
+    const emptyStartX = padLeft + Math.max(2, fillFrac * barTotalWidth);
     const emptyW = barTotalWidth - Math.max(2, fillFrac * barTotalWidth);
     if (emptyW > 4) {
-      ssRoundRect(ctx, emptyStart, by, emptyW, barHeight, 5);
+      ssRoundRect(ctx, emptyStartX, by, emptyW, barHeight, 5);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
       ctx.setLineDash([4, 4]);
@@ -2509,15 +2522,16 @@ function drawSimSearchBarViz(mode) {
     ctx.fillStyle = '#aaa';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('rank 1 (best)', padLeft, by + barHeight + 3);
+    ctx.fillText('best (1)', padLeft + 2, by + barHeight + 3);
 
-    // Rank value at marker position, below bar
+    // Protein name + rank at marker position, below bar (avoid collision with "best")
+    const markerLabelX = Math.max(padLeft + 40, Math.min(markerX, padLeft + barTotalWidth - 20));
     ctx.font = 'bold 10px -apple-system, sans-serif';
     ctx.fillStyle = markerColor;
     ctx.textAlign = 'center';
-    ctx.fillText(`rank ${formatNum(val)}`, Math.min(markerX, displayWidth - padRight - 20), by + barHeight + 3);
+    ctx.fillText(`${m.gene2}: ${formatNum(val)}`, markerLabelX, by + barHeight + 3);
 
-    // "worst" label at right end
+    // "worst" label at right end (static, always at global max)
     ctx.font = '9px -apple-system, sans-serif';
     ctx.fillStyle = '#aaa';
     ctx.textAlign = 'left';
@@ -2530,8 +2544,8 @@ function drawSimSearchBarViz(mode) {
     simSearchBarHitRegions.push({
       x: padLeft, y: by, w: barTotalWidth, h: barHeight,
       tooltip: rPos != null
-        ? `${formatNum(val)} out of max ${formatNum(maxVal)} (${pctStr}%)<br>${formatNum(rPos)} of ${formatNum(totalPairs)} pairs have ≤ ${formatNum(val)}`
-        : `${formatNum(val)} out of max ${formatNum(maxVal)} (${pctStr}%)`,
+        ? `${m.gene2}: rank ${formatNum(val)} (${pctStr}% of scale)<br>${formatNum(rPos)} of ${formatNum(totalPairs)} pairs have ≤ ${formatNum(val)}`
+        : `${m.gene2}: rank ${formatNum(val)}`,
     });
   }
 }
@@ -4074,6 +4088,22 @@ async function initMolstar(){
       plugin.canvas3d.setProps({ postprocessing: { ...pp, outline: { name: 'on', params: { scale: 1, threshold: 0.33, color: { r: 0, g: 0, b: 0 }, includeTransparent: true } } } });
     }
   } catch(e) { console.warn('Could not enable outline:', e); }
+
+  // Reapply color theme when Molstar representations change (e.g., from built-in controls)
+  let _colorReapplyTimer = null;
+  try {
+    plugin.state.data.events.changed.subscribe(() => {
+      if (!structureReady || !currentColorMode || currentColorMode === 'uniform') return;
+      clearTimeout(_colorReapplyTimer);
+      _colorReapplyTimer = setTimeout(async () => {
+        try {
+          const theme = themeForColorMode(currentColorMode);
+          await applyColorTheme(theme);
+          await renderSelections();
+        } catch(e) {}
+      }, 150);
+    });
+  } catch(e) { console.warn('Could not subscribe to Molstar state changes:', e); }
 }
 
 async function loadPDBfromBase64(b64, resetCamera = true){
@@ -4391,8 +4421,6 @@ async function applyMolstarSelection() {
     if (selections.length === 0) {
       pendingHighlightLoci = null;
       pendingSelectionLoci = null;
-      const focusBtn = document.getElementById('focusSelection');
-      if (focusBtn) focusBtn.style.display = 'none';
       return;
     }
 
@@ -4614,14 +4642,8 @@ async function applyMolstarSelection() {
     const allElements = [...elementsChainA, ...elementsChainB];
     if (allElements.length > 0) {
       pendingSelectionLoci = { kind: 'element-loci', structure: structureData, elements: allElements };
-      const focusBtn = document.getElementById('focusSelection');
-      if (focusBtn) focusBtn.style.display = '';
-      // Auto-focus on the selection
-      try { plugin.managers.camera.focusLoci(pendingSelectionLoci); } catch(e) {}
     } else {
       pendingSelectionLoci = null;
-      const focusBtn = document.getElementById('focusSelection');
-      if (focusBtn) focusBtn.style.display = 'none';
     }
   } catch (e) {
     console.error('applyMolstarSelection failed:', e);
@@ -4743,6 +4765,21 @@ async function initPdbeMolstar() {
     }
     
     console.log('PDBe Molstar viewer initialized');
+
+    // Reapply PDBe color theme when representations change
+    let _pdbeColorReapplyTimer = null;
+    try {
+      pdbePlugin.state.data.events.changed.subscribe(() => {
+        if (!pdbeStructureReady || !currentPdbeColorMode) return;
+        clearTimeout(_pdbeColorReapplyTimer);
+        _pdbeColorReapplyTimer = setTimeout(async () => {
+          try {
+            await applyPdbeCustomTheme(getPdbeColorTheme(currentPdbeColorMode));
+            if (pendingPdbeHighlightLoci) reapplyPdbeHighlight();
+          } catch(e) {}
+        }, 150);
+      });
+    } catch(e) { console.warn('Could not subscribe to PDBe state changes:', e); }
   } catch(e) {
     console.error('Failed to initialize PDBe viewer:', e);
   }
@@ -5039,6 +5076,14 @@ function getPdbeTargetDefaultBf(mode) {
 }
 
 function getPdbeColorTheme(mode) {
+  if (mode === 'grey') {
+    // Target chain B=100 → vivid cyan; context chains B=-25,-50,-75,-100 → grey shades
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0x00ACC1, 0x26C6DA, 0x80DEEA, 0xCCEEF4,  // [0-3] B=100→25: vivid cyan → light
+      0xEEEEEE,                                   // [4] B=0: neutral (rarely used)
+      0xCCCCCC, 0xAAAAAA, 0x777777, 0x333333     // [5-8] B=-25→-100: light→dark grey
+    ]}}};
+  }
   if (mode === 'plddt') {
     return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
       0x0053d6, 0x65cbf3, 0xffdb13, 0xff7d45, 0xff7d45,
@@ -5181,9 +5226,15 @@ async function zoomToPdbeProtein() {
   }
 }
 
-// Pending PDBe highlight loci for hover-lock reapplication
+// Pending PDBe highlight loci for hover-lock reapplication and focus
 let pendingPdbeHighlightLoci = null;
+let pendingPdbeFocusLoci = null;  // for pdbeFocusSelection button
 let pdbeHoverLockInterval = null;
+
+function focusPdbeSelection() {
+  if (!pdbePlugin || !pdbeStructureReady || !pendingPdbeFocusLoci) return;
+  try { pdbePlugin.managers.camera.focusLoci(pendingPdbeFocusLoci); } catch(e) {}
+}
 
 function reapplyPdbeHighlight() {
   if (pendingPdbeHighlightLoci && viewerLocked && pdbePlugin) {
@@ -5256,6 +5307,7 @@ function syncSelectionsToPdbe() {
     }
     if (matchingElements.length) {
       const loci = { kind: 'element-loci', structure: sd, elements: matchingElements };
+      pendingPdbeFocusLoci = loci;  // save for Focus button
       if (isGeneB) {
         // Gene B: pink highlight (fades on hover) — lock it via interval
         pdbePlugin.managers.interactivity.lociHighlights.highlight({ loci });
@@ -5266,6 +5318,8 @@ function syncSelectionsToPdbe() {
         pdbePlugin.managers.interactivity.lociSelects.select({ loci });
         pendingPdbeHighlightLoci = null;
       }
+    } else {
+      pendingPdbeFocusLoci = null;
     }
   } catch(e) { console.warn('syncSelectionsToPdbe error:', e); }
 }
@@ -5302,13 +5356,29 @@ async function applyPdbeColorMode(mode) {
   }
 
   if (!mode || mode === 'grey') {
+    // Color protein of interest in vivid cyan, context chains in grey shades
     if (b64 && b64.length > 100) {
-      await loadPdbeStructureFromBase64(b64, format);
+      const pdbText = atob(b64);
+      const targetChains = getTargetChainIds(entry);
+      // Target chain: B=100 (vivid), non-target: B=-25..-100 (grey shading per chain)
+      const modifiedText = modifyPdbeBfactors(pdbText, targetChains, {}, 100, -25, true);
+      try { await pdbePlugin?.clear(); } catch(e) {}
+      pdbeStructureReady = false;
+      const isCif = modifiedText.trimStart().startsWith('data_');
+      const blob = new Blob([modifiedText], { type: isCif ? 'chemical/x-mmcif' : 'chemical/x-pdb' });
+      const url = URL.createObjectURL(blob);
+      await pdbeViewer.loadStructureFromUrl(url, isCif ? 'mmcif' : 'pdb');
+      pdbeStructureReady = true;
+      URL.revokeObjectURL(url);
+      await new Promise(r => setTimeout(r, 200));
+      await applyPdbeCustomTheme(getPdbeColorTheme('grey'));
     } else if (pdbId) {
       await fetchAndLoadPdbeStructure(pdbId);
     }
-    updatePdbeLegend('Complex shown in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#43a047">green</span>.');
-    if (isProteinHighlighted) setTimeout(function() { highlightProteinChains(entry); }, 300);
+    if (cameraSnapshot && pdbePlugin?.canvas3d?.camera) {
+      try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
+    }
+    updatePdbeLegend('Context chains in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#00ACC1">teal</span>. Click "Highlight Protein" to highlight specific region.');
     return;
   }
 
@@ -5844,32 +5914,14 @@ async function loadPdbeByIndex(idx) {
 
   updatePdbeInfoBox(entry);
   updatePdbeLegend(`Loading structure...`);
+  updateHighlightButtonState(false);
 
-  const b64 = entry.coord_b64 || entry.coordB64 || entry.pdb_b64 || entry.pdbB64 || '';
-  const format = entry.coord_format || entry.coordFormat || 'pdb';
-  const pdbId = (entry.pdb_id || entry.pdbId || '').toLowerCase();
-
-  let loaded = false;
-
-  if (b64 && b64.length > 100) {
-    console.log(`Loading PDBe structure ${pdbId} from base64 (format: ${format})`);
-    loaded = await loadPdbeStructureFromBase64(b64, format);
-  }
-
-  if (!loaded && pdbId) {
-    console.log(`Fetching PDBe structure ${pdbId} from remote`);
-    loaded = await fetchAndLoadPdbeStructure(pdbId);
-  }
-
-  if (loaded) {
-    updatePdbeLegend(`Complex shown in <strong>grey</strong>. <strong>${geneName || 'Protein'}</strong> highlighted in <span style="color:#43a047">green</span>.`);
-    // Auto-highlight the protein of interest
-    setTimeout(async () => {
-      await highlightProteinChains(entry);
-      updateHighlightButtonState(true);
-    }, 300);
-  } else {
-    console.error('Failed to load structure for entry:', entry);
+  // Use applyPdbeColorMode('grey') which now colors the target protein in vivid teal
+  try {
+    await initPdbeMolstar();
+    await applyPdbeColorMode('grey');
+  } catch(e) {
+    console.error('Failed to load PDBe structure for entry:', entry, e);
     updatePdbeLegend(`<strong>Error:</strong> Failed to load structure.`);
   }
 }
@@ -6002,6 +6054,11 @@ function setupPdbeControls() {
     zoomProteinBtn.addEventListener('click', async () => {
       await zoomToPdbeProtein();
     }, { passive: true });
+  }
+
+  const pdbeFocusBtn = document.getElementById('pdbeFocusSelection');
+  if (pdbeFocusBtn) {
+    pdbeFocusBtn.addEventListener('click', () => { focusPdbeSelection(); }, { passive: true });
   }
 
   // PDBe color-by dropdown
@@ -8355,7 +8412,11 @@ async function main(){
   console.log('Initializing report viewer...');
   console.log('PDBe complexes count:', PDBe_COMPLEXES.length);
   initSummarySection();
-  
+
+  // Defer canvas-heavy sections until they're near the viewport
+  registerLazySection('similaritySearchSection', initSimilaritySearchSection);
+  registerLazySection('familyFeaturesSection', initFamilyFeaturesSection);
+
   (DATA.domainsA||[]).forEach(d => { if (d.uid) domByUidA[d.uid] = d; });
   (DATA.domainsB||[]).forEach(d => { if (d.uid) domByUidB[d.uid] = d; });
   // Assign distinct colors to domains (same name = same color across A and B)
@@ -8419,8 +8480,6 @@ async function main(){
     selection.clear();
     pendingHighlightLoci = null;
     pendingSelectionLoci = null;
-    const focusBtnBF = document.getElementById('focusSelection');
-    if (focusBtnBF) focusBtnBF.style.display = 'none';
     // applyChainVisibility re-applies color theme correctly
     await applyChainVisibility();
     setTmScoreDisplay(DATA.tm);

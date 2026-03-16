@@ -738,7 +738,7 @@
           <input type="checkbox" id="showChainB" checked> <span id="chainBLabel">Chain B</span>
         </label>
         <button id="center">Center</button>
-        <button id="focusSelection" title="Zoom to highlighted region" style="display:none">Focus</button>
+        <button id="focusSelection" title="Zoom to highlighted region">Focus</button>
         <button id="backFull">Back to full</button>
         <label>Alignment:
           <select id="alnSelector" style="max-width:220px">
@@ -831,6 +831,7 @@
         <button id="pdbeSyncCamera" title="Sync orientation with main viewer">Sync Orientation</button>
         <button id="pdbeCenter">Center</button>
         <button id="pdbeZoomProtein" title="Zoom to target protein chain">Zoom to Protein</button>
+        <button id="pdbeFocusSelection" title="Zoom to highlighted region in PDBe viewer">Focus</button>
       </div>
       <div class="display-legend" id="pdbeLegend">
         Complex shown in <strong>grey</strong>. Protein of interest highlighted in <span style="color:#43a047">green</span>.
@@ -1094,7 +1095,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=4"></script>
+<script src="static/js/app.js?v=5"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
