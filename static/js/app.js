@@ -4650,6 +4650,10 @@ let pdbePlugin = null;
 let pdbeStructureReady = false;
 let currentPdbeEntry = null;
 let currentPdbeIndex = -1;
+let currentPdbeColorMode = 'grey';
+let pdbeComplexVisible = true;
+let _pdbeResSeqToUniprot = null;
+let _pdbeResSeqCacheEntry = null;
 
 async function initPdbeMolstar() {
   if (pdbeViewer) return;
@@ -4723,6 +4727,433 @@ async function applyGreyColoring() {
     console.warn('Could not apply grey coloring:', e);
   }
 }
+
+// === PDBe Coloring System ===
+
+function extractPlddtFromPdb(b64) {
+  if (!b64) return [];
+  try {
+    const pdb = atob(b64);
+    const bfactors = {};
+    for (const line of pdb.split('\n')) {
+      if (line.startsWith('ATOM') && line.substring(12, 16).trim() === 'CA') {
+        const resSeq = parseInt(line.substring(22, 26).trim(), 10);
+        const bf = parseFloat(line.substring(60, 66).trim());
+        if (!isNaN(bf) && !isNaN(resSeq)) bfactors[resSeq] = bf;
+      }
+    }
+    const maxRes = Math.max(0, ...Object.keys(bfactors).map(Number));
+    if (!maxRes) return [];
+    const arr = [];
+    for (let i = 1; i <= maxRes; i++) arr.push(bfactors[i] || 0);
+    return arr;
+  } catch(e) { return []; }
+}
+
+const AA3TO1 = {
+  'ALA':'A','ARG':'R','ASN':'N','ASP':'D','CYS':'C','GLU':'E','GLN':'Q',
+  'GLY':'G','HIS':'H','ILE':'I','LEU':'L','LYS':'K','MET':'M','PHE':'F',
+  'PRO':'P','SER':'S','THR':'T','TRP':'W','TYR':'Y','VAL':'V',
+  'SEC':'U','PYL':'O','MSE':'M'
+};
+
+function parseCifAtomSiteCols(cifText) {
+  const atIdx = cifText.indexOf('_atom_site.');
+  if (atIdx < 0) return null;
+  const loopIdx = cifText.lastIndexOf('loop_', atIdx);
+  const cols = {};
+  let colIdx = 0;
+  let pos = cifText.indexOf('\n', loopIdx) + 1;
+  while (pos < cifText.length) {
+    const nl = cifText.indexOf('\n', pos);
+    if (nl < 0) break;
+    const line = cifText.substring(pos, nl).trim();
+    if (line.startsWith('_atom_site.')) {
+      cols[line.substring(11)] = colIdx++;
+    } else if (colIdx > 0) {
+      return { cols, dataPos: pos, numCols: colIdx };
+    }
+    pos = nl + 1;
+  }
+  return null;
+}
+
+function buildPdbeResSeqMapCif(cifText, targetChainIds) {
+  const info = parseCifAtomSiteCols(cifText);
+  if (!info) return [];
+  const { cols, dataPos } = info;
+  const iGroup = cols['group_PDB'], iChain = cols['auth_asym_id'];
+  const iResSeq = cols['auth_seq_id'], iCompId = cols['auth_comp_id'];
+  if (iGroup === undefined || iChain === undefined || iResSeq === undefined || iCompId === undefined) return [];
+  const seen = new Set(), result = [];
+  let pos = dataPos;
+  while (pos < cifText.length) {
+    const nl = cifText.indexOf('\n', pos);
+    if (nl < 0) break;
+    const line = cifText.substring(pos, nl).trim();
+    pos = nl + 1;
+    if (!line || line.startsWith('#') || line.startsWith('_') || line.startsWith('loop_')) break;
+    const fields = line.split(/\s+/);
+    if (fields[iGroup] !== 'ATOM') continue;
+    const chain = fields[iChain];
+    if (!targetChainIds.has(chain)) continue;
+    const resSeq = parseInt(fields[iResSeq], 10);
+    const key = chain + '_' + resSeq;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const aa1 = AA3TO1[fields[iCompId]];
+    if (!aa1) continue;
+    result.push({ resSeq, aa1, chain });
+  }
+  return result;
+}
+
+function buildPdbeResSeqMap(text, targetChainIds) {
+  if (text.trimStart().startsWith('data_')) return buildPdbeResSeqMapCif(text, targetChainIds);
+  const lines = text.split('\n'), seen = new Set(), result = [];
+  for (const line of lines) {
+    if (line.length < 54 || !line.startsWith('ATOM')) continue;
+    const chain = line[21];
+    if (!targetChainIds.has(chain)) continue;
+    const resSeq = parseInt(line.substring(22, 26).trim(), 10);
+    const key = chain + '_' + resSeq;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const aa1 = AA3TO1[line.substring(17, 20).trim()];
+    if (!aa1) continue;
+    result.push({ resSeq, aa1, chain });
+  }
+  return result;
+}
+
+function mapPdbeToUniprot(resSeqArr, uniprotSeq) {
+  if (!resSeqArr.length || !uniprotSeq) return {};
+  const offsets = new Map();
+  for (const r of resSeqArr) {
+    for (let uPos = 1; uPos <= uniprotSeq.length; uPos++) {
+      if (uniprotSeq[uPos - 1] === r.aa1) {
+        const off = uPos - r.resSeq;
+        offsets.set(off, (offsets.get(off) || 0) + 1);
+      }
+    }
+  }
+  let bestOffset = 0, bestCount = 0;
+  for (const [off, cnt] of offsets) { if (cnt > bestCount) { bestCount = cnt; bestOffset = off; } }
+  const mapping = {};
+  for (const r of resSeqArr) {
+    const uPos = r.resSeq + bestOffset;
+    if (uPos >= 1 && uPos <= uniprotSeq.length) mapping[r.resSeq] = uPos;
+  }
+  console.log('PDBe->UniProt: offset=' + bestOffset + ', matched=' + bestCount + '/' + resSeqArr.length);
+  return mapping;
+}
+
+function modifyPdbeBfactorsCif(cifText, targetChainIds, bfMap, targetDefaultBf, nonTargetBf, chainShading) {
+  const info = parseCifAtomSiteCols(cifText);
+  if (!info) return cifText;
+  const { cols, dataPos, numCols } = info;
+  const iBf = cols['B_iso_or_equiv'], iGroup = cols['group_PDB'];
+  const iChain = cols['auth_asym_id'], iResSeq = cols['auth_seq_id'];
+  const iCompId = cols['auth_comp_id'] !== undefined ? cols['auth_comp_id'] : cols['label_comp_id'];
+  if (iBf === undefined || iGroup === undefined || iChain === undefined || iResSeq === undefined) return cifText;
+  const NUCLEOTIDES = new Set(['DA','DC','DG','DT','DU','A','C','G','U','PSU','5MC','7MG','OMC','OMG','H2U','5MU','4SU','1MA','M2G']);
+  let chainBf = null;
+  if (chainShading && iCompId !== undefined) {
+    const chainCounts = {};
+    let pos = dataPos;
+    while (pos < cifText.length) {
+      const nl = cifText.indexOf('\n', pos); if (nl < 0) break;
+      const line = cifText.substring(pos, nl).trim(); pos = nl + 1;
+      if (!line || line.startsWith('#') || line.startsWith('_') || line.startsWith('loop_')) break;
+      const fields = line.split(/\s+/);
+      if (fields.length >= numCols && (fields[iGroup] === 'ATOM' || fields[iGroup] === 'HETATM')) {
+        const chain = fields[iChain];
+        if (targetChainIds.has(chain)) continue;
+        if (!chainCounts[chain]) chainCounts[chain] = { nuc: 0, prot: 0 };
+        if (NUCLEOTIDES.has(fields[iCompId])) chainCounts[chain].nuc++; else chainCounts[chain].prot++;
+      }
+    }
+    const protChains = [], nucChains = [];
+    for (const [ch, c] of Object.entries(chainCounts)) {
+      const t = c.nuc + c.prot;
+      if (t > 0 && c.nuc / t > 0.5) nucChains.push(ch); else protChains.push(ch);
+    }
+    chainBf = {};
+    protChains.forEach((ch, i) => { chainBf[ch] = [-2, -3, -4][i % 3]; });
+    nucChains.forEach(ch => { chainBf[ch] = -5; });
+  }
+  const header = cifText.substring(0, dataPos);
+  const lines = cifText.substring(dataPos).split('\n');
+  const out = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('_') && !trimmed.startsWith('loop_')) {
+      const fields = trimmed.split(/\s+/);
+      if (fields.length >= numCols && (fields[iGroup] === 'ATOM' || fields[iGroup] === 'HETATM')) {
+        const chain = fields[iChain];
+        if (targetChainIds.has(chain)) {
+          const resSeq = parseInt(fields[iResSeq], 10);
+          fields[iBf] = ((resSeq in bfMap) ? bfMap[resSeq] : targetDefaultBf).toFixed(2);
+        } else if (chainBf && chainBf[chain] !== undefined) {
+          fields[iBf] = chainBf[chain].toFixed(2);
+        } else { fields[iBf] = nonTargetBf.toFixed(2); }
+        out.push(fields.join(' ')); continue;
+      }
+    }
+    out.push(line);
+  }
+  return header + out.join('\n');
+}
+
+function modifyPdbeBfactors(text, targetChainIds, bfMap, targetDefaultBf, nonTargetBf, chainShading) {
+  if (targetDefaultBf === undefined) targetDefaultBf = 50;
+  if (nonTargetBf === undefined) nonTargetBf = -2;
+  if (chainShading === undefined) chainShading = false;
+  if (text.trimStart().startsWith('data_')) return modifyPdbeBfactorsCif(text, targetChainIds, bfMap, targetDefaultBf, nonTargetBf, chainShading);
+  const NUCLEOTIDES = new Set(['DA','DC','DG','DT','DU','A','C','G','U','PSU','5MC','7MG','OMC','OMG','H2U','5MU','4SU','1MA','M2G']);
+  const lines = text.split('\n');
+  let chainBf = null;
+  if (chainShading) {
+    const chainTypes = {};
+    for (const line of lines) {
+      if (line.length < 22 || (!line.startsWith('ATOM') && !line.startsWith('HETATM'))) continue;
+      const chain = line[21];
+      if (targetChainIds.has(chain)) continue;
+      if (!chainTypes[chain]) chainTypes[chain] = { nuc: 0, prot: 0 };
+      if (NUCLEOTIDES.has(line.substring(17, 20).trim())) chainTypes[chain].nuc++; else chainTypes[chain].prot++;
+    }
+    const protChains = [], nucChains = [];
+    for (const [ch, c] of Object.entries(chainTypes)) {
+      const t = c.nuc + c.prot;
+      if (t > 0 && c.nuc / t > 0.5) nucChains.push(ch); else protChains.push(ch);
+    }
+    chainBf = {};
+    protChains.forEach((ch, i) => { chainBf[ch] = [-2, -3, -4][i % 3]; });
+    nucChains.forEach(ch => { chainBf[ch] = -5; });
+  }
+  const out = [];
+  for (const line of lines) {
+    if (line.length >= 66 && (line.startsWith('ATOM') || line.startsWith('HETATM'))) {
+      const chain = line[21];
+      let bf;
+      if (targetChainIds.has(chain)) {
+        const resSeq = parseInt(line.substring(22, 26).trim(), 10);
+        bf = (resSeq in bfMap) ? bfMap[resSeq] : targetDefaultBf;
+      } else if (chainBf && chainBf[chain] !== undefined) {
+        bf = chainBf[chain];
+      } else { bf = nonTargetBf; }
+      out.push(line.substring(0, 60) + bf.toFixed(2).padStart(6) + line.substring(66));
+    } else { out.push(line); }
+  }
+  return out.join('\n');
+}
+
+function buildPdbeGenericBfactorMap(resSeqToUniprot, mode, isGeneB) {
+  const builderMap = {
+    plddt: buildPlddtBfactorMaps, am: buildAmBfactorMaps, dam: buildDamBfactorMaps,
+    aligned: buildAlignedBfactorMaps, domains: buildDomainBfactorMaps,
+    ss: buildSsBfactorMaps, cavities: buildCavityBfactorMaps,
+    drugclip: buildDrugclipBfactorMaps, plma: buildPlmaBfactorMaps,
+  };
+  const builder = builderMap[mode];
+  if (!builder) return null;
+  const maps = builder();
+  if (!maps) return null;
+  const geneMap = isGeneB ? maps.B : maps.A;
+  if (!geneMap) return null;
+  const bfMap = {};
+  for (const [resSeqStr, uniprotPos] of Object.entries(resSeqToUniprot)) {
+    const val = geneMap[uniprotPos];
+    if (val !== undefined) bfMap[parseInt(resSeqStr)] = (mode === 'plddt') ? (val + 1) * 25 : val;
+  }
+  return bfMap;
+}
+
+function getPdbeTargetDefaultBf(mode) {
+  const defaults = { plddt: 25, am: 0, dam: 0, aligned: 0, domains: 0, ss: 0, cavities: 0, drugclip: 0, plma: 0 };
+  return defaults[mode] !== undefined ? defaults[mode] : 0;
+}
+
+function getPdbeColorTheme(mode) {
+  if (mode === 'plddt') {
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0x0053d6, 0x65cbf3, 0xffdb13, 0xff7d45, 0xff7d45,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'am' || mode === 'dam') {
+    return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
+      0xd62728, 0xff7d45, 0xbbbbbb, 0xdddddd, 0xdddddd,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'aligned') {
+    return { name: 'uncertainty', params: { domain: [-5, 1], list: { kind: 'set', colors: [
+      0x999999, 0xAD1457, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'domains') {
+    const names = window._domainColorNames || {};
+    const nDomains = Object.keys(names).length || 1;
+    const colors = [0xcccccc];
+    for (let i = 0; i < nDomains; i++) colors.push(parseInt(DOMAIN_PALETTE[i % DOMAIN_PALETTE.length].replace('#',''), 16));
+    colors.reverse();
+    colors.push(0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a);
+    return { name: 'uncertainty', params: { domain: [-5, nDomains], list: { kind: 'set', colors }}};
+  }
+  if (mode === 'ss') {
+    return { name: 'uncertainty', params: { domain: [-5, 2], list: { kind: 'set', colors: [
+      0xFF0066, 0xFFCC00, 0xdddddd, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'cavities') {
+    return { name: 'uncertainty', params: { domain: [-5, 3], list: { kind: 'set', colors: [
+      0xe65100, 0xff9800, 0xffc107, 0xdddddd, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'drugclip') {
+    return { name: 'uncertainty', params: { domain: [-5, 1], list: { kind: 'set', colors: [
+      0xc62828, 0xf7f7f7, 0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    ]}}};
+  }
+  if (mode === 'plma') {
+    return { name: 'uncertainty', params: { domain: [-5, 5], list: { kind: 'set', colors: [
+      0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD, 0xEEEEEE,
+      0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a, 0x1a1a1a
+    ]}}};
+  }
+  return { name: 'uniform', params: { value: 0xcccccc } };
+}
+
+function getPdbeColorLegendHtml(mode) {
+  const sw = (c, lbl) => '<span style="display:inline-flex;align-items:center;gap:3px;margin-right:5px"><span style="display:inline-block;width:11px;height:11px;background:' + c + ';border:1px solid #ccc;border-radius:2px;flex-shrink:0"></span>' + lbl + '</span>';
+  const legends = {
+    plddt:    '<strong>pLDDT:</strong> ' + sw('#0053d6','&gt;90') + sw('#65cbf3','70-90') + sw('#ffdb13','50-70') + sw('#ff7d45','&le;50'),
+    am:       '<strong>AlphaMissense:</strong> ' + sw('#d62728','Pathogenic') + sw('#ff7d45','Ambiguous') + sw('#bbbbbb','Benign'),
+    dam:      '<strong>&Delta; AlphaMissense:</strong> ' + sw('#d62728','High') + sw('#ff7d45','Med') + sw('#bbbbbb','Low'),
+    aligned:  '<strong>Aligned:</strong> ' + sw('#999999','Aligned') + sw('#AD1457','Gap'),
+    domains:  '<strong>Domains:</strong> colored by type',
+    ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
+    cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
+    drugclip: '<strong>DrugCLIP:</strong> ' + sw('#c62828','Pocket') + sw('#f7f7f7','None'),
+    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350','Specific') + sw('#FFA726','+Family') + sw('#26A69A','Pair-excl') + sw('#FFCA28','Shared') + sw('#BDBDBD','Family-only'),
+  };
+  const chainNote = sw('#C9B99A','Context') + sw('#1a1a1a','DNA/RNA');
+  return (legends[mode] || '') + ' | ' + chainNote;
+}
+
+async function applyPdbeCustomTheme(theme) {
+  if (!pdbePlugin || !pdbeStructureReady) return;
+  const snapshot = pdbePlugin.canvas3d ? pdbePlugin.canvas3d.camera.getSnapshot() : null;
+  try {
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || !structures.length) return;
+    const update = pdbePlugin.state.data.build();
+    for (const struct of structures) {
+      for (const comp of (struct.components || [])) {
+        for (const repr of (comp.representations || [])) {
+          update.to(repr.cell).update(function(old) { return Object.assign({}, old, { colorTheme: theme }); });
+        }
+      }
+    }
+    await update.commit();
+  } catch(e) { console.error('applyPdbeCustomTheme:', e); }
+  if (snapshot && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) pdbePlugin.canvas3d.camera.setState(snapshot);
+}
+
+async function togglePdbeComplexVisibility(visible) {
+  if (!pdbePlugin || !pdbeStructureReady) return;
+  const snapshot = pdbePlugin.canvas3d ? pdbePlugin.canvas3d.camera.getSnapshot() : null;
+  try {
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures || !structures.length) return;
+    const pdbeStruct = structures[0];
+    for (const comp of (pdbeStruct.components || [])) {
+      for (const repr of (comp.representations || [])) {
+        pdbePlugin.state.data.updateCellState(repr.cell.transform.ref, { isHidden: !visible });
+      }
+    }
+    pdbeComplexVisible = visible;
+  } catch(e) { console.error('togglePdbeComplexVisibility:', e); }
+  if (snapshot && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) pdbePlugin.canvas3d.camera.setState(snapshot);
+}
+
+async function applyPdbeColorMode(mode) {
+  if (!currentPdbeEntry) return;
+  currentPdbeColorMode = mode;
+  const entry = currentPdbeEntry;
+  const b64 = entry.coord_b64 || entry.coordB64 || entry.pdb_b64 || entry.pdbB64 || '';
+  const format = entry.coord_format || entry.coordFormat || 'pdb';
+  const pdbId = (entry.pdb_id || entry.pdbId || '').toLowerCase();
+  const geneName = getGeneNameForAccession(entry.source_acc || entry.sourceAcc || '');
+
+  let cameraSnapshot = null;
+  if (pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) {
+    try { cameraSnapshot = pdbePlugin.canvas3d.camera.getSnapshot(); } catch(e) {}
+  }
+
+  if (!mode || mode === 'grey') {
+    if (b64 && b64.length > 100) {
+      await loadPdbeStructureFromBase64(b64, format);
+    } else if (pdbId) {
+      await fetchAndLoadPdbeStructure(pdbId);
+    }
+    updatePdbeLegend('Complex shown in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#43a047">green</span>.');
+    if (isProteinHighlighted) setTimeout(function() { highlightProteinChains(entry); }, 300);
+    return;
+  }
+
+  if (!b64 || b64.length < 10) {
+    updatePdbeLegend('<strong>Error:</strong> No structure data available for coloring.');
+    return;
+  }
+
+  updatePdbeLegend('Applying coloring...');
+  await initPdbeMolstar();
+  if (!pdbeViewer || !pdbePlugin) return;
+
+  const pdbText = atob(b64);
+  const targetChains = getTargetChainIds(entry);
+
+  if (!_pdbeResSeqToUniprot || _pdbeResSeqCacheEntry !== entry) {
+    const sourceAcc = entry.source_acc || entry.sourceAcc || '';
+    const isGeneB2 = !!(SUMMARY && SUMMARY.gene2 && SUMMARY.gene2.uniprot === sourceAcc);
+    const uniprotSeq = isGeneB2 ? (DATA.taln || '').replace(/-/g, '') : (DATA.qaln || '').replace(/-/g, '');
+    _pdbeResSeqToUniprot = mapPdbeToUniprot(buildPdbeResSeqMap(pdbText, targetChains), uniprotSeq);
+    _pdbeResSeqCacheEntry = entry;
+  }
+
+  const sourceAcc2 = entry.source_acc || entry.sourceAcc || '';
+  const isGeneB = !!(SUMMARY && SUMMARY.gene2 && SUMMARY.gene2.uniprot === sourceAcc2);
+  const bfMap = buildPdbeGenericBfactorMap(_pdbeResSeqToUniprot, mode, isGeneB);
+
+  if (!bfMap || !Object.keys(bfMap).length) {
+    updatePdbeLegend('<strong>Note:</strong> No data available for this coloring mode.');
+    return;
+  }
+
+  const targetDefaultBf = getPdbeTargetDefaultBf(mode);
+  const modifiedText = modifyPdbeBfactors(pdbText, targetChains, bfMap, targetDefaultBf, -2, true);
+
+  try { await pdbePlugin.clear(); } catch(e) {}
+  pdbeStructureReady = false;
+  const isCif = modifiedText.trimStart().startsWith('data_');
+  const blob = new Blob([modifiedText], { type: isCif ? 'chemical/x-mmcif' : 'chemical/x-pdb' });
+  const url = URL.createObjectURL(blob);
+  await pdbeViewer.loadStructureFromUrl(url, isCif ? 'mmcif' : 'pdb');
+  pdbeStructureReady = true;
+  URL.revokeObjectURL(url);
+
+  await new Promise(function(r) { setTimeout(r, 300); });
+
+  await applyPdbeCustomTheme(getPdbeColorTheme(mode));
+  updatePdbeLegend(getPdbeColorLegendHtml(mode));
+
+  if (cameraSnapshot && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) {
+    try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
+  }
+}
+
 
 async function loadPdbeStructureFromBase64(b64, format = 'pdb') {
   await initPdbeMolstar();
@@ -5184,6 +5615,15 @@ async function loadPdbeByIndex(idx) {
 
   currentPdbeEntry = entry;
   currentPdbeIndex = idx;
+  // Reset color mode and residue cache when switching structures
+  currentPdbeColorMode = 'grey';
+  _pdbeResSeqToUniprot = null;
+  _pdbeResSeqCacheEntry = null;
+  pdbeComplexVisible = true;
+  const colorSel = document.getElementById('pdbeColorBy');
+  if (colorSel) colorSel.value = 'grey';
+  const visChk = document.getElementById('togglePdbeComplex');
+  if (visChk) visChk.checked = true;
 
   // Update button text with gene name
   const sourceAcc = entry.source_acc || entry.sourceAcc || '';
@@ -5345,6 +5785,22 @@ function setupPdbeControls() {
           pdbePlugin?.canvas3d?.requestCameraReset();
         }
       }
+    }, { passive: true });
+  }
+
+  // PDBe color-by dropdown
+  const pdbeColorBySelect = document.getElementById('pdbeColorBy');
+  if (pdbeColorBySelect) {
+    pdbeColorBySelect.addEventListener('change', async (e) => {
+      await applyPdbeColorMode(e.target.value);
+    }, { passive: true });
+  }
+
+  // PDBe complex visibility toggle
+  const pdbeVisToggle = document.getElementById('togglePdbeComplex');
+  if (pdbeVisToggle) {
+    pdbeVisToggle.addEventListener('change', async (e) => {
+      await togglePdbeComplexVisibility(e.target.checked);
     }, { passive: true });
   }
 
@@ -6893,7 +7349,10 @@ function alnColToResMap(aln) {
 function buildPlddtBfactorMaps() {
   if (!DATA) return null;
   const mapA = {}, mapB = {};
-  const plddtA = DATA.plddtA || [], plddtB = DATA.plddtB || [];
+  let plddtA = DATA.plddtA || [], plddtB = DATA.plddtB || [];
+  // Fallback: extract pLDDT from AF PDB B-factors when DATA arrays are empty
+  if (!plddtA.length && window.PDB64_A) plddtA = extractPlddtFromPdb(window.PDB64_A);
+  if (!plddtB.length && window.PDB64_B) plddtB = extractPlddtFromPdb(window.PDB64_B);
   if (!plddtA.length && !plddtB.length) return null;
   // Bin to match AlphaFold official cutoffs: <=50→0, 51-70→1, 71-90→2, >90→3
   const bin = v => v <= 50 ? 0 : v <= 70 ? 1 : v <= 90 ? 2 : 3;
@@ -7176,12 +7635,12 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'drugclip') {
-    // DrugCLIP pocket: hit=1 (red), none=0 (grey)
+    // DrugCLIP pocket: hit=1 (red), none=0 (white)
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
-        list: { kind: 'set', colors: [0xc62828, 0xdddddd] }
+        list: { kind: 'set', colors: [0xc62828, 0xf7f7f7] }
       }
     };
   }
@@ -7335,7 +7794,7 @@ function updateColorLegend(mode) {
       title: 'DrugCLIP Binding Pockets',
       items: [
         {color:'#c62828',label:'Pocket hit'},
-        {color:'#dddddd',label:'No pocket'},
+        {color:'#f7f7f7',label:'No pocket'},
       ]
     },
     plma: {

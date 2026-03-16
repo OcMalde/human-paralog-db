@@ -808,6 +808,22 @@
             <option value="">Loading...</option>
           </select>
         </label>
+        <label>Color:
+          <select id="pdbeColorBy" style="font-size:12px;padding:2px 4px">
+            <option value="grey">Grey (default)</option>
+            <option value="plddt">pLDDT</option>
+            <option value="am">AlphaMissense</option>
+            <option value="dam">Δ AlphaMissense</option>
+            <option value="domains">Domains</option>
+            <option value="ss">2D Structure</option>
+            <option value="cavities">Cavities</option>
+            <option value="drugclip">DrugCLIP</option>
+            <option value="plma">PLMA</option>
+          </select>
+        </label>
+        <label style="font-size:12px;color:#555;white-space:nowrap">
+          <input type="checkbox" id="togglePdbeComplex" checked style="margin:0 3px 0 0">Show complex
+        </label>
         <button id="pdbeHighlightProtein">Highlight <span id="pdbeProteinName">Protein</span></button>
         <button id="pdbeClearHighlight">Clear Highlight</button>
         <button id="pdbeSyncCamera" title="Sync orientation with main viewer">Sync Orientation</button>
