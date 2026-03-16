@@ -423,6 +423,7 @@
   .section-group>.section-body>.sticky-controls+.card{margin-top:0}
 
   /* Sticky Controls */
+  #colorBy{font-size:13px;font-weight:600;padding:5px 8px;border:2px solid #546e7a;border-radius:6px;background:#e8f4f8;min-width:165px;cursor:pointer}
   .sticky-controls{position:sticky;top:42px;z-index:50;background:#f8f8f8;padding:8px 12px 4px;border:1.5px solid #444;border-radius:10px}
   .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.12)}
   .sticky-controls-mini{display:inline-flex;align-items:center;padding:3px 4px !important}
@@ -519,8 +520,7 @@
       <div class="kf-item"><span class="kf-value" id="kfSeqIdent">--</span><span class="kf-label">Seq Identity</span></div>
       <div class="kf-item"><span class="kf-value" id="kfTmScore">--</span><span class="kf-label">TM-score</span></div>
       <div class="kf-item"><span class="kf-value" id="kfFamilySize">--</span><span class="kf-label">Family</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfEssential">--</span><span class="kf-label">Essential</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfSlStatus">--</span><span class="kf-label">SL</span></div>
+<div class="kf-item"><span class="kf-value" id="kfSlStatus">--</span><span class="kf-label">SL</span></div>
       <div class="kf-item"><span class="kf-value" id="kfDrug">--</span><span class="kf-label">Pockets</span></div>
       <div class="kf-item"><span class="kf-value" id="kfKnownDrugs">--</span><span class="kf-label">Known Drugs</span></div>
     </div>
@@ -1030,13 +1030,17 @@
     </div>
     <div class="section-body" id="simSearchBody">
       <p class="small" style="color:#666;margin-bottom:16px;">How many proteins in the database rank between paralog A and B? Lower rank = A and B are very similar.</p>
-      <div class="sim-search-controls" style="margin-bottom:16px;">
+      <div class="sim-search-controls" style="margin-bottom:16px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
         <label>Database:
           <select id="simSearchModeSelect">
             <option value="struct" selected>Structure (AlphaFold DB via Foldseek)</option>
             <option value="seq">Sequence (SwissProt via MMseqs2)</option>
           </select>
         </label>
+        <span id="simSearchQueryToggle" style="display:none;">Query gene:
+          <label style="margin-left:4px;"><input type="radio" name="simQuery" value="A" checked> <span id="simQueryLabelA">Gene A</span></label>
+          <label style="margin-left:8px;"><input type="radio" name="simQuery" value="B"> <span id="simQueryLabelB">Gene B</span></label>
+        </span>
       </div>
       <div class="sim-search-views" style="position:relative;overflow:hidden;">
         <div class="sim-search-scroll" id="simSearchScroll" style="display:flex;transition:transform 0.3s ease;width:200%;">
@@ -1089,7 +1093,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=2"></script>
+<script src="static/js/app.js?v=3"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>

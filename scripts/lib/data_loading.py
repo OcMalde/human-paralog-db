@@ -441,6 +441,75 @@ def get_similarity_search_percentiles(pair_row: Optional[pd.Series]) -> Dict[str
                 'total_pairs': total_pairs,
             }
 
+        # Reverse metrics: gene B (A2) as query → A2_A1_rank, A2_nb_human/taxid
+        if suffix == '_struct':
+            rev_rank_col, rev_selfsp_col, rev_taxid_col = 'A2_A1_rank', 'A2_nb_human', 'A2_nb_taxid'
+        else:
+            rev_rank_col, rev_selfsp_col, rev_taxid_col = 'A2_A1_rank_seq', 'A2_nb_selfSP_seq', 'A2_nb_taxid_seq'
+
+        rev_rank_stats = col_stats(rev_rank_col)
+        rev_rank_val = pair_row.get(rev_rank_col) if rev_rank_col in pair_row.index else None
+
+        out_rev_rank = f'rank{suffix}_reverse'
+        if rev_rank_col in pair_row.index and rev_rank_col in df.columns:
+            val = pair_row[rev_rank_col]
+            pct = compute_percentile(val, df[rev_rank_col])
+            rank_position = int(np.sum(df[rev_rank_col].dropna() <= val)) if pd.notna(val) else None
+            results[out_rev_rank] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': float(pct),
+                'raw_percentile': float(pct),
+                'label': out_rev_rank,
+                'higher_is_better': False,
+                'radar_value': float(100 - pct),
+                'rank_position': rank_position,
+                'max_value': rev_rank_stats['max'],
+                'p95_value': rev_rank_stats['p95'],
+                'total_pairs': total_pairs,
+            }
+
+        rev_selfsp_stats = col_stats(rev_selfsp_col)
+        out_rev_selfsp = f'selfSP{suffix}_reverse'
+        if rev_selfsp_col in pair_row.index and rev_selfsp_col in df.columns:
+            val = pair_row[rev_selfsp_col]
+            pct_overall = compute_percentile(val, df[rev_selfsp_col])
+            pct_rank_rel = compute_rank_relative_percentile(
+                val, rev_rank_val, df, rev_selfsp_col, rev_rank_col
+            ) if rev_rank_val is not None and pd.notna(rev_rank_val) else pct_overall
+            results[out_rev_selfsp] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': float(pct_overall),
+                'percentile_rank_relative': float(pct_rank_rel),
+                'raw_percentile': float(pct_overall),
+                'label': out_rev_selfsp,
+                'higher_is_better': False,
+                'radar_value': float(100 - pct_overall),
+                'max_value': rev_selfsp_stats['max'],
+                'p95_value': rev_selfsp_stats['p95'],
+                'total_pairs': total_pairs,
+            }
+
+        rev_taxid_stats = col_stats(rev_taxid_col)
+        out_rev_taxid = f'taxid{suffix}_reverse'
+        if rev_taxid_col in pair_row.index and rev_taxid_col in df.columns:
+            val = pair_row[rev_taxid_col]
+            pct_overall = compute_percentile(val, df[rev_taxid_col])
+            pct_rank_rel = compute_rank_relative_percentile(
+                val, rev_rank_val, df, rev_taxid_col, rev_rank_col
+            ) if rev_rank_val is not None and pd.notna(rev_rank_val) else pct_overall
+            results[out_rev_taxid] = {
+                'value': float(val) if pd.notna(val) else None,
+                'percentile': float(pct_overall),
+                'percentile_rank_relative': float(pct_rank_rel),
+                'raw_percentile': float(pct_overall),
+                'label': out_rev_taxid,
+                'higher_is_better': False,
+                'radar_value': float(100 - pct_overall),
+                'max_value': rev_taxid_stats['max'],
+                'p95_value': rev_taxid_stats['p95'],
+                'total_pairs': total_pairs,
+            }
+
     return results
 
 

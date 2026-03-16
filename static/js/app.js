@@ -26,6 +26,19 @@ let PLMA_DATA = null;
 // PDBe highlight state
 let isProteinHighlighted = false;
 
+// Lazy section init via IntersectionObserver
+function registerLazySection(elementId, initFn) {
+  const el = document.getElementById(elementId);
+  if (!el || !('IntersectionObserver' in window)) { initFn(); return; }
+  const obs = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      obs.disconnect();
+      initFn();
+    }
+  }, { rootMargin: '300px' });
+  obs.observe(el);
+}
+
 // Block Molstar volume server
 (function() {
     const block = ['molstarvolseg.ncbr.muni.cz', 'localhost:9000'];
@@ -360,12 +373,15 @@ async function loadFamilyData() {
       const toggle = document.getElementById('familyViewToggle');
       if (treeContainer) treeContainer.style.display = 'none';
       if (netContainer) netContainer.style.display = 'none';
-      if (treeHelp) treeHelp.innerHTML = 'This pair forms a <strong>2-gene family</strong> — no phylogenetic tree or family alignment to display.';
+      if (treeHelp) treeHelp.innerHTML = 'This pair forms a <strong>family of 2</strong> — tree and alignment not available.';
       if (netHelp) netHelp.style.display = 'none';
       if (toggle) toggle.style.display = 'none';
       // Also hide PLMA section for 2-gene families
       const plmaSection = document.getElementById('familyFeaturesSection');
       if (plmaSection) plmaSection.classList.add('section-hidden');
+      // Grey out sidebar nav links for tree and PLMA
+      document.querySelectorAll('.sidebar-nav a[href="#familyNav"], .sidebar-nav a[href="#familyFeaturesSection"]')
+        .forEach(a => { a.style.opacity = '0.4'; a.style.pointerEvents = 'none'; a.title = 'Family of 2 — not applicable'; });
       return;
     }
 
@@ -418,6 +434,27 @@ function initFamilyConstellation() {
 }
 
 // ============= Family Phylogenetic Tree (UPGMA from identity matrix) =============
+
+// Tree subtree helpers
+let treeSubtreeOnly = true;
+
+function countTreeLeaves(node) {
+  return node.children.length === 0 ? 1 : node.children.reduce((s, c) => s + countTreeLeaves(c), 0);
+}
+
+function subtreeContains(node, geneName) {
+  if (node.children.length === 0) return node.name === geneName;
+  return node.children.some(c => subtreeContains(c, geneName));
+}
+
+function findLCA(node, g1, g2) {
+  if (!subtreeContains(node, g1) || !subtreeContains(node, g2)) return null;
+  for (const child of node.children) {
+    const lca = findLCA(child, g1, g2);
+    if (lca) return lca;
+  }
+  return node;
+}
 
 function buildUPGMATree(genes, identities) {
   // Build a UPGMA tree from a pairwise identity matrix.
@@ -690,6 +727,26 @@ function renderFamilyTree() {
     return;
   }
 
+  // Subtree mode: trim to LCA of g1+g2 if it covers <90% of leaves
+  const totalLeavesAll = trees.reduce((s, t) => s + countTreeLeaves(t), 0);
+  let showingSubtree = false;
+  if (treeSubtreeOnly && trees.length >= 1) {
+    let lcaSubtree = null;
+    for (const tree of trees) {
+      const lca = findLCA(tree, g1, g2);
+      if (lca && lca !== tree) { lcaSubtree = lca; break; }
+    }
+    if (lcaSubtree) {
+      const lcaLeaves = countTreeLeaves(lcaSubtree);
+      if (lcaLeaves < totalLeavesAll * 0.9) {
+        const otherCount = totalLeavesAll - lcaLeaves;
+        const stub = { name: `(${otherCount} more…)`, branchLength: 1, children: [], _stub: true };
+        trees = [{ name: '', branchLength: 0, children: [stub, lcaSubtree] }];
+        showingSubtree = true;
+      }
+    }
+  }
+
   // Update source text
   if (sourceEl) {
     if (treeSource === 'compara') {
@@ -709,7 +766,7 @@ function renderFamilyTree() {
 
   // Compute label width from longest gene name
   const allNames = [];
-  function collectNames(n) { if (n.children.length === 0 && !n._virt) allNames.push(n.name); else n.children.forEach(collectNames); }
+  function collectNames(n) { if (n.children.length === 0 && !n._virt && !n._stub) allNames.push(n.name); else n.children.forEach(collectNames); }
   trees.forEach(collectNames);
   const maxLabelLen = Math.max(...allNames.map(n => n.length), 5);
   const labelW = maxLabelLen * 7 + 16;
@@ -750,10 +807,15 @@ function renderFamilyTree() {
       if (node._virt) { node.children.forEach(drawNodes); return; }
       const cx = px(node), cy = py(node);
       if (node.children.length === 0) {
-        const isA = node.name === g1, isB = node.name === g2;
-        const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
-        svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="2.5"/>`;
-        svgContent += `<text class="tree-label ${cls}" x="${cx + 6}" y="${cy + 3.5}" data-gene="${node.name}">${node.name}</text>`;
+        if (node._stub) {
+          svgContent += `<circle class="tree-node other" cx="${cx}" cy="${cy}" r="2.5" opacity="0.4"/>`;
+          svgContent += `<text class="tree-label" x="${cx + 6}" y="${cy + 3.5}" fill="#999" font-style="italic">${node.name}</text>`;
+        } else {
+          const isA = node.name === g1, isB = node.name === g2;
+          const cls = isA ? 'gene-a' : isB ? 'gene-b' : 'other';
+          svgContent += `<circle class="tree-node ${cls}" cx="${cx}" cy="${cy}" r="2.5"/>`;
+          svgContent += `<text class="tree-label ${cls}" x="${cx + 6}" y="${cy + 3.5}" data-gene="${node.name}">${node.name}</text>`;
+        }
       } else {
         node.children.forEach(drawNodes);
       }
@@ -798,6 +860,26 @@ function renderFamilyTree() {
       }
     });
   });
+
+  // Show/hide "expand tree" toggle button
+  let expandBtn = document.getElementById('treeExpandBtn');
+  if (totalLeavesAll > 3) {
+    if (!expandBtn) {
+      expandBtn = document.createElement('button');
+      expandBtn.id = 'treeExpandBtn';
+      expandBtn.style.cssText = 'margin-top:6px;font-size:11px;padding:3px 10px;border:1px solid #bbb;border-radius:4px;background:#f5f5f5;cursor:pointer;color:#555';
+      const help = document.getElementById('familyTreeHelp');
+      if (help) help.insertBefore(expandBtn, help.firstChild);
+    }
+    expandBtn.textContent = showingSubtree ? `Show full tree (${totalLeavesAll} genes)` : 'Show subtree only';
+    expandBtn.onclick = () => {
+      treeSubtreeOnly = !treeSubtreeOnly;
+      renderFamilyTree();
+    };
+    expandBtn.style.display = '';
+  } else if (expandBtn) {
+    expandBtn.style.display = 'none';
+  }
 }
 
 function setupFamilyViewToggle() {
@@ -1452,7 +1534,7 @@ function initSummarySection() {
     document.getElementById('sum-essential2').textContent = 'Essential (DepMap)';
     document.getElementById('sum-essential2').className = 'essential-badge';
   }
-  
+
   if (gene1.chromosome && gene1.chromosome.chromosome && gene1.chromosome.chromosome !== 'NA') {
     const chr1 = gene1.chromosome;
     document.getElementById('chr-loc1').innerHTML = `<strong>Chr:</strong> ${chr1.chromosome} : ${Number(chr1.start).toLocaleString()} - ${Number(chr1.end).toLocaleString()}`;
@@ -1939,6 +2021,7 @@ function toggleKnownDrug(drugId) {
 // Current similarity search mode (struct or seq) and view (0=overview, 1=scale)
 let simSearchMode = 'struct';
 let simSearchView = 0;
+let simSearchQueryGene = 'A'; // 'A' or 'B'
 // Store hit-test regions for hover tooltips
 let simSearchHitRegions = [];
 let simSearchBarHitRegions = [];
@@ -1948,6 +2031,29 @@ function initSimilaritySearchSection() {
   const barCanvas = document.getElementById('simSearchBarCanvas');
   const modeSelect = document.getElementById('simSearchModeSelect');
   if (!canvas) return;
+
+  // Query gene toggle: show if reverse data exists
+  const queryToggle = document.getElementById('simSearchQueryToggle');
+  if (queryToggle) {
+    const simSearch = SUMMARY?.similarity_search || {};
+    const hasReverse = !!(simSearch['rank_struct_reverse'] || simSearch['rank_seq_reverse']);
+    if (hasReverse) {
+      queryToggle.style.display = '';
+      // Set gene labels
+      const la = document.getElementById('simQueryLabelA');
+      const lb = document.getElementById('simQueryLabelB');
+      if (la) la.textContent = SUMMARY?.gene1?.symbol || 'Gene A';
+      if (lb) lb.textContent = SUMMARY?.gene2?.symbol || 'Gene B';
+      // Wire radios
+      queryToggle.querySelectorAll('input[name="simQuery"]').forEach(r => {
+        r.addEventListener('change', () => {
+          simSearchQueryGene = r.value;
+          drawSimSearchRankViz(simSearchMode);
+          drawSimSearchBarViz(simSearchMode);
+        });
+      });
+    }
+  }
 
   // Initial draw
   drawSimSearchRankViz(simSearchMode);
@@ -2066,14 +2172,15 @@ function ssRoundRect(ctx, x, y, w, h, r) {
 function ssGetMetrics(mode) {
   const simSearch = SUMMARY?.similarity_search || {};
   const suffix = mode === 'struct' ? '_struct' : '_seq';
+  const rev = simSearchQueryGene === 'B' ? '_reverse' : '';
   return {
     suffix,
     dbFullName: mode === 'struct' ? 'AlphaFold DB' : 'UniProt',
-    rankInfo: simSearch['rank' + suffix],
-    selfSPInfo: simSearch['selfSP' + suffix],
-    taxidInfo: simSearch['taxid' + suffix],
-    gene1: SUMMARY?.gene1?.symbol || 'A',
-    gene2: SUMMARY?.gene2?.symbol || 'B',
+    rankInfo: simSearch['rank' + suffix + rev] || simSearch['rank' + suffix],
+    selfSPInfo: simSearch['selfSP' + suffix + rev] || simSearch['selfSP' + suffix],
+    taxidInfo: simSearch['taxid' + suffix + rev] || simSearch['taxid' + suffix],
+    gene1: simSearchQueryGene === 'B' ? (SUMMARY?.gene2?.symbol || 'B') : (SUMMARY?.gene1?.symbol || 'A'),
+    gene2: simSearchQueryGene === 'B' ? (SUMMARY?.gene1?.symbol || 'A') : (SUMMARY?.gene2?.symbol || 'B'),
   };
 }
 
@@ -2472,25 +2579,33 @@ function drawSimSearchBarViz(mode) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Gene A label below circle
+    // Gene A label below circle (with "rank 1" note)
     ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.fillStyle = geneAStroke;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     ctx.fillText(m.gene1, Math.max(2, ax - labelAWidth / 2), cy + circleR + 4);
+    ctx.font = '9px -apple-system, sans-serif';
+    ctx.fillStyle = '#999';
+    ctx.fillText('rank 1 (best)', Math.max(2, ax - labelAWidth / 2), cy + circleR + 17);
 
-    // Gene B label below circle
+    // Gene B label below circle (with rank value)
+    ctx.font = 'bold 11px -apple-system, sans-serif';
     ctx.fillStyle = geneBStroke;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(m.gene2, bx, cy + circleR + 4);
-
-    // "max" label at end
-    ctx.font = '10px -apple-system, sans-serif';
+    ctx.font = '9px -apple-system, sans-serif';
     ctx.fillStyle = '#999';
+    ctx.textAlign = 'center';
+    ctx.fillText(`rank ${formatNum(val)}`, bx, cy + circleR + 17);
+
+    // "worst" label at end
+    ctx.font = '10px -apple-system, sans-serif';
+    ctx.fillStyle = '#bbb';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText('max', displayWidth - padRight - 4, cy);
+    ctx.fillText('worst', displayWidth - padRight - 4, cy);
 
     // Hit region for tooltip
     const rPos = info?.rank_position ?? null;
@@ -4997,9 +5112,9 @@ function getPdbeColorTheme(mode) {
     ]}}};
   }
   if (mode === 'aligned') {
-    // data: 0=gap(grey), 100=aligned(magenta); chain shading at -25,-50,-75,-100
+    // 3-way: 0=gap(grey), 50=conservative(teal), 100=radical(green); chain shading at -25,-50,-75,-100
     return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
-      0xAD1457, 0xBD5F7F, 0xCCAAAA, 0xCCBBBB, 0x999999,
+      0x4CAF50, 0x26A69A, 0x009688, 0xB2DFDB, 0x999999,
       0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
@@ -5047,7 +5162,7 @@ function getPdbeColorLegendHtml(mode) {
     plddt:    '<strong>pLDDT:</strong> ' + sw('#0053d6','&gt;90') + sw('#65cbf3','70-90') + sw('#ffdb13','50-70') + sw('#ff7d45','&le;50'),
     am:       '<strong>AlphaMissense:</strong> ' + sw('#d62728','Pathogenic') + sw('#ff7d45','Ambiguous') + sw('#bbbbbb','Benign'),
     dam:      '<strong>&Delta; AlphaMissense:</strong> ' + sw('#d62728','High') + sw('#ff7d45','Med') + sw('#bbbbbb','Low'),
-    aligned:  '<strong>Aligned/Gap:</strong> ' + sw('#AD1457','Aligned') + sw('#999999','Gap'),
+    aligned:  '<strong>Substitution:</strong> ' + sw('#4CAF50','Radical') + sw('#009688','Conservative') + sw('#999999','Gap'),
     domains:  '<strong>Domains:</strong> colored by type',
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
@@ -5123,6 +5238,74 @@ async function zoomToPdbeProtein() {
     console.warn('zoomToPdbeProtein error:', e);
     try { pdbeViewer.resetCamera(); } catch(e2) {}
   }
+}
+
+function syncSelectionsToPdbe() {
+  if (!pdbePlugin || !pdbeStructureReady || !currentPdbeEntry || !_pdbeResSeqToUniprot) return;
+  const sourceAcc = currentPdbeEntry.source_acc || currentPdbeEntry.sourceAcc || '';
+  const isGeneB = !!(SUMMARY && SUMMARY.gene2 && SUMMARY.gene2.uniprot === sourceAcc);
+  const targetChain = isGeneB ? chainIdB : chainIdA;
+  // Gather selected UniProt positions for the gene in this PDBe structure
+  const selPositions = new Set();
+  for (const entry of selection.values()) {
+    if (entry.chain === targetChain) {
+      for (let p = entry.start; p <= entry.end; p++) selPositions.add(p);
+    }
+  }
+  try {
+    pdbePlugin.managers.interactivity.lociHighlights.clearHighlights();
+    if (!selPositions.size) return;
+    // Map selected UniProt positions → PDBe auth_seq_ids
+    const targetAuthSeqIds = new Set();
+    for (const [rs, up] of Object.entries(_pdbeResSeqToUniprot)) {
+      if (selPositions.has(up)) targetAuthSeqIds.add(parseInt(rs));
+    }
+    if (!targetAuthSeqIds.size) return;
+    const structures = pdbePlugin.managers.structure.hierarchy.current.structures;
+    if (!structures?.length) return;
+    const sd = structures[0].cell?.obj?.data;
+    if (!sd) return;
+    const targetChains = getTargetChainIds(currentPdbeEntry);
+    const matchingElements = [];
+    for (const unit of (sd.units || [])) {
+      const ah = unit.model?.atomicHierarchy;
+      if (!ah) continue;
+      const ue = unit.elements;
+      if (!ue?.length) continue;
+      const chainOffsets = ah.chainAtomSegments?.offsets;
+      const chains = ah.chains;
+      if (!chainOffsets || !chains) continue;
+      // Determine chain for this unit
+      const firstAtom = ue[0];
+      let unitChainId = null;
+      for (let ci = 0; ci < chainOffsets.length - 1; ci++) {
+        if (firstAtom >= chainOffsets[ci] && firstAtom < chainOffsets[ci + 1]) {
+          unitChainId = chains.auth_asym_id?.value(ci); break;
+        }
+      }
+      if (!unitChainId || !targetChains.has(unitChainId)) continue;
+      const resOffsets = ah.residueAtomSegments?.offsets;
+      const authSeqIds = ah.residues?.auth_seq_id;
+      if (!resOffsets || !authSeqIds) continue;
+      // Build global atom index → position in unit.elements
+      const gToPos = new Map();
+      for (let i = 0; i < ue.length; i++) gToPos.set(ue[i], i);
+      const indices = [];
+      for (let ri = 0, nRes = resOffsets.length - 1; ri < nRes; ri++) {
+        if (!targetAuthSeqIds.has(authSeqIds.value(ri))) continue;
+        for (let a = resOffsets[ri]; a < resOffsets[ri + 1]; a++) {
+          const pos = gToPos.get(a);
+          if (pos !== undefined) indices.push(pos);
+        }
+      }
+      if (indices.length) matchingElements.push({ unit, indices });
+    }
+    if (matchingElements.length) {
+      pdbePlugin.managers.interactivity.lociHighlights.highlight({
+        loci: { kind: 'element-loci', structure: sd, elements: matchingElements }
+      });
+    }
+  } catch(e) { console.warn('syncSelectionsToPdbe error:', e); }
 }
 
 async function togglePdbeComplexVisibility(visible) {
@@ -5889,6 +6072,7 @@ async function renderSelections() {
   renderTableSelections();
   updateNightingaleHighlights();
   await applyMolstarSelection();
+  syncSelectionsToPdbe();
 }
 
 function updateNightingaleHighlights() {
@@ -6169,6 +6353,12 @@ function buildSeq(){
   const disorderB = document.createElement('nightingale-track');
   const disorderBRow = addRow(tbl, 'Disordered '+DATA.g2, disorderB, 16); trackRefs['disorderB'] = disorderB;
 
+  // === Alignment substitution type (gap/conservative/radical) ===
+  const alndA = document.createElement('nightingale-track');
+  const alndARow = addRow(tbl, 'Aln '+DATA.g1, alndA, 10); trackRefs['alndA'] = alndA;
+  const alndB = document.createElement('nightingale-track');
+  const alndBRow = addRow(tbl, 'Aln '+DATA.g2, alndB, 10); trackRefs['alndB'] = alndB;
+
   // === Alpha helix ===
   const helixA = document.createElement('nightingale-track');
   const helixARow = addRow(tbl, 'α '+DATA.g1, helixA, 12); trackRefs['helixA'] = helixA;
@@ -6238,6 +6428,7 @@ function buildSeq(){
   // Register track rows into toggle groups
   trackGroupRows = {
     structure: [
+      alndARow.row, alndBRow.row,
       tedARow.row, tedBRow.row,
       disorderARow.row, disorderBRow.row,
       helixARow.row, helixBRow.row,
@@ -6266,6 +6457,7 @@ function buildSeq(){
       plmaCatA, plmaSharedA, plmaPairA, plmaSpecA, plmaFamA,
       plmaCatB, plmaSharedB, plmaPairB, plmaSpecB, plmaFamB,
       amA, dam, amB,
+      alndA, alndB,
       disorderA, disorderB, helixA, helixB, strandA, strandB,
       cavA, cavStrongA, cavMediumA, cavWeakA,
       cavB, cavStrongB, cavMediumB, cavWeakB,
@@ -6339,6 +6531,12 @@ function buildSeq(){
     plmaPairB.data = buildPlmaCategoryRects('B', 'pair_exclusive');
     plmaSpecB.data = buildPlmaCategoryRects('B', 'specific_b');
     plmaFamB.data = buildPlmaCategoryRects('B', 'b_with_family');
+
+    // Aligned substitution type tracks
+    alndA.setAttribute('shape', 'rectangle');
+    alndB.setAttribute('shape', 'rectangle');
+    alndA.data = sanitizeRects(buildAlignedRects('A'), alnLen);
+    alndB.data = sanitizeRects(buildAlignedRects('B'), alnLen);
 
     applyAmMode(amMode);
     applyCavityFilter(); // Apply default druggability filter (medium+)
@@ -7460,6 +7658,17 @@ function buildDamBfactorMaps() {
   return { A: mapA, B: mapB };
 }
 
+// Amino acid biochemical class groups for substitution classification
+const AA_CLASSES = {G:0,A:0,V:0,L:0,I:0,P:0,M:0,F:1,W:1,Y:1,S:2,T:2,C:2,N:2,Q:2,K:3,R:3,H:3,D:4,E:4};
+function aaSubType(a, b) {
+  // Returns 0=gap, 0.5=conservative (same class or identical), 1=radical (different class)
+  if (!a || a === '-' || !b || b === '-') return 0;
+  if (a === b) return 0.5;
+  const ca = AA_CLASSES[a.toUpperCase()], cb = AA_CLASSES[b.toUpperCase()];
+  if (ca === undefined || cb === undefined) return 0.5;
+  return ca === cb ? 0.5 : 1;
+}
+
 function buildAlignedBfactorMaps() {
   if (!DATA) return null;
   const mapA = {}, mapB = {};
@@ -7467,11 +7676,42 @@ function buildAlignedBfactorMaps() {
   const colToA = alnColToResMap(qaln), colToB = alnColToResMap(taln);
   for (let col = 1; col <= qaln.length; col++) {
     const pa = colToA[col], pb = colToB[col];
-    const aligned = (pa && pb) ? 1 : 0;
-    if (pa) mapA[pa] = aligned;
-    if (pb) mapB[pb] = aligned;
+    const qa = qaln[col - 1], ta = taln[col - 1];
+    const subType = (pa && pb) ? aaSubType(qa, ta) : 0;
+    if (pa) mapA[pa] = subType;
+    if (pb) mapB[pb] = subType;
   }
   return { A: mapA, B: mapB };
+}
+
+// Build alignment coloring rects for Nightingale tracks
+// Returns array of {start, end, color} in 1-indexed alignment column space
+function buildAlignedRects(chain) {
+  if (!DATA) return [];
+  const qaln = DATA.qaln || '', taln = DATA.taln || '';
+  const myAln = chain === 'A' ? qaln : taln;
+  const otherAln = chain === 'A' ? taln : qaln;
+  const SUB_COLORS = {0: '#999999', 0.5: '#009688', 1: '#4CAF50'};
+  const rects = [];
+  let curType = null, curStart = null;
+  for (let col = 0; col < myAln.length; col++) {
+    const myAA = myAln[col];
+    if (myAA === '-') {
+      if (curStart !== null) {
+        rects.push({start: curStart, end: col, color: SUB_COLORS[curType]});
+        curStart = null; curType = null;
+      }
+      continue;
+    }
+    const otherAA = otherAln[col];
+    const subType = (otherAA && otherAA !== '-') ? aaSubType(myAA, otherAA) : 0;
+    if (subType !== curType) {
+      if (curStart !== null) rects.push({start: curStart, end: col, color: SUB_COLORS[curType]});
+      curStart = col + 1; curType = subType;
+    }
+  }
+  if (curStart !== null) rects.push({start: curStart, end: myAln.length, color: SUB_COLORS[curType]});
+  return rects;
 }
 
 function buildDomainBfactorMaps() {
@@ -7654,12 +7894,13 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'aligned') {
-    // Aligned=1 (grey), gap=0 (hot magenta)
+    // 3-way: radical=1(green), conservative=0.5(teal), gap=0(grey)
+    // Reverse theme: high B → first color: [green, teal, grey]
     return {
       name: 'uncertainty',
       params: {
         domain: [0, 1],
-        list: { kind: 'set', colors: [0x999999, 0xAD1457] }
+        list: { kind: 'set', colors: [0x4CAF50, 0x009688, 0x999999] }
       }
     };
   }
@@ -7826,10 +8067,11 @@ function updateColorLegend(mode) {
       ]
     },
     aligned: {
-      title: 'Aligned vs Gap',
+      title: 'Substitution Type',
       items: [
-        {color:'#999999',label:'Aligned'},
-        {color:'#AD1457',label:'Gap'},
+        {color:'#4CAF50',label:'Radical'},
+        {color:'#009688',label:'Conservative'},
+        {color:'#999999',label:'Gap'},
       ]
     },
     domains: {
@@ -8166,7 +8408,11 @@ async function main(){
   document.getElementById('contextTitle').textContent = `Full: ${DATA.g1} × ${DATA.g2}`;
   await reloadViewerWith(PDB64_FULL);
 
-  buildSeq();
+  // Defer Nightingale track initialization until alignment section is near-viewport
+  registerLazySection('alignmentSection', () => {
+    buildSeq();
+    setupTrackGroupToggles(); // re-wire chips with actual trackGroupRows
+  });
   fillDomainTables();
   await fillDomPairs();
   fillDrugHits();
@@ -8318,7 +8564,6 @@ async function main(){
   }, 1500);
   
   populateKeyFindingsBanner();
-  setupTrackGroupToggles();
   setupStickyObserver();
   setupStickyMinimize();
   console.log('Report viewer initialized');
@@ -8357,16 +8602,6 @@ function populateKeyFindingsBanner() {
   const kfFamily = document.getElementById('kfFamilySize');
   if (kfFamily && pair.family_size != null) {
     kfFamily.textContent = pair.family_size + ' members';
-  }
-
-  // Essential
-  const kfEssential = document.getElementById('kfEssential');
-  if (kfEssential) {
-    const essA = gene1.is_essential;
-    const essB = gene2.is_essential;
-    if (essA && essB) { kfEssential.textContent = 'Both'; kfEssential.className = 'kf-value negative'; }
-    else if (essA || essB) { kfEssential.textContent = essA ? DATA.g1 : DATA.g2; kfEssential.className = 'kf-value neutral'; }
-    else { kfEssential.textContent = 'Neither'; kfEssential.className = 'kf-value positive'; }
   }
 
   // SL status
