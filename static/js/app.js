@@ -5395,6 +5395,14 @@ async function applyPdbeColorMode(mode) {
     if (b64 && b64.length > 100) {
       const pdbText = atob(b64);
       const targetChains = getTargetChainIds(entry);
+      // Build residue→UniProt mapping now (needed for syncSelectionsToPdbe in grey mode too)
+      if (!_pdbeResSeqToUniprot || _pdbeResSeqCacheEntry !== entry) {
+        const sourceAcc = entry.source_acc || entry.sourceAcc || '';
+        const isGeneB2 = !!(SUMMARY && SUMMARY.gene2 && SUMMARY.gene2.uniprot === sourceAcc);
+        const uniprotSeq = isGeneB2 ? (DATA.taln || '').replace(/-/g, '') : (DATA.qaln || '').replace(/-/g, '');
+        _pdbeResSeqToUniprot = mapPdbeToUniprot(buildPdbeResSeqMap(pdbText, targetChains), uniprotSeq);
+        _pdbeResSeqCacheEntry = entry;
+      }
       // Target chain: B=100 (vivid), non-target: B=-25..-100 (grey shading per chain)
       const modifiedText = modifyPdbeBfactors(pdbText, targetChains, {}, 100, -25, true);
       try { await pdbePlugin?.clear(); } catch(e) {}
