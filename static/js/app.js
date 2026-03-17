@@ -4790,19 +4790,27 @@ async function initPdbeMolstar() {
     
     console.log('PDBe Molstar viewer initialized');
 
-    // Reapply PDBe color theme when representations change
+    // Reapply PDBe color theme + selections when representations change.
+    // Guard against re-entry: applyPdbeCustomTheme() commits state which fires this
+    // event again, and syncSelectionsToPdbe() fires interactivity events that can
+    // also propagate here — without the guard we get an infinite reapply loop.
     let _pdbeColorReapplyTimer = null;
+    let _isApplyingPdbeTheme = false;
     try {
       pdbePlugin.state.data.events.changed.subscribe(() => {
-        if (!pdbeStructureReady || !currentPdbeColorMode) return;
+        if (!pdbeStructureReady || !currentPdbeColorMode || _isApplyingPdbeTheme) return;
         clearTimeout(_pdbeColorReapplyTimer);
         _pdbeColorReapplyTimer = setTimeout(async () => {
-          applyViewerDefaults(pdbePlugin); // keep fog=0, clip=0 after any state change
+          if (_isApplyingPdbeTheme) return;
+          _isApplyingPdbeTheme = true;
           try {
+            applyViewerDefaults(pdbePlugin);
             await applyPdbeCustomTheme(getPdbeColorTheme(currentPdbeColorMode));
-            // Reapply both highlight (Gene B) and selection (Gene A) after state change
-            if (pendingPdbeHighlightLoci || pendingPdbeSelectLoci) reapplyPdbeHighlight();
-          } catch(e) {}
+            // Rebuild selections from current structure state (stored loci may be stale)
+            syncSelectionsToPdbe();
+          } catch(e) {} finally {
+            _isApplyingPdbeTheme = false;
+          }
         }, 150);
       });
     } catch(e) { console.warn('Could not subscribe to PDBe state changes:', e); }
