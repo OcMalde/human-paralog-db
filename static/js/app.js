@@ -4074,6 +4074,16 @@ function drawBoxplot(metricInfo, boxplotData, metricKey) {
 let viewer = null, plugin = null, structureReady = false;
 const chainIdA = 'A', chainIdB = 'B';
 
+// Apply viewer defaults (fog=0, clip=0) — must be called after every camera reset
+// because some Molstar operations can revert canvas3d props
+function applyViewerDefaults(p) {
+  if (!p?.canvas3d) return;
+  try {
+    const r = p.canvas3d.props?.renderer || {};
+    p.canvas3d.setProps({ renderer: { ...r, fog: 0 }, cameraClipDistance: 0 });
+  } catch(e) { console.warn('Could not apply viewer defaults (fog/clip):', e); }
+}
+
 async function initMolstar(){
   if (viewer) return;
   const opts = {
@@ -4098,9 +4108,7 @@ async function initMolstar(){
       plugin.canvas3d.setProps({ postprocessing: { ...pp, outline: { name: 'on', params: { scale: 1, threshold: 0.33, color: { r: 0, g: 0, b: 0 }, includeTransparent: true } } } });
     }
   } catch(e) { console.warn('Could not enable outline:', e); }
-  try {
-    plugin.canvas3d.setProps({ renderer: { fog: 0 }, cameraClipDistance: 0 });
-  } catch(e) { console.warn('Could not set fog/clip:', e); }
+  applyViewerDefaults(plugin);
 
   // Reapply color theme when Molstar representations change (e.g., from built-in controls)
   let _colorReapplyTimer = null;
@@ -4109,6 +4117,7 @@ async function initMolstar(){
       if (!structureReady || !currentColorMode || currentColorMode === 'uniform') return;
       clearTimeout(_colorReapplyTimer);
       _colorReapplyTimer = setTimeout(async () => {
+        applyViewerDefaults(plugin); // keep fog=0, clip=0 after any state change
         try {
           const theme = themeForColorMode(currentColorMode);
           await applyColorTheme(theme);
@@ -4138,6 +4147,7 @@ async function loadPDBfromBase64(b64, resetCamera = true){
   if (resetCamera) {
     try { await viewer.resetCamera(); } catch(e){ plugin.canvas3d?.requestCameraReset(); }
   }
+  applyViewerDefaults(plugin);
   URL.revokeObjectURL(url);
 }
 
@@ -4771,13 +4781,12 @@ async function initPdbeMolstar() {
         marking: {
           selectColor: { r: 0.26, g: 0.63, b: 0.28 },
           highlightColor: { r: 0.91, g: 0.12, b: 0.39 }
-        },
-        renderer: { fog: 0 },
-        cameraClipDistance: 0
+        }
       });
     } catch(e) {
-      console.warn('Could not set PDBe viewer props:', e);
+      console.warn('Could not set PDBe highlight colors:', e);
     }
+    applyViewerDefaults(pdbePlugin);
     
     console.log('PDBe Molstar viewer initialized');
 
@@ -4788,6 +4797,7 @@ async function initPdbeMolstar() {
         if (!pdbeStructureReady || !currentPdbeColorMode) return;
         clearTimeout(_pdbeColorReapplyTimer);
         _pdbeColorReapplyTimer = setTimeout(async () => {
+          applyViewerDefaults(pdbePlugin); // keep fog=0, clip=0 after any state change
           try {
             await applyPdbeCustomTheme(getPdbeColorTheme(currentPdbeColorMode));
             // Reapply both highlight (Gene B) and selection (Gene A) after state change
@@ -5374,8 +5384,9 @@ async function applyPdbeColorMode(mode) {
   const pdbId = (entry.pdb_id || entry.pdbId || '').toLowerCase();
   const geneName = getGeneNameForAccession(entry.source_acc || entry.sourceAcc || '');
 
+  // Only save camera if a structure is already loaded — prevents restoring the empty initial state
   let cameraSnapshot = null;
-  if (pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) {
+  if (pdbeStructureReady && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) {
     try { cameraSnapshot = pdbePlugin.canvas3d.camera.getSnapshot(); } catch(e) {}
   }
 
@@ -5402,9 +5413,10 @@ async function applyPdbeColorMode(mode) {
     if (cameraSnapshot && pdbePlugin?.canvas3d?.camera) {
       try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
     } else {
-      // First load — reset camera to fit the whole complex (not just the target chain)
+      // First load — reset camera to fit the whole complex
       try { await pdbeViewer.resetCamera(); } catch(e) { pdbePlugin?.canvas3d?.requestCameraReset(); }
     }
+    applyViewerDefaults(pdbePlugin); // keep fog=0, clip=0 after camera op
     updatePdbeLegend('Context chains in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#00ACC1">teal</span>. Click "Highlight Protein" to highlight specific region.');
     return;
   }
@@ -5458,6 +5470,7 @@ async function applyPdbeColorMode(mode) {
   if (cameraSnapshot && pdbePlugin && pdbePlugin.canvas3d && pdbePlugin.canvas3d.camera) {
     try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
   }
+  applyViewerDefaults(pdbePlugin);
 }
 
 
@@ -5489,12 +5502,12 @@ async function loadPdbeStructureFromBase64(b64, format = 'pdb') {
     
     URL.revokeObjectURL(url);
     
-    try { 
-      await pdbeViewer.resetCamera(); 
-    } catch(e) { 
-      pdbePlugin.canvas3d?.requestCameraReset(); 
+    try {
+      await pdbeViewer.resetCamera();
+    } catch(e) {
+      pdbePlugin.canvas3d?.requestCameraReset();
     }
-    
+    applyViewerDefaults(pdbePlugin);
     setTimeout(() => applyGreyColoring(), 500);
     
     console.log('PDBe structure loaded successfully');
@@ -5528,6 +5541,7 @@ async function fetchAndLoadPdbeStructure(pdbId) {
       console.log(`Successfully loaded ${pdbId} from ${src.url}`);
       
       try { await pdbeViewer.resetCamera(); } catch(e) {}
+      applyViewerDefaults(pdbePlugin);
       setTimeout(() => applyGreyColoring(), 500);
       
       return true;
@@ -6074,6 +6088,7 @@ function setupPdbeControls() {
         } catch(e) {
           pdbePlugin?.canvas3d?.requestCameraReset();
         }
+        applyViewerDefaults(pdbePlugin);
       }
     }, { passive: true });
   }
@@ -8497,7 +8512,7 @@ async function main(){
   });
 
   document.getElementById('colorBy').addEventListener('change', (e)=>colorBy(e.target.value), {passive:true});
-  document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); }}, {passive:true});
+  document.getElementById('center').addEventListener('click', ()=>{ if(structureReady){ plugin.canvas3d?.requestCameraReset(); applyViewerDefaults(plugin); }}, {passive:true});
   document.getElementById('lockViewer').addEventListener('click', ()=>{ toggleViewerLock(); }, {passive:true});
   document.getElementById('focusSelection').addEventListener('click', ()=>{ focusMainViewerSelection(); }, {passive:true});
 
