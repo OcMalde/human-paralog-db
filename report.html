@@ -20,26 +20,26 @@
   .top-nav .search-box button{background:#37474f;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
   .top-nav .search-box button:hover{background:#263238}
 
-  header{padding:18px 24px;background:#fff9f0;border-bottom:1px solid #efe2c3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
-  header .title-main{margin:0;font-size:24px;font-weight:700;color:#2f2514}
-  header .title-sub{margin-top:4px;font-size:13px;color:#7a6842;letter-spacing:0.08em;text-transform:uppercase}
+  header{padding:18px 24px;background:#fff;border-bottom:1px solid #e8e8e8;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  header .title-main{margin:0;font-size:24px;font-weight:700;color:#1a1a1a}
+  header .title-sub{margin-top:4px;font-size:13px;color:#78909c;letter-spacing:0.08em;text-transform:uppercase}
   #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto}
   .card{background:var(--pane);border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .card h2{font-size:15px;margin:0;padding:10px 12px;border-bottom:1px solid #eee}
   .card .body{padding:12px}
   .card .card-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eee;gap:12px;flex-wrap:wrap}
   .card.collapsible h2{margin:0;padding:0;border-bottom:none;font-size:15px}
-  .collapse-toggle{background:#f5f1e6;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:999px;font-size:11px;padding:4px 12px;cursor:pointer}
-  .collapse-toggle:hover{background:#ebe2cf}
+  .collapse-toggle{background:#eceff1;border:1px solid #b0bec5;color:#546e7a;border-radius:999px;font-size:11px;padding:4px 12px;cursor:pointer}
+  .collapse-toggle:hover{background:#cfd8dc}
   .card.collapsible .body.collapsed{display:none !important}
   .section-hidden{display:none !important}
   .new-section.collapsible{padding:0}
-  .new-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
+  .new-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #e8e8e8;gap:12px;flex-wrap:wrap}
   .new-section.collapsible .section-header h2{margin:0;padding:0;border-bottom:none}
   .new-section.collapsible .section-body{padding:22px}
   .new-section.collapsible .section-body.collapsed{display:none}
   .summary-section.collapsible{padding:0}
-  .summary-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
+  .summary-section.collapsible .section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #e8e8e8;gap:12px;flex-wrap:wrap}
   .summary-section.collapsible .section-header h2{margin:0;padding:0;border-bottom:none}
   .summary-section.collapsible .section-body{padding:22px}
   .summary-section.collapsible .section-body.collapsed{display:none}
@@ -123,91 +123,91 @@
   }
 
 /* ========== SUMMARY SECTION STYLES ========== */
-.summary-section{background:#ffffff;border:1px solid #ebe4d7;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(51,41,16,0.06);color:#1f1b16;margin-bottom:16px}
-.summary-section h2{color:#1f1b16;border-bottom:1px solid #f2ece0;padding-bottom:12px;margin-bottom:18px;font-size:18px}
+.summary-section{background:#ffffff;border:1px solid #e8e8e8;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(0,0,0,0.04);color:#1f1b16;margin-bottom:16px}
+.summary-section h2{color:#1a1a1a;border-bottom:1px solid #e8e8e8;padding-bottom:12px;margin-bottom:18px;font-size:18px}
 .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media(max-width:900px){.summary-grid{grid-template-columns:1fr}}
-.protein-card{background:#fdf9f1;border-radius:12px;padding:16px;border:1px solid #f2ead8}
-.protein-card h3{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:10px;color:#2c210e}
+.protein-card{background:#f9f9f9;border-radius:12px;padding:16px;border:1px solid #e8e8e8}
+.protein-card h3{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:10px;color:#1a1a1a}
 .protein-card .gene-symbol{font-size:21px;font-weight:700}
 .essential-badge{background:#c62828;color:#fff;font-size:11px;padding:3px 8px;border-radius:999px;font-weight:600}
 .not-essential-badge{background:#ede4cf;color:#6d5830;font-size:11px;padding:3px 8px;border-radius:999px}
 .protein-links{display:flex;gap:10px;margin:10px 0}
-.protein-links a{color:#735c29;text-decoration:none;background:#fff;border:1px solid #f0e4c8;padding:4px 12px;border-radius:999px;font-size:12px;transition:background 0.15s}
-.protein-links a:hover{background:#f5ecdb}
-.chr-info{font-size:12px;color:#6b5c40;margin-top:6px}
-.pair-meta{background:#fff;border:1px dashed #e4dac4;border-radius:12px;padding:14px;margin-top:18px}
+.protein-links a{color:#546e7a;text-decoration:none;background:#fff;border:1px solid #e8e8e8;padding:4px 12px;border-radius:999px;font-size:12px;transition:background 0.15s}
+.protein-links a:hover{background:#f0f4f5}
+.chr-info{font-size:12px;color:#546e7a;margin-top:6px}
+.pair-meta{background:#fff;border:1px dashed #e8e8e8;border-radius:12px;padding:14px;margin-top:18px}
 .pair-meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .meta-item{text-align:center}
-.meta-item .value{font-size:20px;font-weight:700;color:#2f2614}
-.meta-item .label{font-size:11px;color:#7d6d4f;text-transform:uppercase;letter-spacing:0.05em}
- .ppi-highlights{margin-top:22px;background:#fffdfa;border-radius:12px;padding:16px;border:1px solid #f4ead4}
+.meta-item .value{font-size:20px;font-weight:700;color:#1a1a1a}
+.meta-item .label{font-size:11px;color:#78909c;text-transform:uppercase;letter-spacing:0.05em}
+ .ppi-highlights{margin-top:22px;background:transparent;border-radius:0;padding:16px 0 0;border:none;border-top:1px solid #e8e8e8}
  .ppi-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
- .ppi-header h3{margin:0;font-size:15px;color:#3a2f1b}
- .ppi-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#776550}
+ .ppi-header h3{margin:0;font-size:15px;color:#37474f}
+ .ppi-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#78909c}
  .ppi-toggle input{margin:0}
  .ppi-lists{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
  @media(max-width:900px){.ppi-lists{grid-template-columns:1fr}}
- .ppi-label{font-size:11px;font-weight:700;color:#5d4c2f;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px}
+ .ppi-label{font-size:11px;font-weight:700;color:#546e7a;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px}
  .ppi-chip-list{display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow-y:auto}
  .ppi-chip-list.expanded{max-height:none}
- .ppi-chip{padding:3px 8px;border-radius:999px;background:#fff3d8;border:1px solid #f0d6ac;font-size:11px;font-weight:500;color:#5a3300;cursor:default;white-space:nowrap}
- .ppi-chip:hover{background:#ffe8c0;border-color:#d9b87a}
- .ppi-chip.empty{background:#f8f0e1;border-style:dashed;color:#9c8561}
- .ppi-note{font-size:11px;color:#8d7a57;margin-top:4px}
- .ppi-note.clickable{color:#5a3300;cursor:pointer;text-decoration:underline}
- .ppi-note.clickable:hover{color:#3d2200}
- .ppi-graph-wrapper{margin-top:18px;padding:12px;border:1px dashed #efd8af;border-radius:12px;background:#fffdf5}
+ .ppi-chip{padding:3px 8px;border-radius:999px;background:#eceff1;border:1px solid #b0bec5;font-size:11px;font-weight:500;color:#546e7a;cursor:default;white-space:nowrap}
+ .ppi-chip:hover{background:#cfd8dc;border-color:#90a4ae}
+ .ppi-chip.empty{background:#f5f5f5;border-style:dashed;color:#78909c;border-color:#ccc}
+ .ppi-note{font-size:11px;color:#78909c;margin-top:4px}
+ .ppi-note.clickable{color:#546e7a;cursor:pointer;text-decoration:underline}
+ .ppi-note.clickable:hover{color:#37474f}
+ .ppi-graph-wrapper{margin-top:18px;padding:12px;border:1px dashed #e8e8e8;border-radius:12px;background:#fff}
  .ppi-view-controls{margin-bottom:12px}
- .ppi-view-controls select{padding:4px 8px;border-radius:6px;border:1px solid #e0d7c2;background:#fff;font-size:12px}
+ .ppi-view-controls select{padding:4px 8px;border-radius:6px;border:1px solid #e8e8e8;background:#fff;font-size:12px}
  .ppi-venn-wrapper{text-align:center}
  #ppiVenn{width:100%;height:220px;display:block}
  .ppi-venn-stats{display:flex;justify-content:center;gap:24px;margin-top:12px;flex-wrap:wrap}
- .venn-stat{background:#fff;border:1px solid #f0e8d8;border-radius:8px;padding:8px 16px;font-size:13px}
+ .venn-stat{background:#fff;border:1px solid #e8e8e8;border-radius:8px;padding:8px 16px;font-size:13px}
  .venn-stat-label{color:#666;margin-right:6px}
- .venn-stat span:last-child{font-weight:600;color:#2f2614}
+ .venn-stat span:last-child{font-weight:600;color:#1a1a1a}
  .venn-stat-test{width:100%;text-align:center;font-size:10px;color:#666;font-style:italic;margin-top:8px}
  .venn-stat-note{width:100%;text-align:center;font-size:11px;color:#888;margin-top:4px}
  #ppiNetwork{width:100%;height:230px;display:block}
- #ppiNetwork text{font-size:10px;fill:#3a3225;pointer-events:none}
- #ppiNetwork .gene-node circle{fill:#5c4433;stroke:#f9f6ef;stroke-width:2}
+ #ppiNetwork text{font-size:10px;fill:#1a1a1a;pointer-events:none}
+ #ppiNetwork .gene-node circle{fill:#546e7a;stroke:#fff;stroke-width:2}
  #ppiNetwork .gene-node text{font-size:11px}
- #ppiNetwork .shared-node circle{fill:#e1c499;stroke:#b68b4c;stroke-width:1}
- #ppiNetwork .shared-node:hover circle{fill:#d4a76a;stroke:#8b6914;stroke-width:2}
- #ppiNetwork .unique-node circle{fill:#f8f4ed;stroke:#c69e61;stroke-width:1}
- #ppiNetwork .unique-node:hover circle{fill:#fff;stroke:#8b6914;stroke-width:2}
- #ppiNetwork line{stroke:#d1c2aa;stroke-width:0.8}
+ #ppiNetwork .shared-node circle{fill:#b0bec5;stroke:#78909c;stroke-width:1}
+ #ppiNetwork .shared-node:hover circle{fill:#90a4ae;stroke:#546e7a;stroke-width:2}
+ #ppiNetwork .unique-node circle{fill:#f5f5f5;stroke:#bdbdbd;stroke-width:1}
+ #ppiNetwork .unique-node:hover circle{fill:#fff;stroke:#546e7a;stroke-width:2}
+ #ppiNetwork line{stroke:#cfd8dc;stroke-width:0.8}
  #ppiNetwork .non-shared{stroke-dasharray:2 2}
- .ppi-graph-note{font-size:11px;color:#8b7a60;margin-top:8px}
-.conservation-viz{margin-top:22px;background:#fff;border-radius:12px;padding:16px;border:1px solid #f1ecdf;color:#2a2620}
-.conservation-viz h3{margin:0 0 12px;font-size:16px;color:#2a2620}
+ .ppi-graph-note{font-size:11px;color:#78909c;margin-top:8px}
+.conservation-viz{margin-top:22px;background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8e8;color:#1a1a1a}
+.conservation-viz h3{margin:0 0 12px;font-size:16px;color:#37474f}
 .radar-boxplot-container{display:grid;grid-template-columns:340px 1fr;gap:18px;min-height:280px}
 @media(max-width:800px){.radar-boxplot-container{grid-template-columns:1fr}}
-.radar-plot{width:100%;height:280px;position:relative;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #f0e7d3;border-radius:10px}
+.radar-plot{width:100%;height:280px;position:relative;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid #e8e8e8;border-radius:10px}
 .radar-plot canvas{width:100%;height:100%}
 .radar-plot svg{width:100%;height:100%}
-.radar-fallback-note{font-size:11px;color:#7a6f55;text-align:center;margin-top:6px}
+.radar-fallback-note{font-size:11px;color:#78909c;text-align:center;margin-top:6px}
 #radarChart{width:340px;height:280px}
-.boxplot-panel{background:#f9f6ef;border-radius:10px;padding:15px;border:1px solid #ece4d2;display:flex;flex-direction:column}
-.boxplot-panel h4{margin:0;font-size:14px;color:#5c4d30}
+.boxplot-panel{background:#fff;border-radius:0;padding-top:12px;border:none;border-top:1px solid #e8e8e8;display:flex;flex-direction:column}
+.boxplot-panel h4{margin:0;font-size:14px;color:#37474f}
 .boxplot-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
-.reset-metric-btn{background:#f5f1e6;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;transition:background 0.15s}
-.reset-metric-btn:hover{background:#ede4cf}
+.reset-metric-btn{background:#eceff1;border:1px solid #b0bec5;color:#546e7a;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;transition:background 0.15s}
+.reset-metric-btn:hover{background:#cfd8dc}
 #boxplotContainer{flex:1;min-height:180px}
-.boxplot-hint{font-size:12px;color:#7a6f55;text-align:center;padding:18px}
-.metric-details{margin-top:10px;padding:12px;background:#fff;border-radius:8px;font-size:13px;border:1px solid #f0e7d3}
-.metric-details .stat-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #efe5cf}
+.boxplot-hint{font-size:12px;color:#78909c;text-align:center;padding:18px}
+.metric-details{margin-top:10px;padding:12px;background:#fff;border-radius:8px;font-size:13px;border:1px solid #e8e8e8}
+.metric-details .stat-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e8e8e8}
 .metric-details .stat-row:last-child{border-bottom:none}
 .percentile-bar{height:8px;background:#f0f0f0;border-radius:4px;margin-top:6px;overflow:hidden}
 .percentile-fill{height:100%;background:linear-gradient(90deg,#c39b63,#806845);border-radius:4px;transition:width 0.3s ease}
 .cons-high{color:#2e7d32}.cons-medium{color:#ef6c00}.cons-low{color:#c62828}
-.conservation-list{margin-top:16px;border-top:1px dashed #e5dcc8;padding-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.conservation-list .metric{background:#fdfaf4;border:1px solid #f1e6d2;border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
-.conservation-list .label{display:block;font-weight:600;color:#352a18;margin-bottom:4px}
-.conservation-list .value{font-size:18px;font-weight:700;color:#2f2614}
+.conservation-list{margin-top:16px;border-top:1px dashed #e8e8e8;padding-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.conservation-list .metric{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:10px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
+.conservation-list .label{display:block;font-weight:600;color:#1a1a1a;margin-bottom:4px}
+.conservation-list .value{font-size:18px;font-weight:700;color:#1a1a1a}
 .conservation-list .percentile{display:block;font-size:12px;margin-top:4px}
-.conservation-list .metric.active{border-color:#d3a552;box-shadow:0 0 0 2px rgba(211,165,82,0.18)}
-.conservation-list .metric:focus-visible{outline:2px solid #d3a552}
+.conservation-list .metric.active{border-color:#546e7a;box-shadow:0 0 0 2px rgba(84,110,122,0.18)}
+.conservation-list .metric:focus-visible{outline:2px solid #546e7a}
 /* PDBe viewer */
   #pdbeViewer{
     height:420px;
@@ -269,53 +269,53 @@
 
   /* Family Navigation */
   .family-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:12px}
-  .family-pair-card{background:#fdfbf7;border:2px solid #e8dfc7;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;position:relative}
+  .family-pair-card{background:#fff;border:2px solid #e8e8e8;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;position:relative}
   .family-pair-card:hover{border-color:#d3a552;box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
   .family-pair-card.current{background:linear-gradient(135deg,#fff9e6,#fef5d9);border-color:#c39b63;border-width:3px;box-shadow:0 4px 12px rgba(211,165,82,0.2)}
   .family-pair-card.current::before{content:"Current";position:absolute;top:6px;right:6px;background:#c39b63;color:#fff;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase}
   .family-pair-card.no-report{opacity:0.5;cursor:not-allowed;border-style:dashed}
   .family-pair-card.no-report:hover{transform:none;box-shadow:none}
-  .family-pair-title{font-weight:700;font-size:14px;color:#352a18;margin-bottom:6px}
+  .family-pair-title{font-weight:700;font-size:14px;color:#1a1a1a;margin-bottom:6px}
   .family-pair-genes{font-size:12px;color:#666;margin-bottom:8px}
   .family-pair-stats{display:flex;gap:10px;font-size:11px}
   .family-pair-stat{display:flex;flex-direction:column}
   .family-pair-stat-label{color:#888;font-size:10px;text-transform:uppercase}
-  .family-pair-stat-value{font-weight:600;color:#2f2614}
+  .family-pair-stat-value{font-weight:600;color:#1a1a1a}
   .family-pair-stat-value.high{color:#2e7d32}
   .family-pair-stat-value.medium{color:#ef6c00}
   .family-pair-stat-value.low{color:#c62828}
 
   /* New section styles - Similarity Searches, Family Features, SL */
-  .new-section{background:#ffffff;border:1px solid #e8e4d7;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(51,41,16,0.04);margin-bottom:16px;overflow:hidden}
-  .new-section h2{color:#1f1b16;border-bottom:1px solid #f2ece0;padding-bottom:12px;margin-bottom:18px;font-size:18px}
-  .new-section h3{color:#2a2620;font-size:16px;margin:0 0 12px}
+  .new-section{background:#ffffff;border:1px solid #e8e8e8;border-radius:14px;padding:22px;box-shadow:0 15px 35px rgba(0,0,0,0.04);margin-bottom:16px;overflow:hidden}
+  .new-section h2{color:#1a1a1a;border-bottom:1px solid #e8e8e8;padding-bottom:12px;margin-bottom:18px;font-size:18px}
+  .new-section h3{color:#37474f;font-size:16px;margin:0 0 12px}
   .symmetric-radar-container{display:grid;grid-template-columns:1fr 340px 1fr;gap:16px;align-items:start}
   @media(max-width:900px){.symmetric-radar-container{grid-template-columns:1fr;gap:20px}}
-  .gene-column{background:#fdf9f3;border-radius:10px;padding:14px;border:1px solid #f1e8d8}
-  .gene-column h4{font-size:14px;color:#4a3f2d;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #efe5d3}
-  .gene-column .metric-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #f0e8d8;font-size:13px}
+  .gene-column{background:#f9f9f9;border-radius:10px;padding:14px;border:1px solid #e8e8e8}
+  .gene-column h4{font-size:14px;color:#37474f;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #e8e8e8}
+  .gene-column .metric-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed #e8e8e8;font-size:13px}
   .gene-column .metric-item:last-child{border-bottom:none}
-  .gene-column .metric-label{color:#5a4d3a}
-  .gene-column .metric-value{font-weight:600;color:#2f2614}
+  .gene-column .metric-label{color:#78909c}
+  .gene-column .metric-value{font-weight:600;color:#1a1a1a}
   .center-radar{display:flex;flex-direction:column;align-items:center}
   .center-radar .radar-plot{width:340px;height:280px}
-  .center-radar .radar-note{font-size:11px;color:#8b7a60;margin-top:8px;text-align:center}
+  .center-radar .radar-note{font-size:11px;color:#78909c;margin-top:8px;text-align:center}
   .sl-functional-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
   @media(max-width:700px){.sl-functional-grid{grid-template-columns:1fr}}
-  .sl-card{background:#fdfbf7;border-radius:10px;padding:16px;border:1px solid #f0e6d4}
-  .sl-card h4{font-size:14px;color:#4a3f2d;margin:0 0 12px}
+  .sl-card{background:#fff;border-radius:10px;padding:16px;border:1px solid #e8e8e8}
+  .sl-card h4{font-size:14px;color:#37474f;margin:0 0 12px}
   .sl-flag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;margin-right:8px;margin-bottom:8px}
   .sl-flag.positive{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
   .sl-flag.negative{background:#fafafa;color:#888;border:1px solid #e0e0e0}
   .sl-flag.unknown{background:#fff8e1;color:#f57f17;border:1px solid #fff0b3}
   .sl-note{font-size:12px;color:#666;margin-left:8px}
   .go-sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
-  .go-sim-item{background:#fff;border-radius:8px;padding:12px;text-align:center;border:1px solid #f0e8d8}
-  .go-sim-item .label{font-size:11px;color:#7a6f55;text-transform:uppercase;margin-bottom:4px}
-  .go-sim-item .value{font-size:20px;font-weight:700;color:#2f2614}
+  .go-sim-item{background:#fff;border-radius:8px;padding:12px;text-align:center;border:1px solid #e8e8e8}
+  .go-sim-item .label{font-size:11px;color:#78909c;text-transform:uppercase;margin-bottom:4px}
+  .go-sim-item .value{font-size:20px;font-weight:700;color:#1a1a1a}
   .go-sim-item .percentile{font-size:11px;color:#888}
   .screen-list{margin-top:12px;font-size:12px;color:#666}
-  .screen-list .screen-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #f0e8d8}
+  .screen-list .screen-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #e8e8e8}
   .screen-list .screen-item:last-child{border-bottom:none}
   .protein-desc{margin-top:10px;font-size:13px;color:#555;line-height:1.5;background:#fafafa;border-radius:8px;padding:10px;border:1px dashed #e8e8e8}
   .protein-desc .desc-title{font-weight:600;color:#333;margin-bottom:4px}
@@ -323,20 +323,20 @@
   .desc-func-text{overflow:hidden;transition:max-height 0.3s ease}
   .desc-func-text.truncated{max-height:60px}
   .desc-func-text.expanded{max-height:none}
-  .desc-toggle{background:none;border:none;color:#5f4d2f;font-size:12px;cursor:pointer;padding:4px 0;margin-top:4px;text-decoration:underline}
-  .desc-toggle:hover{color:#3d2200}
+  .desc-toggle{background:none;border:none;color:#546e7a;font-size:12px;cursor:pointer;padding:4px 0;margin-top:4px;text-decoration:underline}
+  .desc-toggle:hover{color:#37474f}
   .desc-source{margin-top:8px;font-size:11px;color:#888;font-style:italic}
-  .desc-source a{color:#735c29;text-decoration:none}
+  .desc-source a{color:#546e7a;text-decoration:none}
   .desc-source a:hover{text-decoration:underline}
 
   /* Known Drugs Table */
   .drug-table{width:100%;border-collapse:collapse;font-size:12px}
-  .drug-table th{text-align:left;padding:6px 8px;font-size:10px;color:#7a6f55;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e8e4d7;font-weight:700;background:#fdf9f1}
-  .drug-table td{padding:5px 8px;border-bottom:1px solid #f0ece0;vertical-align:middle}
-  .drug-table tr:hover{background:#fef9ee}
+  .drug-table th{text-align:left;padding:6px 8px;font-size:10px;color:#78909c;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e8e8e8;font-weight:700;background:#f9f9f9}
+  .drug-table td{padding:5px 8px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+  .drug-table tr:hover{background:#f5f5f5}
   .drug-table tr.drug-shared{background:#f0f7ff}
   .drug-table tr.drug-shared:hover{background:#e3f0ff}
-  .drug-table .drug-name{font-weight:600;color:#2f2614;cursor:pointer}
+  .drug-table .drug-name{font-weight:600;color:#1a1a1a;cursor:pointer}
   .drug-table .drug-name:hover{color:#1565c0;text-decoration:underline}
   .phase-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.3px}
   .phase-4{background:#e8f5e9;color:#2e7d32}
@@ -347,42 +347,42 @@
   .target-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600}
   .target-both{background:#e8eaf6;color:#283593;border:1px solid #c5cae9}
   .target-single{background:#fafafa;color:#666;border:1px solid #e0e0e0}
-  .drug-phase-header{padding:8px 8px 4px;font-size:11px;font-weight:700;color:#5d4c2f;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #f0e8d8}
-  .drug-expand-btn{background:none;border:1px solid #e0d7c2;color:#5f4d2f;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;margin-top:8px}
-  .drug-expand-btn:hover{background:#f5f1e6}
+  .drug-phase-header{padding:8px 8px 4px;font-size:11px;font-weight:700;color:#546e7a;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #e8e8e8}
+  .drug-expand-btn{background:none;border:1px solid #e8e8e8;color:#546e7a;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;margin-top:8px}
+  .drug-expand-btn:hover{background:#f5f7f8}
 
   /* Key Findings Banner */
-  .key-findings-banner{background:linear-gradient(135deg,#f8f6f0,#fff9e6);border:1px solid #e8dfc7;border-radius:10px;padding:12px 20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(51,41,16,0.06)}
+  .key-findings-banner{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:12px 20px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
   .kf-items{display:flex;justify-content:space-around;flex-wrap:wrap;gap:8px 16px}
   .kf-item{display:flex;flex-direction:column;align-items:center;min-width:70px}
-  .kf-value{font-size:18px;font-weight:700;color:#2f2614}
-  .kf-label{font-size:10px;color:#7d6d4f;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+  .kf-value{font-size:18px;font-weight:700;color:#1a1a1a}
+  .kf-label{font-size:10px;color:#78909c;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
   .kf-value.positive{color:#2e7d32}
   .kf-value.negative{color:#c62828}
   .kf-value.neutral{color:#ef6c00}
 
   /* Druggability Group */
-  .section-group{background:#fff;border:1px solid #e8e4d7;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(51,41,16,0.04)}
+  .section-group{background:#fff;border:1px solid #e8e8e8;border-radius:14px;padding:0;box-shadow:0 15px 35px rgba(0,0,0,0.04)}
   #familyGroup{overflow-x:hidden}
-  .section-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #f2ece0;gap:12px;flex-wrap:wrap}
-  .section-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1f1b16}
+  .section-group>.section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #e8e8e8;gap:12px;flex-wrap:wrap}
+  .section-group>.section-header h2{margin:0;padding:0;border-bottom:none;font-size:18px;color:#1a1a1a}
   .section-group>.section-body{padding:16px 22px 22px;max-width:100%}
   .section-group>.section-body.collapsed{display:none}
-  .section-group .card{box-shadow:none;border-color:#f0ece0;max-width:100%;overflow:hidden}
-  .section-group .new-section{box-shadow:none;border-color:#f0ece0;max-width:100%;overflow:hidden}
+  .section-group .card{box-shadow:none;border-color:#e8e8e8;max-width:100%;overflow:hidden}
+  .section-group .new-section{box-shadow:none;border-color:#e8e8e8;max-width:100%;overflow:hidden}
 
   /* Track Toggle Chips */
   .track-toggle-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
-  .track-toggle-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #e0d7c2;background:#f5f1e6;color:#5f4d2f;transition:all 0.15s;user-select:none}
-  .track-toggle-chip:hover{background:#ebe2cf}
+  .track-toggle-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #b0bec5;background:#eceff1;color:#546e7a;transition:all 0.15s;user-select:none}
+  .track-toggle-chip:hover{background:#cfd8dc}
   .track-toggle-chip.active{background:#e0f2f1;border-color:#00897b;color:#00695c}
   .track-toggle-chip[data-group="default"]{background:#e0f2f1;border-color:#00897b;color:#00695c;cursor:default;opacity:0.7}
 
   /* Regions & Druggability unified card */
   .regions-grid{display:grid;gap:16px;grid-template-columns:1fr 1fr}
   @media(max-width:900px){.regions-grid{grid-template-columns:1fr}}
-  .gene-panel{border:1px solid #e8e4d7;border-radius:10px;overflow:hidden}
-  .gene-panel-header{padding:8px 12px;font-weight:700;font-size:13px;background:#f9f7f2;border-bottom:1px solid #e8e4d7}
+  .gene-panel{border:1px solid #e8e8e8;border-radius:10px;overflow:hidden}
+  .gene-panel-header{padding:8px 12px;font-weight:700;font-size:13px;background:#f5f7f8;border-bottom:1px solid #e8e8e8}
   .band-header{display:flex;align-items:center;gap:6px;padding:6px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;cursor:pointer;user-select:none;border-bottom:1px solid #f0ece0}
   .band-header:hover{filter:brightness(0.97)}
   .band-header .band-toggle{font-size:9px;color:#999;margin-left:auto;transition:transform 0.15s}
@@ -424,7 +424,7 @@
 
   /* Sticky Controls */
   #colorBy{font-size:13px;font-weight:600;padding:5px 8px;border:2px solid #546e7a;border-radius:6px;background:#e8f4f8;min-width:165px;cursor:pointer}
-  .sticky-controls{position:sticky;top:42px;z-index:50;background:#f8f8f8;padding:8px 12px 4px;border:1.5px solid #444;border-radius:10px}
+  .sticky-controls{position:sticky;top:42px;z-index:50;background:#fff;padding:8px 12px 4px;border:2px solid #546e7a;border-radius:10px}
   .sticky-controls.is-stuck{box-shadow:0 2px 12px rgba(0,0,0,0.12)}
   .sticky-controls-mini{display:inline-flex;align-items:center;padding:3px 4px !important}
   .sticky-controls.is-mini{padding:4px 8px;background:#f4f4f4;display:inline-block;width:auto;border-radius:8px}
@@ -464,6 +464,25 @@
     .kf-items{flex-direction:row;flex-wrap:wrap;justify-content:center}
     .kf-item{min-width:55px}
   }
+
+  /* Hint icons */
+  .hint-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;background:#78909c;color:#fff;border-radius:50%;font-size:9px;font-weight:bold;cursor:help;margin-left:2px;vertical-align:middle;flex-shrink:0}
+  .hint-icon:hover{background:#546e7a}
+
+  /* PPI lists toggle button */
+  .ppi-lists-toggle{font-size:11px;padding:4px 10px;background:#eceff1;border:1px solid #b0bec5;border-radius:999px;color:#546e7a;cursor:pointer}
+  .ppi-lists-toggle:hover{background:#cfd8dc}
+
+  /* PDBe control groups */
+  .pdbe-ctrl-group{display:flex;align-items:center;gap:4px}
+  .pdbe-ctrl-sep{color:#ccc;font-size:16px;padding:0 2px}
+
+  /* Section header accent (blue-grey tint) */
+  .card .card-header{background:#f5f7f8}
+  .new-section.collapsible .section-header{background:#f5f7f8}
+  .summary-section.collapsible .section-header{background:#f5f7f8}
+  .section-group>.section-header{background:#f5f7f8}
+  .card h2,.card-header h2,.section-header h2{color:#37474f}
 </style>
 </head>
 <body>
@@ -595,12 +614,15 @@
           <h3>Shared Protein Partners</h3>
           <p class="small">Based on BioPlex interactors captured for this paralog pair.</p>
         </div>
-        <label class="ppi-toggle">
-          <input type="checkbox" id="toggleNonShared" checked/>
-          <span>Show unique-only partners</span>
-        </label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label class="ppi-toggle">
+            <input type="checkbox" id="toggleNonShared" checked/>
+            <span>Show unique-only partners</span>
+          </label>
+          <button id="ppiListsToggle" class="ppi-lists-toggle">Show partner lists <span id="ppiListsArrow">▼</span></button>
+        </div>
       </div>
-      <div class="ppi-lists">
+      <div id="ppiLists" class="ppi-lists" style="display:none">
         <div>
           <div class="ppi-label">Shared PPIs</div>
           <div id="sharedPpiList" class="ppi-chip-list"><span class="ppi-chip empty">No data available</span></div>
@@ -619,6 +641,7 @@
           </div>
         </div>
       </div>
+      </div><!-- end #ppiLists -->
       <div class="ppi-graph-wrapper">
         <div class="ppi-view-controls">
           <label>View:
@@ -717,7 +740,7 @@
   <div class="sticky-controls" id="structureStickyControls">
     <div class="sticky-controls-full" id="stickyFull">
       <div class="row" style="flex-wrap:wrap;gap:6px 12px">
-        <label>Color by:
+        <label>Color by <span class="hint-icon" title="Visualize pLDDT confidence, AlphaMissense, domain boundaries, cavities and more — try different modes to explore the structure">ℹ</span>
           <select id="colorBy">
             <option value="uniform">Uniform</option>
             <option value="plddt">pLDDT (confidence)</option>
@@ -745,13 +768,13 @@
             <option value="full">Full alignment</option>
           </select>
         </label>
-        <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;min-width:28px;padding:2px 6px">&#x1F512;</button>
+        <button id="lockViewer" title="Lock/unlock hover highlight" style="font-size:14px;padding:2px 8px">&#x1F512; <span style="font-size:11px">Lock hover</span></button>
         <span class="note">TM-score: <b id="tmScore">–</b> · columns: <span id="alnLen">–</span></span>
         <button id="stickyMinimize" title="Minimize controls" style="margin-left:auto;font-size:14px;min-width:24px;padding:2px 6px;font-weight:700">−</button>
       </div>
       <div style="margin-top:10px;padding:6px 0 6px 12px;border-left:3px solid #ccc;font-size:inherit">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <label style="font-weight:600">Highlight</label>
+          <label style="font-weight:600">Highlight <span class="hint-icon" title="Click domain buttons or type residue ranges (e.g. 1-50,100-120) to highlight specific regions in the 3D structure. Lock hover to keep highlights persistent.">ℹ</span></label>
           <button id="clearAllHighlights" style="padding:2px 8px;font-size:11px">Clear all</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
@@ -804,13 +827,19 @@
     </div>
     <div class="body" id="pdbeCardBody">
       <div class="pdbe-controls">
-        <label>Structure:
-          <select id="pdbeStructSelect">
-            <option value="">Loading...</option>
-          </select>
-        </label>
-        <label>Color:
-          <select id="pdbeColorBy" style="font-size:12px;padding:2px 4px">
+        <span class="pdbe-ctrl-group">
+          <label>Structure:
+            <select id="pdbeStructSelect">
+              <option value="">Loading...</option>
+            </select>
+          </label>
+          <label style="font-size:12px;color:#555;white-space:nowrap">
+            <input type="checkbox" id="togglePdbeComplex" checked style="margin:0 3px 0 0">Complex
+          </label>
+        </span>
+        <span class="pdbe-ctrl-sep">|</span>
+        <span class="pdbe-ctrl-group">
+          <label>Color: <select id="pdbeColorBy" style="font-size:12px;padding:2px 4px">
             <option value="grey">Grey (default)</option>
             <option value="aligned">Aligned / Gap</option>
             <option value="plddt">pLDDT</option>
@@ -821,17 +850,17 @@
             <option value="cavities">Cavities</option>
             <option value="drugclip">DrugCLIP</option>
             <option value="plma">PLMA</option>
-          </select>
-        </label>
-        <label style="font-size:12px;color:#555;white-space:nowrap">
-          <input type="checkbox" id="togglePdbeComplex" checked style="margin:0 3px 0 0">Show complex
-        </label>
-        <button id="pdbeHighlightProtein">Highlight <span id="pdbeProteinName">Protein</span></button>
-        <button id="pdbeClearHighlight">Clear Highlight</button>
-        <button id="pdbeSyncCamera" title="Sync orientation with main viewer">Sync Orientation</button>
-        <button id="pdbeCenter">Center</button>
-        <button id="pdbeZoomProtein" title="Zoom to target protein chain">Zoom to Protein</button>
-        <button id="pdbeFocusSelection" title="Zoom to highlighted region in PDBe viewer">Focus</button>
+          </select></label>
+        </span>
+        <span class="pdbe-ctrl-sep">|</span>
+        <span class="pdbe-ctrl-group">
+          <button id="pdbeHighlightProtein">Highlight <span id="pdbeProteinName">Protein</span></button>
+          <button id="pdbeClearHighlight">Clear</button>
+          <button id="pdbeSyncCamera" title="Sync orientation with main viewer">Sync</button>
+          <button id="pdbeCenter">Center</button>
+          <button id="pdbeZoomProtein" title="Zoom to target protein chain">Zoom</button>
+          <button id="pdbeFocusSelection" title="Zoom to highlighted region in PDBe viewer">Focus</button>
+        </span>
       </div>
       <div class="display-legend" id="pdbeLegend">
         Complex shown in <strong>grey</strong>. Protein of interest highlighted in <span style="color:#43a047">green</span>.
@@ -1095,7 +1124,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=7"></script>
+<script src="static/js/app.js?v=8"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>

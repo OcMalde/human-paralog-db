@@ -3323,6 +3323,18 @@ function renderPpiSection(pair, gene1, gene2) {
   drawPpiVenn(PPI_GRAPH_DATA);
   setupPpiViewModeSwitch();
   updatePpiView();
+  // Wire PPI lists toggle (hidden by default)
+  const ppiListsToggle = document.getElementById('ppiListsToggle');
+  const ppiListsDiv = document.getElementById('ppiLists');
+  const ppiListsArrow = document.getElementById('ppiListsArrow');
+  if (ppiListsToggle && ppiListsDiv && !ppiListsToggle.dataset.bound) {
+    ppiListsToggle.addEventListener('click', () => {
+      const visible = ppiListsDiv.style.display !== 'none';
+      ppiListsDiv.style.display = visible ? 'none' : '';
+      if (ppiListsArrow) ppiListsArrow.textContent = visible ? '▼' : '▲';
+    }, { passive: true });
+    ppiListsToggle.dataset.bound = '1';
+  }
 }
 
 function populatePpiList(elementId, partners, limit, emptyMsg, noteId) {
