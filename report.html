@@ -179,7 +179,7 @@
  #ppiNetwork line{stroke:#cfd8dc;stroke-width:0.8}
  #ppiNetwork .non-shared{stroke-dasharray:2 2}
  .ppi-graph-note{font-size:11px;color:#78909c;margin-top:8px}
-.conservation-viz{margin-top:22px;background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8e8;color:#1a1a1a}
+.conservation-viz{margin-top:0;background:transparent;border-radius:0;padding:16px 0 0;border:none;border-top:1px solid #e8e8e8;color:#1a1a1a}
 .conservation-viz h3{margin:0 0 12px;font-size:16px;color:#37474f}
 .radar-boxplot-container{display:grid;grid-template-columns:340px 1fr;gap:18px;min-height:280px}
 @media(max-width:800px){.radar-boxplot-container{grid-template-columns:1fr}}
@@ -300,10 +300,9 @@
   .center-radar{display:flex;flex-direction:column;align-items:center}
   .center-radar .radar-plot{width:340px;height:280px}
   .center-radar .radar-note{font-size:11px;color:#78909c;margin-top:8px;text-align:center}
-  .sl-functional-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border-left:none}
+  .sl-functional-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
   @media(max-width:700px){.sl-functional-grid{grid-template-columns:1fr}}
-  .sl-card{background:none;border:none;border-radius:0;padding:0;padding-right:20px}
-  .sl-card+.sl-card{border-left:1px solid #e8e8e8;padding-left:20px;padding-right:0}
+  .sl-card{background:none;border:none;border-radius:0;padding:0}
   .sl-card h4{font-size:11px;font-weight:700;color:#78909c;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e8e8e8}
   .sl-flag{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;margin-right:8px;margin-bottom:8px}
   .sl-flag.positive{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
@@ -646,7 +645,6 @@
           </div>
         </div>
       </div>
-      </div><!-- end #ppiLists -->
       <div class="ppi-graph-wrapper">
         <div class="ppi-view-controls">
           <label>View:
