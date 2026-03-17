@@ -127,7 +127,7 @@
 .summary-section h2{color:#1a1a1a;border-bottom:1px solid #e8e8e8;padding-bottom:12px;margin-bottom:18px;font-size:18px}
 .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media(max-width:900px){.summary-grid{grid-template-columns:1fr}}
-.protein-card{background:#f9f9f9;border-radius:12px;padding:16px;border:1px solid #e8e8e8}
+.protein-card{background:#f9f9f9;border-radius:8px;padding:14px}
 .protein-card h3{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:10px;color:#1a1a1a}
 .protein-card .gene-symbol{font-size:21px;font-weight:700}
 .essential-badge{background:#c62828;color:#fff;font-size:11px;padding:3px 8px;border-radius:999px;font-weight:600}
@@ -136,7 +136,7 @@
 .protein-links a{color:#546e7a;text-decoration:none;background:#fff;border:1px solid #e8e8e8;padding:4px 12px;border-radius:999px;font-size:12px;transition:background 0.15s}
 .protein-links a:hover{background:#f0f4f5}
 .chr-info{font-size:12px;color:#546e7a;margin-top:6px}
-.pair-meta{background:#fff;border:1px dashed #e8e8e8;border-radius:12px;padding:14px;margin-top:18px}
+.pair-meta{background:#fff;border:none;border-top:1px solid #e8e8e8;border-radius:0;padding:14px 0 0;margin-top:18px}
 .pair-meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .meta-item{text-align:center}
 .meta-item .value{font-size:20px;font-weight:700;color:#1a1a1a}
@@ -421,6 +421,9 @@
   .section-group>.section-body>.card:first-child,
   .section-group>.section-body>.new-section:first-child,
   .section-group>.section-body>.sticky-controls+.card{margin-top:0}
+  /* Structure/alignment section spacing (cards inside #stickyScope) */
+  #stickyScope>.card{margin-top:12px}
+  #stickyScope>.sticky-controls+.card{margin-top:0}
 
   /* Sticky Controls */
   #colorBy{font-size:13px;font-weight:600;padding:5px 8px;border:2px solid #546e7a;border-radius:6px;background:#e8f4f8;min-width:165px;cursor:pointer}
@@ -601,8 +604,8 @@
     </div>
       </div>
       <!-- Known Drugs subsection -->
-      <div id="knownDrugsSection" style="margin-bottom:22px;background:#fff;border-radius:12px;padding:16px;border:1px solid #e8e8e8;">
-        <h3 style="margin:0 0 12px;font-size:16px;color:#37474f;border-bottom:1px solid #e8e8e8;padding-bottom:8px;">Known Drugs</h3>
+      <div id="knownDrugsSection" style="margin-bottom:22px;padding:16px 0 0;border-top:1px solid #e8e8e8;">
+        <h3 style="margin:0 0 12px;font-size:16px;color:#37474f;">Known Drugs</h3>
         <div id="knownDrugsTable" style="font-size:13px;">Loading...</div>
         <div class="desc-source" style="margin-top:8px;padding-top:6px;border-top:1px solid #f0f0f0">
           Source: <a href="https://platform.opentargets.org/" target="_blank">Open Targets Platform</a>
@@ -670,7 +673,7 @@
       </div>
     </div>
     <!-- SL & Functional Overlap Section -->
-    <div class="sl-functional-wrapper" id="slFunctionalSection" style="background:#fff;border-radius:12px;padding:20px;margin:20px 0;border:1px solid #e8e8e8;">
+    <div class="sl-functional-wrapper" id="slFunctionalSection" style="padding:16px 0 0;margin:0 0 16px;border-top:1px solid #e8e8e8;">
       <h3 style="margin:0 0 16px;color:#37474f;">Synthetic Lethality & Functional Overlap</h3>
       <div class="sl-functional-grid">
         <div class="sl-card">

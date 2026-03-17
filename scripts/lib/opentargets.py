@@ -56,8 +56,11 @@ def _load_all_known_drugs() -> Dict[str, List[Dict[str, Any]]]:
     try:
         import pyarrow.parquet as pq
     except ImportError:
-        log("  OpenTargets: pyarrow not available, skipping known drugs")
-        return _drug_cache
+        raise ImportError(
+            "pyarrow is required to load drug data but is not installed.\n"
+            "Run with conda Python: /Users/olivierdennler/miniconda/bin/python3\n"
+            "Or install: pip install pyarrow"
+        )
 
     for f in parquet_files:
         table = pq.read_table(f, columns=[
