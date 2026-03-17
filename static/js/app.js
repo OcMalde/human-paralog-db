@@ -4091,13 +4091,16 @@ async function initMolstar(){
   window.viewer = viewer;
   window.molstar = molstar;
   window.plugin = plugin;
-  // Enable outline by default
+  // Enable outline, disable fog, set near clipping to 0
   try {
     const pp = plugin.canvas3d?.props?.postprocessing;
     if (pp) {
       plugin.canvas3d.setProps({ postprocessing: { ...pp, outline: { name: 'on', params: { scale: 1, threshold: 0.33, color: { r: 0, g: 0, b: 0 }, includeTransparent: true } } } });
     }
   } catch(e) { console.warn('Could not enable outline:', e); }
+  try {
+    plugin.canvas3d.setProps({ renderer: { fog: 0 }, cameraClipDistance: 0 });
+  } catch(e) { console.warn('Could not set fog/clip:', e); }
 
   // Reapply color theme when Molstar representations change (e.g., from built-in controls)
   let _colorReapplyTimer = null;
@@ -4768,10 +4771,12 @@ async function initPdbeMolstar() {
         marking: {
           selectColor: { r: 0.26, g: 0.63, b: 0.28 },
           highlightColor: { r: 0.91, g: 0.12, b: 0.39 }
-        }
+        },
+        renderer: { fog: 0 },
+        cameraClipDistance: 0
       });
     } catch(e) {
-      console.warn('Could not set PDBe highlight colors:', e);
+      console.warn('Could not set PDBe viewer props:', e);
     }
     
     console.log('PDBe Molstar viewer initialized');
@@ -5397,8 +5402,8 @@ async function applyPdbeColorMode(mode) {
     if (cameraSnapshot && pdbePlugin?.canvas3d?.camera) {
       try { pdbePlugin.canvas3d.camera.setState(cameraSnapshot); } catch(e) {}
     } else {
-      // First load — zoom to the target protein chain so it's centered and clipping is right
-      await zoomToPdbeProtein();
+      // First load — reset camera to fit the whole complex (not just the target chain)
+      try { await pdbeViewer.resetCamera(); } catch(e) { pdbePlugin?.canvas3d?.requestCameraReset(); }
     }
     updatePdbeLegend('Context chains in <strong>grey</strong>. <strong>' + (geneName || 'Protein') + '</strong> highlighted in <span style="color:#00ACC1">teal</span>. Click "Highlight Protein" to highlight specific region.');
     return;
