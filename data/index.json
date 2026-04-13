@@ -108,6 +108,330 @@
     "fident": 0.528
   },
   {
+    "id": "PAX1_PAX2",
+    "geneA": "PAX1",
+    "geneB": "PAX2",
+    "accA": "P15863",
+    "accB": "Q02962",
+    "tm": 0.324,
+    "fident": 0.336
+  },
+  {
+    "id": "PAX1_PAX3",
+    "geneA": "PAX1",
+    "geneB": "PAX3",
+    "accA": "P15863",
+    "accB": "P23760",
+    "tm": 0.2709,
+    "fident": 0.289
+  },
+  {
+    "id": "PAX1_PAX4",
+    "geneA": "PAX1",
+    "geneB": "PAX4",
+    "accA": "P15863",
+    "accB": "O43316",
+    "tm": 0.3724,
+    "fident": 0.274
+  },
+  {
+    "id": "PAX1_PAX5",
+    "geneA": "PAX1",
+    "geneB": "PAX5",
+    "accA": "P15863",
+    "accB": "Q02548",
+    "tm": 0.3341,
+    "fident": 0.355
+  },
+  {
+    "id": "PAX1_PAX6",
+    "geneA": "PAX1",
+    "geneB": "PAX6",
+    "accA": "P15863",
+    "accB": "P26367",
+    "tm": 0.3186,
+    "fident": 0.276
+  },
+  {
+    "id": "PAX1_PAX7",
+    "geneA": "PAX1",
+    "geneB": "PAX7",
+    "accA": "P15863",
+    "accB": "P23759",
+    "tm": 0.256,
+    "fident": 0.28
+  },
+  {
+    "id": "PAX1_PAX8",
+    "geneA": "PAX1",
+    "geneB": "PAX8",
+    "accA": "P15863",
+    "accB": "Q06710",
+    "tm": 0.2934,
+    "fident": 0.306
+  },
+  {
+    "id": "PAX1_PAX9",
+    "geneA": "PAX1",
+    "geneB": "PAX9",
+    "accA": "P15863",
+    "accB": "P55771",
+    "tm": 0.4518,
+    "fident": 0.621
+  },
+  {
+    "id": "PAX2_PAX3",
+    "geneA": "PAX2",
+    "geneB": "PAX3",
+    "accA": "Q02962",
+    "accB": "P23760",
+    "tm": 0.3217,
+    "fident": 0.275
+  },
+  {
+    "id": "PAX2_PAX4",
+    "geneA": "PAX2",
+    "geneB": "PAX4",
+    "accA": "Q02962",
+    "accB": "O43316",
+    "tm": 0.3578,
+    "fident": 0.292
+  },
+  {
+    "id": "PAX2_PAX5",
+    "geneA": "PAX2",
+    "geneB": "PAX5",
+    "accA": "Q02962",
+    "accB": "Q02548",
+    "tm": 0.4458,
+    "fident": 0.665
+  },
+  {
+    "id": "PAX2_PAX6",
+    "geneA": "PAX2",
+    "geneB": "PAX6",
+    "accA": "Q02962",
+    "accB": "P26367",
+    "tm": 0.3083,
+    "fident": 0.322
+  },
+  {
+    "id": "PAX2_PAX7",
+    "geneA": "PAX2",
+    "geneB": "PAX7",
+    "accA": "Q02962",
+    "accB": "P23759",
+    "tm": 0.3204,
+    "fident": 0.257
+  },
+  {
+    "id": "PAX2_PAX8",
+    "geneA": "PAX2",
+    "geneB": "PAX8",
+    "accA": "Q02962",
+    "accB": "Q06710",
+    "tm": 0.3434,
+    "fident": 0.529
+  },
+  {
+    "id": "PAX2_PAX9",
+    "geneA": "PAX2",
+    "geneB": "PAX9",
+    "accA": "Q02962",
+    "accB": "P55771",
+    "tm": 0.4018,
+    "fident": 0.358
+  },
+  {
+    "id": "PAX3_PAX4",
+    "geneA": "PAX3",
+    "geneB": "PAX4",
+    "accA": "P23760",
+    "accB": "O43316",
+    "tm": 0.3435,
+    "fident": 0.329
+  },
+  {
+    "id": "PAX3_PAX5",
+    "geneA": "PAX3",
+    "geneB": "PAX5",
+    "accA": "P23760",
+    "accB": "Q02548",
+    "tm": 0.3254,
+    "fident": 0.315
+  },
+  {
+    "id": "PAX3_PAX6",
+    "geneA": "PAX3",
+    "geneB": "PAX6",
+    "accA": "P23760",
+    "accB": "P26367",
+    "tm": 0.3251,
+    "fident": 0.36
+  },
+  {
+    "id": "PAX3_PAX7",
+    "geneA": "PAX3",
+    "geneB": "PAX7",
+    "accA": "P23760",
+    "accB": "P23759",
+    "tm": 0.3195,
+    "fident": 0.758
+  },
+  {
+    "id": "PAX3_PAX8",
+    "geneA": "PAX3",
+    "geneB": "PAX8",
+    "accA": "P23760",
+    "accB": "Q06710",
+    "tm": 0.2956,
+    "fident": 0.322
+  },
+  {
+    "id": "PAX3_PAX9",
+    "geneA": "PAX3",
+    "geneB": "PAX9",
+    "accA": "P23760",
+    "accB": "P55771",
+    "tm": 0.3789,
+    "fident": 0.319
+  },
+  {
+    "id": "PAX4_PAX5",
+    "geneA": "PAX4",
+    "geneB": "PAX5",
+    "accA": "O43316",
+    "accB": "Q02548",
+    "tm": 0.371,
+    "fident": 0.286
+  },
+  {
+    "id": "PAX4_PAX6",
+    "geneA": "PAX4",
+    "geneB": "PAX6",
+    "accA": "O43316",
+    "accB": "P26367",
+    "tm": 0.4651,
+    "fident": 0.389
+  },
+  {
+    "id": "PAX4_PAX7",
+    "geneA": "PAX4",
+    "geneB": "PAX7",
+    "accA": "O43316",
+    "accB": "P23759",
+    "tm": 0.3561,
+    "fident": 0.342
+  },
+  {
+    "id": "PAX4_PAX8",
+    "geneA": "PAX4",
+    "geneB": "PAX8",
+    "accA": "O43316",
+    "accB": "Q06710",
+    "tm": 0.3836,
+    "fident": 0.295
+  },
+  {
+    "id": "PAX4_PAX9",
+    "geneA": "PAX4",
+    "geneB": "PAX9",
+    "accA": "O43316",
+    "accB": "P55771",
+    "tm": 0.3761,
+    "fident": 0.284
+  },
+  {
+    "id": "PAX5_PAX6",
+    "geneA": "PAX5",
+    "geneB": "PAX6",
+    "accA": "Q02548",
+    "accB": "P26367",
+    "tm": 0.3106,
+    "fident": 0.321
+  },
+  {
+    "id": "PAX5_PAX7",
+    "geneA": "PAX5",
+    "geneB": "PAX7",
+    "accA": "Q02548",
+    "accB": "P23759",
+    "tm": 0.3381,
+    "fident": 0.301
+  },
+  {
+    "id": "PAX5_PAX8",
+    "geneA": "PAX5",
+    "geneB": "PAX8",
+    "accA": "Q02548",
+    "accB": "Q06710",
+    "tm": 0.3821,
+    "fident": 0.518
+  },
+  {
+    "id": "PAX5_PAX9",
+    "geneA": "PAX5",
+    "geneB": "PAX9",
+    "accA": "Q02548",
+    "accB": "P55771",
+    "tm": 0.3916,
+    "fident": 0.338
+  },
+  {
+    "id": "PAX6_PAX7",
+    "geneA": "PAX6",
+    "geneB": "PAX7",
+    "accA": "P26367",
+    "accB": "P23759",
+    "tm": 0.3075,
+    "fident": 0.354
+  },
+  {
+    "id": "PAX6_PAX8",
+    "geneA": "PAX6",
+    "geneB": "PAX8",
+    "accA": "P26367",
+    "accB": "Q06710",
+    "tm": 0.2989,
+    "fident": 0.307
+  },
+  {
+    "id": "PAX6_PAX9",
+    "geneA": "PAX6",
+    "geneB": "PAX9",
+    "accA": "P26367",
+    "accB": "P55771",
+    "tm": 0.4032,
+    "fident": 0.31
+  },
+  {
+    "id": "PAX7_PAX8",
+    "geneA": "PAX7",
+    "geneB": "PAX8",
+    "accA": "P23759",
+    "accB": "Q06710",
+    "tm": 0.2944,
+    "fident": 0.291
+  },
+  {
+    "id": "PAX7_PAX9",
+    "geneA": "PAX7",
+    "geneB": "PAX9",
+    "accA": "P23759",
+    "accB": "P55771",
+    "tm": 0.3788,
+    "fident": 0.326
+  },
+  {
+    "id": "PAX8_PAX9",
+    "geneA": "PAX8",
+    "geneB": "PAX9",
+    "accA": "Q06710",
+    "accB": "P55771",
+    "tm": 0.3717,
+    "fident": 0.383
+  },
+  {
     "id": "SMARCA2_SMARCA4",
     "geneA": "SMARCA2",
     "geneB": "SMARCA4",
