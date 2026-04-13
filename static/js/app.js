@@ -8716,15 +8716,26 @@ function populateKeyFindingsBanner() {
     else { kfSl.textContent = '?'; kfSl.className = 'kf-value'; }
   }
 
-  // Pockets (cavities + DrugCLIP)
+  // Pockets (cavities + DrugCLIP) — show per-gene as "A|B"
   const kfDrug = document.getElementById('kfDrug');
   if (kfDrug) {
-    const nCav = (DATA.cavA_alnRects || []).length + (DATA.cavB_alnRects || []).length;
-    const nDc = (DATA.domainsA || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length +
-                (DATA.domainsB || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length;
-    const total = nCav + nDc;
-    kfDrug.textContent = total;
-    kfDrug.className = 'kf-value ' + (total > 0 ? 'positive' : '');
+    const nCavA = (DATA.cavA_alnRects || []).length;
+    const nCavB = (DATA.cavB_alnRects || []).length;
+    const nDcA = (DATA.domainsA || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length;
+    const nDcB = (DATA.domainsB || []).filter(d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP').length;
+    const pA = nCavA + nDcA, pB = nCavB + nDcB;
+    kfDrug.textContent = `${pA}|${pB}`;
+    kfDrug.className = 'kf-value ' + ((pA + pB) > 0 ? 'positive' : '');
+  }
+
+  // Domains (structural: EBI/TED/Disordered, excluding pockets) — show per-gene as "A|B"
+  const kfDomains = document.getElementById('kfDomains');
+  if (kfDomains) {
+    const isPocket = d => d.type === 'CAV' || d.type === 'Cavity' || d.type === 'DrugCLIP' || d.raw_type === 'CAV' || d.raw_type === 'Cavity' || d.raw_type === 'DrugCLIP';
+    const nDomA = (DATA.domainsA || []).filter(d => !isPocket(d)).length;
+    const nDomB = (DATA.domainsB || []).filter(d => !isPocket(d)).length;
+    kfDomains.textContent = `${nDomA}|${nDomB}`;
+    kfDomains.className = 'kf-value ' + ((nDomA + nDomB) > 0 ? 'positive' : '');
   }
 
   // Known drugs
