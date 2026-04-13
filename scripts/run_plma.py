@@ -44,7 +44,7 @@ TAXID_LIST = [10090, 6239, 4932]  # mouse, C. elegans, yeast
 PALOMA_BLACKLIST = {"Q9U7E0", "F8VPZ5", "Q93781", "Q86D18"}  # cause segfault/weight mismatch
 
 # Docker
-DOCKER_CONTAINER = "04b80bf721e5"
+DOCKER_CONTAINER = "4fa044ff5162"
 
 # paloma-D parameters
 PALOMA_T = 10
@@ -229,7 +229,7 @@ def run_paloma_docker(fasta_path: Path, work_dir: Path) -> Path:
     agraph_local = work_dir / agraph_name
 
     # Docker workflow: cleanup old -> copy in -> exec paloma-D -> copy out -> cleanup
-    cmd_in_docker = f". ~/.bashrc && paloma-D -i {fasta_path.name} -t {t} -m {m} -M {M} -q {q} --oplma && exit"
+    cmd_in_docker = f". ~/.bashrc && cd / && paloma-D -i {fasta_path.name} -t {t} -m {m} -M {M} -q {q} --oplma && exit"
     cleanup_pattern = fasta_path.stem
     cmd_cleanup = f"rm -f {cleanup_pattern}*"
 
@@ -244,9 +244,10 @@ def run_paloma_docker(fasta_path: Path, work_dir: Path) -> Path:
         f'docker exec {DOCKER_CONTAINER} /bin/bash -c "{cmd_cleanup}"'
     )
 
-    # Remove any existing agraph from a previous attempt
+    # Reuse cached agraph if it already exists locally (avoid re-running paloma-D)
     if agraph_local.exists():
-        agraph_local.unlink()
+        log(f"  Using cached agraph ({agraph_local.stat().st_size} bytes)")
+        return agraph_local
 
     log(f"  Running paloma-D in Docker ({_count_fasta_seqs(fasta_path)} seqs)...")
     result = subprocess.run(cmd, shell=True, capture_output=True, timeout=600)

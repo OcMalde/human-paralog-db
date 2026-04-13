@@ -9,6 +9,16 @@ Usage:
     python scripts/generate_report_data.py [pair_id]
     python scripts/generate_report_data.py --force  # Re-generate all
     python scripts/generate_report_data.py --threads 4  # Parallel processing
+
+IMPORTANT: Use conda Python for drug data (pyarrow):
+    /Users/olivierdennler/miniconda/bin/python3 scripts/generate_report_data.py
+
+IMPORTANT: Run run_plma.py BEFORE this script so plma.json files are available.
+Full pipeline order for new pairs:
+    1. populate_db.py
+    2. run_plma.py   <-- Docker + container 4fa044ff5162 (fuse-phylotree / paloma-D) required
+    3. generate_report_data.py   (this script, conda Python)
+    4. export_static.py
 """
 
 import argparse

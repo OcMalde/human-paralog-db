@@ -16,6 +16,14 @@ Requirements:
     - foldseek installed and in PATH (or set FOLDSEEK env var)
     - Internet connection for fetching AM PDB files
     - Input data files in input/ directory
+
+Full pipeline for adding new pairs to the online DB:
+    1. python scripts/populate_db.py [pair_id ...]           # This script
+    2. python scripts/run_plma.py [pair_id ...]              # REQUIRED: PLMA family alignment
+       └─ Needs Docker + container 4fa044ff5162 (fuse-phylotree) running paloma-D
+       └─ Must run BEFORE generate_report_data.py
+    3. /miniconda/bin/python3 scripts/generate_report_data.py [pair_id]  # Use conda Python (pyarrow)
+    4. /miniconda/bin/python3 scripts/export_static.py [pair_id ...]
 """
 
 import argparse
