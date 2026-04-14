@@ -9,7 +9,8 @@ import pandas as pd
 import requests
 
 from .config import (
-    FEATURES_CSV, GENE_LOC_CSV, ESSENTIAL_CSV, GENE_ID_MAP_CSV, SL_DATA_CSV, log
+    FEATURES_CSV, GENE_LOC_CSV, ESSENTIAL_CSV, GENE_ID_MAP_CSV, SL_DATA_CSV,
+    DENNLER_PREDICTIONS_CSV, DEKEGEL_PREDICTIONS_CSV, log
 )
 
 # Caches
@@ -18,6 +19,8 @@ _gene_loc_cache = None
 _essential_genes_cache = None
 _gene_id_map_cache = None
 _sl_data_cache = None
+_dennler_df_cache = None
+_dekegel_df_cache = None
 
 
 def load_features_df() -> pd.DataFrame:
@@ -601,6 +604,100 @@ def get_sl_row(pair_id: str) -> Optional[pd.Series]:
     return None
 
 
+def load_dennler_predictions() -> pd.DataFrame:
+    """Load Dennler et al. SL prediction scores (all 36-feature XGB classifiers)."""
+    global _dennler_df_cache
+    if _dennler_df_cache is None:
+        if DENNLER_PREDICTIONS_CSV.exists():
+            df = pd.read_csv(DENNLER_PREDICTIONS_CSV, low_memory=False)
+            # Compute rank based on main SL score (All 36 features XGB, DepMap SL label)
+            score_col = 'SL | All 36 features XGB'
+            if score_col in df.columns:
+                df['_sl_rank'] = df[score_col].rank(ascending=False, method='min').astype(int)
+            _dennler_df_cache = df
+            log(f"Loaded {len(df)} pairs from Dennler predictions CSV")
+        else:
+            log(f"WARNING: Dennler predictions CSV not found at {DENNLER_PREDICTIONS_CSV}")
+            _dennler_df_cache = pd.DataFrame()
+    return _dennler_df_cache
+
+
+def load_dekegel_predictions() -> pd.DataFrame:
+    """Load De Kegel et al. SL prediction scores (explicit rank + DepMap label)."""
+    global _dekegel_df_cache
+    if _dekegel_df_cache is None:
+        if DEKEGEL_PREDICTIONS_CSV.exists():
+            _dekegel_df_cache = pd.read_csv(DEKEGEL_PREDICTIONS_CSV, low_memory=False)
+            log(f"Loaded {len(_dekegel_df_cache)} pairs from De Kegel predictions CSV")
+        else:
+            log(f"WARNING: De Kegel predictions CSV not found at {DEKEGEL_PREDICTIONS_CSV}")
+            _dekegel_df_cache = pd.DataFrame()
+    return _dekegel_df_cache
+
+
+def _lookup_pair_in_df(df: pd.DataFrame, pair_id: str, id_col: str = 'sorted_gene_pair') -> Optional[pd.Series]:
+    """Look up a pair in a DataFrame by sorted pair ID, trying both gene orderings."""
+    if df.empty or id_col not in df.columns:
+        return None
+    # Try as-is
+    match = df[df[id_col] == pair_id]
+    if not match.empty:
+        return match.iloc[0]
+    # Try reversed ordering (GENE_A_GENE_B → GENE_B_GENE_A)
+    parts = pair_id.split('_')
+    if len(parts) == 2:
+        reversed_id = f"{parts[1]}_{parts[0]}"
+        match = df[df[id_col] == reversed_id]
+        if not match.empty:
+            return match.iloc[0]
+    return None
+
+
+def get_sl_predictions(pair_id: str) -> Dict[str, Any]:
+    """Get SL prediction scores from Dennler et al. and De Kegel et al. for a pair.
+
+    Returns dict with 'dennler' and 'dekegel' entries, each containing:
+      score, rank, total_pairs, percentile (0-100, higher = more likely SL)
+    De Kegel also includes 'depmap_hit' (bool) — True if pair is in DepMap training as SL.
+    """
+    result = {'dennler': None, 'dekegel': None}
+
+    # Dennler et al. (our lab)
+    den_df = load_dennler_predictions()
+    den_row = _lookup_pair_in_df(den_df, pair_id)
+    score_col = 'SL | All 36 features XGB'
+    if den_row is not None and score_col in den_df.columns:
+        total = len(den_df)
+        rank = int(den_row['_sl_rank']) if '_sl_rank' in den_row.index else None
+        score = float(den_row[score_col]) if pd.notna(den_row[score_col]) else None
+        pct = round((1 - (rank - 1) / total) * 100, 1) if rank is not None else None
+        result['dennler'] = {
+            'score': round(score, 4) if score is not None else None,
+            'rank': rank,
+            'total_pairs': total,
+            'percentile': pct,
+        }
+
+    # De Kegel et al.
+    dek_df = load_dekegel_predictions()
+    dek_row = _lookup_pair_in_df(dek_df, pair_id)
+    if dek_row is not None:
+        total = len(dek_df)
+        rank = int(dek_row['prediction_rank']) if pd.notna(dek_row.get('prediction_rank')) else None
+        score = float(dek_row['prediction_score']) if pd.notna(dek_row.get('prediction_score')) else None
+        pct = float(100 - dek_row['prediction_percentile']) if pd.notna(dek_row.get('prediction_percentile')) else None
+        depmap_hit = bool(dek_row['depmap_hit']) if pd.notna(dek_row.get('depmap_hit')) else None
+        result['dekegel'] = {
+            'score': round(score, 4) if score is not None else None,
+            'rank': rank,
+            'total_pairs': total,
+            'percentile': round(pct, 1) if pct is not None else None,
+            'depmap_hit': depmap_hit,
+        }
+
+    return result
+
+
 def get_sl_functional_overlap(pair_id: str, pair_row: Optional[pd.Series]) -> Dict[str, Any]:
     """Get synthetic lethality and functional overlap data for a pair.
 
@@ -613,6 +710,7 @@ def get_sl_functional_overlap(pair_id: str, pair_row: Optional[pd.Series]) -> Di
         'is_sl': None,
         'sl_screens': [],  # Only screens with hits
         'go_similarity': {},
+        'predictions': get_sl_predictions(pair_id),
     }
 
     # Get SL data

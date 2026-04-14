@@ -20,9 +20,20 @@
   .top-nav .search-box button{background:#37474f;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
   .top-nav .search-box button:hover{background:#263238}
 
-  header{padding:18px 24px;background:#fff;border-bottom:1px solid #e8e8e8;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  header{padding:14px 24px 10px;background:#fff;border-bottom:1px solid #e8e8e8;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;align-items:center;gap:24px}
+  .header-titles{flex:0 0 auto}
   header .title-main{margin:0;font-size:24px;font-weight:700;color:#1a1a1a}
-  header .title-sub{margin-top:4px;font-size:13px;color:#78909c;letter-spacing:0.08em;text-transform:uppercase}
+  header .title-sub{margin-top:3px;font-size:13px;color:#78909c;letter-spacing:0.08em;text-transform:uppercase}
+  .header-gene-note{font-size:11px;color:#546e7a;margin-top:3px;font-style:italic;letter-spacing:0;text-transform:none}
+  .header-kf{flex:1;display:none}
+  .header-kf .kf-items{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:4px 18px}
+  .header-kf .kf-item{display:flex;flex-direction:column;align-items:center;min-width:60px}
+  .header-kf .kf-value{font-size:16px;font-weight:700;color:#1a1a1a}
+  .header-kf .kf-value.positive{color:#2e7d32}
+  .header-kf .kf-value.negative{color:#c62828}
+  .header-kf .kf-value.neutral{color:#ef6c00}
+  .header-kf .kf-label{font-size:10px;color:#78909c;text-transform:uppercase;letter-spacing:.06em;margin-top:1px;text-align:center}
+  .header-kf .kf-sublabel{font-size:9px;color:#b0bec5;margin-top:0;letter-spacing:0}
   #wrap{padding:12px;display:grid;gap:12px;max-width:1400px;margin:0 auto}
   .card{background:var(--pane);border:1px solid #e8e8e8;border-radius:10px;box-shadow:0 1px 1px rgba(0,0,0,.03)}
   .card h2{font-size:15px;margin:0;padding:10px 12px;border-bottom:1px solid #eee}
@@ -309,6 +320,20 @@
   .sl-flag.negative{background:#fafafa;color:#888;border:1px solid #e0e0e0}
   .sl-flag.unknown{background:#fff8e1;color:#f57f17;border:1px solid #fff0b3}
   .sl-note{font-size:12px;color:#666;margin-left:8px}
+  .sl-predictions{margin-top:14px;border-top:1px solid #e8e8e8;padding-top:12px}
+  .sl-predictions h5{font-size:11px;text-transform:uppercase;color:#78909c;letter-spacing:.06em;margin:0 0 10px}
+  .sl-pred-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sl-pred-card{background:#f9f9f9;border:1px solid #e8e8e8;border-radius:6px;padding:8px 10px}
+  .sl-pred-source{font-size:10px;text-transform:uppercase;color:#78909c;letter-spacing:.05em;margin-bottom:4px}
+  .sl-pred-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+  .sl-pred-label{font-size:11px;color:#546e7a}
+  .sl-pred-val{font-size:13px;font-weight:600;color:#1a1a1a}
+  .sl-pred-val.high{color:#2e7d32}
+  .sl-pred-val.low{color:#888}
+  .sl-pred-na{font-size:12px;color:#bbb;font-style:italic}
+  .sl-pred-depmap{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;margin-top:4px}
+  .sl-pred-depmap.yes{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
+  .sl-pred-depmap.no{background:#f5f5f5;color:#999;border:1px solid #ddd}
   .go-sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:8px}
   .go-sim-item{background:none;border:none;border-radius:0;padding:8px 4px;text-align:center;border-right:1px solid #e8e8e8}
   .go-sim-item:last-child{border-right:none}
@@ -494,8 +519,22 @@
 <div class="loading-overlay" id="loadingOverlay">Loading pair data...</div>
 
 <header>
-  <div class="title-main" id="titleMain">Loading...</div>
-  <div class="title-sub" id="titleSub">Paralog pair report</div>
+  <div class="header-titles">
+    <div class="title-main" id="titleMain">Loading...</div>
+    <div class="title-sub" id="titleSub">Paralog pair report</div>
+    <div class="header-gene-note" id="headerGeneNote" style="display:none"></div>
+  </div>
+  <div class="header-kf" id="headerKf">
+    <div class="kf-items">
+      <div class="kf-item"><span class="kf-value" id="kfSeqIdent">--</span><span class="kf-label">Seq Identity</span></div>
+      <div class="kf-item"><span class="kf-value" id="kfTmScore">--</span><span class="kf-label">TM-score</span></div>
+      <div class="kf-item"><span class="kf-value" id="kfFamilySize">--</span><span class="kf-label">Family</span></div>
+      <div class="kf-item"><span class="kf-value" id="kfSlStatus">--</span><span class="kf-label">SL</span></div>
+      <div class="kf-item"><span class="kf-value" id="kfDrug">--</span><span class="kf-label">Pockets</span><span class="kf-label-ab kf-sublabel"></span></div>
+      <div class="kf-item"><span class="kf-value" id="kfDomains">--</span><span class="kf-label">Domains</span><span class="kf-sublabel kf-label-ab"></span></div>
+      <div class="kf-item"><span class="kf-value" id="kfKnownDrugs">--</span><span class="kf-label">Known Drugs</span><span class="kf-sublabel kf-label-ab"></span></div>
+    </div>
+  </div>
 </header>
 
 <div class="page-layout">
@@ -537,19 +576,6 @@
   <!-- Main Content -->
   <div class="main-content">
     <div id="wrap">
-
-  <!-- Key Findings Banner -->
-  <div id="keyFindingsBanner" class="key-findings-banner" style="display:none">
-    <div class="kf-items">
-      <div class="kf-item"><span class="kf-value" id="kfSeqIdent">--</span><span class="kf-label">Seq Identity</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfTmScore">--</span><span class="kf-label">TM-score</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfFamilySize">--</span><span class="kf-label">Family</span></div>
-<div class="kf-item"><span class="kf-value" id="kfSlStatus">--</span><span class="kf-label">SL</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfDrug">--</span><span class="kf-label">Pockets</span><span class="kf-label-ab kf-sublabel"></span></div>
-      <div class="kf-item"><span class="kf-value" id="kfDomains">--</span><span class="kf-label">Domains</span><span class="kf-label-ab kf-sublabel"></span></div>
-      <div class="kf-item"><span class="kf-value" id="kfKnownDrugs">--</span><span class="kf-label">Known Drugs</span><span class="kf-label-ab kf-sublabel"></span></div>
-    </div>
-  </div>
 
   <!-- Summary section -->
   <section class="card summary-section collapsible" id="summarySection">
@@ -682,6 +708,19 @@
           <h4>Synthetic Lethality</h4>
           <div id="slFlags">
             <span class="sl-flag unknown">Loading...</span>
+          </div>
+          <div class="sl-predictions" id="slPredictions" style="display:none">
+            <h5>Computational Predictions</h5>
+            <div class="sl-pred-grid">
+              <div class="sl-pred-card" id="slPredDennler">
+                <div class="sl-pred-source">Dennler et al. 2025</div>
+                <div class="sl-pred-na">Loading…</div>
+              </div>
+              <div class="sl-pred-card" id="slPredDeKegel">
+                <div class="sl-pred-source">De Kegel et al.</div>
+                <div class="sl-pred-na">Loading…</div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="sl-card">
@@ -1129,7 +1168,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=10"></script>
+<script src="static/js/app.js?v=11"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>

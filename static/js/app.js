@@ -13,6 +13,8 @@ const DATA_BASE = './data';
 // Get pair ID from URL (let: reassigned in inline mode)
 const urlParams = new URLSearchParams(window.location.search);
 let PAIR_ID = urlParams.get('pair');
+// Gene that was searched (set when user typed a single gene name)
+const SEARCHED_GENE = urlParams.get('gene') || null;
 
 // Family index cache (loaded once)
 let FAMILY_INDEX = null;
@@ -159,6 +161,10 @@ async function loadDataAndInit() {
         document.title = `${DATA.g1} vs ${DATA.g2}`;
         document.getElementById('titleMain').textContent = `${DATA.g1} ↔ ${DATA.g2}`;
         document.getElementById('titleSub').textContent = `Paralog pair ${DATA.PAIR}`;
+        if (SEARCHED_GENE) {
+          const noteEl = document.getElementById('headerGeneNote');
+          if (noteEl) { noteEl.textContent = `Searched: ${SEARCHED_GENE} → closest pair`; noteEl.style.display = ''; }
+        }
 
         // Load PLMA alignment data
         try {
@@ -3228,6 +3234,48 @@ function initSlFunctionalSection() {
   const screensContainer = document.getElementById('slScreens');
   if (screensContainer) {
     screensContainer.style.display = 'none';
+  }
+
+  // SL Computational Predictions
+  const preds = slFunc.predictions || {};
+  const predBox = document.getElementById('slPredictions');
+  if (predBox) {
+    const den = preds.dennler;
+    const dek = preds.dekegel;
+    const hasAny = den !== null && den !== undefined || dek !== null && dek !== undefined;
+
+    const renderPredCard = (elId, data, sourceName) => {
+      const card = document.getElementById(elId);
+      if (!card) return;
+      if (!data) {
+        card.querySelector('.sl-pred-na') && (card.innerHTML = `<div class="sl-pred-source">${sourceName}</div><div class="sl-pred-na">Not in dataset</div>`);
+        return;
+      }
+      const scoreVal = data.score !== null && data.score !== undefined ? data.score.toFixed(3) : '–';
+      const rankStr = data.rank !== null && data.rank !== undefined
+        ? `#${data.rank.toLocaleString()} / ${data.total_pairs.toLocaleString()}`
+        : '–';
+      const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
+      const isHigh = pct !== null && pct >= 80;
+      const scoreClass = pct === null ? '' : (pct >= 80 ? 'high' : 'low');
+      let html = `<div class="sl-pred-source">${sourceName}</div>`;
+      html += `<div class="sl-pred-row"><span class="sl-pred-label">Score</span><span class="sl-pred-val ${scoreClass}">${scoreVal}</span></div>`;
+      html += `<div class="sl-pred-row"><span class="sl-pred-label">Rank</span><span class="sl-pred-val ${scoreClass}">${rankStr}</span></div>`;
+      if (pct !== null) {
+        html += `<div class="sl-pred-row"><span class="sl-pred-label">Percentile</span><span class="sl-pred-val ${scoreClass}">${pct.toFixed(1)}%</span></div>`;
+      }
+      if (data.depmap_hit !== null && data.depmap_hit !== undefined) {
+        const dmClass = data.depmap_hit ? 'yes' : 'no';
+        const dmLabel = data.depmap_hit ? 'In DepMap training (SL)' : 'Not in DepMap training';
+        html += `<span class="sl-pred-depmap ${dmClass}">${dmLabel}</span>`;
+      }
+      card.innerHTML = html;
+    };
+
+    renderPredCard('slPredDennler', den, 'Dennler et al. 2025');
+    renderPredCard('slPredDeKegel', dek, 'De Kegel et al.');
+
+    if (hasAny) predBox.style.display = '';
   }
 
   // GO Similarity with color coding
@@ -8675,7 +8723,7 @@ async function main(){
 
 // Populate the key findings banner with headline stats
 function populateKeyFindingsBanner() {
-  const banner = document.getElementById('keyFindingsBanner');
+  const banner = document.getElementById('headerKf');
   if (!banner) return;
 
   const conservation = SUMMARY.conservation || {};
@@ -8720,7 +8768,7 @@ function populateKeyFindingsBanner() {
   const gNameA = gene1.symbol || DATA.g1 || 'A';
   const gNameB = gene2.symbol || DATA.g2 || 'B';
   document.querySelectorAll('.kf-label-ab').forEach(el => {
-    el.textContent = `${gNameA} | ${gNameB}`;
+    el.textContent = `${gNameA} / ${gNameB}`;
   });
 
   // Pockets: count distinct cavity objects + DrugCLIP pockets (not alignment rects which split across gaps)
@@ -8730,7 +8778,7 @@ function populateKeyFindingsBanner() {
     const isDc  = d => d.type === 'DrugCLIP' || d.raw_type === 'DrugCLIP';
     const pA = (DATA.domainsA || []).filter(d => isCav(d) || isDc(d)).length;
     const pB = (DATA.domainsB || []).filter(d => isCav(d) || isDc(d)).length;
-    kfDrug.textContent = `${pA}|${pB}`;
+    kfDrug.textContent = `${pA} / ${pB}`;
     kfDrug.className = 'kf-value ' + ((pA + pB) > 0 ? 'positive' : '');
   }
 
@@ -8740,7 +8788,7 @@ function populateKeyFindingsBanner() {
     const isPocket = d => d.type === 'CAV' || d.type === 'Cavity' || d.type === 'DrugCLIP' || d.raw_type === 'CAV' || d.raw_type === 'Cavity' || d.raw_type === 'DrugCLIP';
     const nDomA = (DATA.domainsA || []).filter(d => !isPocket(d)).length;
     const nDomB = (DATA.domainsB || []).filter(d => !isPocket(d)).length;
-    kfDomains.textContent = `${nDomA}|${nDomB}`;
+    kfDomains.textContent = `${nDomA} / ${nDomB}`;
     kfDomains.className = 'kf-value ' + ((nDomA + nDomB) > 0 ? 'positive' : '');
   }
 
@@ -8749,11 +8797,11 @@ function populateKeyFindingsBanner() {
   if (kfKnownDrugs) {
     const nDrugA = (gene1.known_drugs || []).length;
     const nDrugB = (gene2.known_drugs || []).length;
-    kfKnownDrugs.textContent = `${nDrugA}|${nDrugB}`;
+    kfKnownDrugs.textContent = `${nDrugA} / ${nDrugB}`;
     kfKnownDrugs.className = 'kf-value ' + ((nDrugA + nDrugB) > 0 ? 'positive' : '');
   }
 
-  banner.style.display = '';
+  if (banner) banner.style.display = 'block';
 }
 
 // Wire track group toggle chips

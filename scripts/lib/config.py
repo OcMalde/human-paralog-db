@@ -18,6 +18,12 @@ GENE_ID_MAP_CSV = INPUT_DIR / "all_genes_ids.csv"
 # External data sources
 SL_DATA_CSV = Path("/Users/olivierdennler/Documents/data/SLI_2023/dataset_filtered_complete/ens111_human_SL_lenient.csv")
 
+# SL prediction CSVs (external, not shipped in repo)
+# Dennler et al. 2025 (NAR Geno Bioinformatics) — all XGB classifier scores for paralog pairs
+DENNLER_PREDICTIONS_CSV = Path("/Users/olivierdennler/Documents/data/SLI_2023/github/paralog_seq_similarity/data/ens111_human_allPredictions.csv")
+# De Kegel et al. — older dataset, different pair set, has explicit rank + DepMap training label
+DEKEGEL_PREDICTIONS_CSV = Path("/Users/olivierdennler/Documents/data/SLI_2023/S8_DeKegel.csv")
+
 # Cavity data paths (optional - HegeLab AF-all_cavities dump)
 CAVITY_INDEX_PATH = INPUT_DIR / "AF-all_cavities" / "AF-all_cavities.idx"
 CAVITY_DATA_DIR = INPUT_DIR / "AF-all_cavities" / "all_cavities_data"

@@ -241,7 +241,8 @@ function renderDatalist() {
         const div = document.createElement('div');
         div.className = 'dd-item';
         div.dataset.idx = i;
-        div.innerHTML = `<span><strong>${r.text}</strong></span><span class="dd-type">${r.type}</span>`;
+        const typeLabel = r.type === 'gene' ? 'Gene – closest pair' : 'Pair';
+        div.innerHTML = `<span><strong>${r.text}</strong></span><span class="dd-type">${typeLabel}</span>`;
         div.addEventListener('mousedown', (e) => { e.preventDefault(); input.value = r.id; dropdown.style.display = 'none'; loadPair(r.id); });
         dropdown.appendChild(div);
       });
@@ -302,6 +303,7 @@ function loadPair(id) {
 
   // Try exact pair match first
   let p = pairs.find(x => x.id === input || x.id.toLowerCase() === input.toLowerCase());
+  let searchedGene = null; // set when loaded via single gene search
 
   // If not found, check if it's a single gene name
   if (!p) {
@@ -317,6 +319,7 @@ function loadPair(id) {
         const currIdent = curr.fident || 0;
         return currIdent > bestIdent ? curr : best;
       }, matching[0]);
+      searchedGene = gene; // remember which gene was searched
     }
   }
 
@@ -329,10 +332,14 @@ function loadPair(id) {
   document.getElementById('pairInput').value = p.id;
   window.location.hash = p.id;
 
+  // Build report URL — include ?gene= when loaded from single gene search
+  let reportUrl = `report.html?pair=${encodeURIComponent(p.id)}`;
+  if (searchedGene) reportUrl += `&gene=${encodeURIComponent(searchedGene)}`;
+
   // Hide homepage, show report
   document.getElementById('homepage').classList.add('hidden');
   document.getElementById('reportFrame').style.display = 'block';
-  document.getElementById('reportFrame').src = `report.html?pair=${encodeURIComponent(p.id)}`;
+  document.getElementById('reportFrame').src = reportUrl;
 
   renderChips();
 }
