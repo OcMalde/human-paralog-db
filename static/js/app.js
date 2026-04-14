@@ -3244,22 +3244,25 @@ function initSlFunctionalSection() {
     const dek = preds.dekegel;
     const hasAny = den !== null && den !== undefined || dek !== null && dek !== undefined;
 
-    // Score-based coloring and 4-class interpretation (score drives everything, not rank/percentile)
-    const scoreColor = score => {
-      if (score === null || score === undefined) return '';
-      if (score >= 0.5) return 'high';
-      if (score >= 0.2) return 'mid';
-      return 'low';
-    };
-    const scoreInterp = score => {
-      if (score === null || score === undefined) return null;
-      if (score >= 0.5) return { cls: 'likely',   txt: 'Likely SL' };
-      if (score >= 0.2) return { cls: 'possibly',  txt: 'Possibly SL' };
-      if (score >= 0.05) return { cls: 'unlikely', txt: 'Probably not SL' };
-      return                     { cls: 'unlikely', txt: 'Not predicted SL' };
+    // Combined interpretation: percentile (top X%) is primary; score provides secondary boost.
+    // Dennler scores are extremely right-skewed (median ~0, only 0.5% of pairs have score>0.05),
+    // so rank/percentile is essential — a pair in the top 10% may still be meaningful even with low score.
+    // Thresholds: top 2% OR score≥0.5 → Likely SL; top 10% OR score≥0.05 → Possibly SL;
+    //             top 25% → Possibly not SL; below → Likely not SL.
+    const combineInterp = (sc, pct) => {
+      if (sc === null || sc === undefined) return null;
+      const highScore = sc >= 0.5;
+      const goodScore = sc >= 0.05;
+      const inTop2  = pct !== null && pct >= 98;
+      const inTop10 = pct !== null && pct >= 90;
+      const inTop25 = pct !== null && pct >= 75;
+      if (highScore || inTop2)          return { cls: 'likely',   txt: 'Likely SL' };
+      if (goodScore || inTop10)         return { cls: 'possibly',  txt: 'Possibly SL' };
+      if (inTop25)                       return { cls: 'unlikely', txt: 'Possibly not SL' };
+      return                             { cls: 'unlikely', txt: 'Likely not SL' };
     };
 
-    const renderPredCard = (elId, data, sourceName) => {
+    const renderPredCard = (elId, data, sourceName, featureNote) => {
       const card = document.getElementById(elId);
       if (!card) return;
       if (!data) {
@@ -3268,34 +3271,30 @@ function initSlFunctionalSection() {
       }
       const sc = data.score !== null && data.score !== undefined ? data.score : null;
       const scoreVal = sc !== null ? sc.toFixed(3) : '–';
-      const cls = scoreColor(sc);
+      const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
+      const interp = combineInterp(sc, pct);
+      const cls = interp ? (interp.cls === 'likely' ? 'high' : interp.cls === 'possibly' ? 'mid' : 'low') : '';
       const rankStr = data.rank !== null && data.rank !== undefined
         ? `#${data.rank.toLocaleString()} / ${data.total_pairs.toLocaleString()}`
         : '–';
-      const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
-      const interp = scoreInterp(sc);
 
-      let html = `<div class="sl-pred-source">${sourceName}</div>`;
+      let html = `<div class="sl-pred-source" title="${featureNote}">${sourceName} <span style="font-size:9px;color:#b0bec5;cursor:help">ℹ</span></div>`;
       html += `<div class="sl-pred-row"><span class="sl-pred-label">Score</span><span class="sl-pred-val ${cls}">${scoreVal}</span></div>`;
       html += `<div class="sl-pred-row"><span class="sl-pred-label">Rank</span><span class="sl-pred-val">${rankStr}</span></div>`;
       if (pct !== null) {
         html += `<div class="sl-pred-row"><span class="sl-pred-label">Top</span><span class="sl-pred-val">${pct.toFixed(1)}%</span></div>`;
       }
-      if (interp) {
-        html += `<span class="sl-pred-interp ${interp.cls}">${interp.txt}</span>`;
-      }
-      if (data.depmap_hit !== null && data.depmap_hit !== undefined) {
-        const dmClass = data.depmap_hit ? 'yes' : 'no';
-        const dmLabel = data.depmap_hit ? 'DepMap SL' : '';
-        if (dmClass === 'yes') html += `<span class="sl-pred-depmap ${dmClass}">${dmLabel}</span>`;
-      }
+      if (interp) html += `<span class="sl-pred-interp ${interp.cls}">${interp.txt}</span>`;
+      if (data.depmap_hit === true) html += `<span class="sl-pred-depmap yes">DepMap SL</span>`;
       card.innerHTML = html;
     };
 
-    renderPredCard('slPredDennler', den, 'Dennler et al. 2025');
-    renderPredCard('slPredDeKegel', dek, 'De Kegel et al. (2021)');
+    renderPredCard('slPredDennler', den, 'Dennler et al. 2025',
+      'Sequence-derived features only: sequence identity, structural similarity, protein language model embeddings, similarity search ranks');
+    renderPredCard('slPredDeKegel', dek, 'De Kegel et al. (2021)',
+      'Combined features: sequence identity, shared PPI partners, co-expression, evolutionary conservation and more');
 
-    // Source footnote
+    // Source footnote — same style as other section sources
     const footer = predBox.querySelector('.sl-pred-footer');
     if (footer) {
       footer.innerHTML = 'Sources: <a href="https://academic.oup.com/nargab/article/7/2/lqaf051/8120592" target="_blank">Dennler et al. 2025</a> · <a href="https://pubmed.ncbi.nlm.nih.gov/34529928/" target="_blank">De Kegel et al. 2021</a>';
