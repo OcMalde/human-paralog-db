@@ -8781,12 +8781,42 @@ function populateKeyFindingsBanner() {
     kfFamily.textContent = pair.family_size + ' members';
   }
 
-  // SL status
+  // SL status — confirmed status takes priority; otherwise show best prediction
   const kfSl = document.getElementById('kfSlStatus');
   if (kfSl) {
-    if (slFunc.is_sl === true) { kfSl.textContent = 'Yes'; kfSl.className = 'kf-value positive'; }
-    else if (slFunc.is_sl === false) { kfSl.textContent = 'No'; kfSl.className = 'kf-value negative'; }
-    else { kfSl.textContent = '?'; kfSl.className = 'kf-value'; }
+    if (slFunc.is_sl === true) {
+      kfSl.textContent = 'SL ✓'; kfSl.className = 'kf-value positive';
+      kfSl.title = 'Confirmed synthetic lethal in at least one screen';
+    } else if (slFunc.is_sl === false) {
+      kfSl.textContent = 'Not SL'; kfSl.className = 'kf-value negative';
+      kfSl.title = 'Not confirmed as synthetic lethal in available screens';
+    } else {
+      // Use predictions: pick best (most SL-leaning) interpretation across both predictors
+      const preds = slFunc.predictions || {};
+      const interpRank = { 'likely': 0, 'possibly': 1, 'unlikely': 2, 'unlikely-neg': 3, null: 4 };
+      const interpLabel = { 'likely': 'Likely SL', 'possibly': 'Possibly SL', 'unlikely': 'Possibly not SL', 'unlikely-neg': 'Likely not SL', null: '?' };
+      const interpColor = { 'likely': 'positive', 'possibly': 'neutral', 'unlikely': '', 'unlikely-neg': 'negative', null: '' };
+      const getClass = data => {
+        if (!data) return null;
+        const sc = data.score !== null && data.score !== undefined ? data.score : null;
+        const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
+        if (sc === null) return null;
+        if (sc >= 0.5 || pct >= 98)  return 'likely';
+        if (sc >= 0.05 || pct >= 90) return 'possibly';
+        if (pct !== null && pct >= 75) return 'unlikely';
+        return 'unlikely-neg';
+      };
+      const denCls = getClass(preds.dennler);
+      const dekCls = getClass(preds.dekegel);
+      // Pick the most optimistic (lowest rank number)
+      const best = (interpRank[denCls] ?? 4) <= (interpRank[dekCls] ?? 4) ? denCls : dekCls;
+      const label = interpLabel[best] || '?';
+      const color = interpColor[best] || '';
+      kfSl.textContent = label;
+      kfSl.className = 'kf-value ' + color;
+      kfSl.style.fontSize = label.length > 5 ? '11px' : '';
+      kfSl.title = 'Computational prediction (no screen data available)';
+    }
   }
 
   // Per-gene label helper: set label to "GENE1 | GENE2" for A|B items
