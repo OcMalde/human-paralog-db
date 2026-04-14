@@ -710,7 +710,13 @@ def generate_report_data(pair_id: str, conn: sqlite3.Connection) -> Tuple[Dict[s
     log(f"  {gene_a}: {gene1_info['description'].get('name', 'N/A')[:50]}...")
     log(f"  {gene_b}: {gene2_info['description'].get('name', 'N/A')[:50]}...")
 
-    # Get known drugs from OpenTargets
+    # Get known drugs from OpenTargets parquet files (input/opentargets/known_drug/*.parquet)
+    # IMPORTANT: requires pyarrow → MUST use conda Python (/miniconda/bin/python3)
+    # If both genes show 0 drugs unexpectedly, check:
+    #   1. Script was run with conda Python (not system Python)
+    #   2. input/opentargets/known_drug/ has .parquet files
+    #   3. UniProt → Ensembl mapping exists in input/all_genes_ids.csv for the gene
+    #   4. OpenTargets data is recent enough to include the drug-target association
     known_drugs_a = get_known_drugs_for_acc(acc_a)
     known_drugs_b = get_known_drugs_for_acc(acc_b)
     gene1_info['known_drugs'] = known_drugs_a

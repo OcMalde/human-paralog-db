@@ -358,6 +358,7 @@
   .kf-item{display:flex;flex-direction:column;align-items:center;min-width:70px}
   .kf-value{font-size:18px;font-weight:700;color:#1a1a1a}
   .kf-label{font-size:10px;color:#78909c;text-transform:uppercase;letter-spacing:0.05em;margin-top:2px}
+  .kf-sublabel{font-size:9px;color:#b0bec5;margin-top:1px;letter-spacing:0}
   .kf-value.positive{color:#2e7d32}
   .kf-value.negative{color:#c62828}
   .kf-value.neutral{color:#ef6c00}
@@ -544,9 +545,9 @@
       <div class="kf-item"><span class="kf-value" id="kfTmScore">--</span><span class="kf-label">TM-score</span></div>
       <div class="kf-item"><span class="kf-value" id="kfFamilySize">--</span><span class="kf-label">Family</span></div>
 <div class="kf-item"><span class="kf-value" id="kfSlStatus">--</span><span class="kf-label">SL</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfDrug">--</span><span class="kf-label">Pockets</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfDomains">--</span><span class="kf-label">Domains</span></div>
-      <div class="kf-item"><span class="kf-value" id="kfKnownDrugs">--</span><span class="kf-label">Known Drugs</span></div>
+      <div class="kf-item"><span class="kf-value" id="kfDrug">--</span><span class="kf-label">Pockets</span><span class="kf-label-ab kf-sublabel"></span></div>
+      <div class="kf-item"><span class="kf-value" id="kfDomains">--</span><span class="kf-label">Domains</span><span class="kf-label-ab kf-sublabel"></span></div>
+      <div class="kf-item"><span class="kf-value" id="kfKnownDrugs">--</span><span class="kf-label">Known Drugs</span><span class="kf-label-ab kf-sublabel"></span></div>
     </div>
   </div>
 
@@ -1128,7 +1129,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=9"></script>
+<script src="static/js/app.js?v=10"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
