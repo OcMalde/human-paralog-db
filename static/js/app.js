@@ -3244,36 +3244,62 @@ function initSlFunctionalSection() {
     const dek = preds.dekegel;
     const hasAny = den !== null && den !== undefined || dek !== null && dek !== undefined;
 
+    // Score-based coloring and 4-class interpretation (score drives everything, not rank/percentile)
+    const scoreColor = score => {
+      if (score === null || score === undefined) return '';
+      if (score >= 0.5) return 'high';
+      if (score >= 0.2) return 'mid';
+      return 'low';
+    };
+    const scoreInterp = score => {
+      if (score === null || score === undefined) return null;
+      if (score >= 0.5) return { cls: 'likely',   txt: 'Likely SL' };
+      if (score >= 0.2) return { cls: 'possibly',  txt: 'Possibly SL' };
+      if (score >= 0.05) return { cls: 'unlikely', txt: 'Probably not SL' };
+      return                     { cls: 'unlikely', txt: 'Not predicted SL' };
+    };
+
     const renderPredCard = (elId, data, sourceName) => {
       const card = document.getElementById(elId);
       if (!card) return;
       if (!data) {
-        card.querySelector('.sl-pred-na') && (card.innerHTML = `<div class="sl-pred-source">${sourceName}</div><div class="sl-pred-na">Not in dataset</div>`);
+        card.innerHTML = `<div class="sl-pred-source">${sourceName}</div><div class="sl-pred-na">Not in dataset</div>`;
         return;
       }
-      const scoreVal = data.score !== null && data.score !== undefined ? data.score.toFixed(3) : '–';
+      const sc = data.score !== null && data.score !== undefined ? data.score : null;
+      const scoreVal = sc !== null ? sc.toFixed(3) : '–';
+      const cls = scoreColor(sc);
       const rankStr = data.rank !== null && data.rank !== undefined
         ? `#${data.rank.toLocaleString()} / ${data.total_pairs.toLocaleString()}`
         : '–';
       const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
-      const isHigh = pct !== null && pct >= 80;
-      const scoreClass = pct === null ? '' : (pct >= 80 ? 'high' : 'low');
+      const interp = scoreInterp(sc);
+
       let html = `<div class="sl-pred-source">${sourceName}</div>`;
-      html += `<div class="sl-pred-row"><span class="sl-pred-label">Score</span><span class="sl-pred-val ${scoreClass}">${scoreVal}</span></div>`;
-      html += `<div class="sl-pred-row"><span class="sl-pred-label">Rank</span><span class="sl-pred-val ${scoreClass}">${rankStr}</span></div>`;
+      html += `<div class="sl-pred-row"><span class="sl-pred-label">Score</span><span class="sl-pred-val ${cls}">${scoreVal}</span></div>`;
+      html += `<div class="sl-pred-row"><span class="sl-pred-label">Rank</span><span class="sl-pred-val">${rankStr}</span></div>`;
       if (pct !== null) {
-        html += `<div class="sl-pred-row"><span class="sl-pred-label">Percentile</span><span class="sl-pred-val ${scoreClass}">${pct.toFixed(1)}%</span></div>`;
+        html += `<div class="sl-pred-row"><span class="sl-pred-label">Top</span><span class="sl-pred-val">${pct.toFixed(1)}%</span></div>`;
+      }
+      if (interp) {
+        html += `<span class="sl-pred-interp ${interp.cls}">${interp.txt}</span>`;
       }
       if (data.depmap_hit !== null && data.depmap_hit !== undefined) {
         const dmClass = data.depmap_hit ? 'yes' : 'no';
-        const dmLabel = data.depmap_hit ? 'In DepMap training (SL)' : 'Not in DepMap training';
-        html += `<span class="sl-pred-depmap ${dmClass}">${dmLabel}</span>`;
+        const dmLabel = data.depmap_hit ? 'DepMap SL' : '';
+        if (dmClass === 'yes') html += `<span class="sl-pred-depmap ${dmClass}">${dmLabel}</span>`;
       }
       card.innerHTML = html;
     };
 
     renderPredCard('slPredDennler', den, 'Dennler et al. 2025');
-    renderPredCard('slPredDeKegel', dek, 'De Kegel et al.');
+    renderPredCard('slPredDeKegel', dek, 'De Kegel et al. (2021)');
+
+    // Source footnote
+    const footer = predBox.querySelector('.sl-pred-footer');
+    if (footer) {
+      footer.innerHTML = 'Sources: <a href="https://academic.oup.com/nargab/article/7/2/lqaf051/8120592" target="_blank">Dennler et al. 2025</a> · <a href="https://pubmed.ncbi.nlm.nih.gov/34529928/" target="_blank">De Kegel et al. 2021</a>';
+    }
 
     if (hasAny) predBox.style.display = '';
   }

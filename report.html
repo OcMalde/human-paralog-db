@@ -26,7 +26,7 @@
   header .title-sub{margin-top:3px;font-size:13px;color:#78909c;letter-spacing:0.08em;text-transform:uppercase}
   .header-gene-note{font-size:11px;color:#546e7a;margin-top:3px;font-style:italic;letter-spacing:0;text-transform:none}
   .header-kf{flex:1;display:none}
-  .header-kf .kf-items{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:4px 18px}
+  .header-kf .kf-items{display:flex;justify-content:space-evenly;flex-wrap:wrap;gap:4px 12px}
   .header-kf .kf-item{display:flex;flex-direction:column;align-items:center;min-width:60px}
   .header-kf .kf-value{font-size:16px;font-weight:700;color:#1a1a1a}
   .header-kf .kf-value.positive{color:#2e7d32}
@@ -329,11 +329,17 @@
   .sl-pred-label{font-size:11px;color:#546e7a}
   .sl-pred-val{font-size:13px;font-weight:600;color:#1a1a1a}
   .sl-pred-val.high{color:#2e7d32}
+  .sl-pred-val.mid{color:#ef6c00}
   .sl-pred-val.low{color:#888}
   .sl-pred-na{font-size:12px;color:#bbb;font-style:italic}
-  .sl-pred-depmap{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;margin-top:4px}
+  .sl-pred-interp{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:5px}
+  .sl-pred-interp.likely{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
+  .sl-pred-interp.possibly{background:#fff3e0;color:#e65100;border:1px solid #ffe0b2}
+  .sl-pred-interp.unlikely{background:#f5f5f5;color:#666;border:1px solid #e0e0e0}
+  .sl-pred-depmap{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;margin-top:4px;margin-left:4px}
   .sl-pred-depmap.yes{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
   .sl-pred-depmap.no{background:#f5f5f5;color:#999;border:1px solid #ddd}
+  .sl-pred-footer{margin-top:8px;font-size:10px;color:#90a4ae;border-top:1px solid #eee;padding-top:6px}
   .go-sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:8px}
   .go-sim-item{background:none;border:none;border-radius:0;padding:8px 4px;text-align:center;border-right:1px solid #e8e8e8}
   .go-sim-item:last-child{border-right:none}
@@ -717,10 +723,11 @@
                 <div class="sl-pred-na">Loading…</div>
               </div>
               <div class="sl-pred-card" id="slPredDeKegel">
-                <div class="sl-pred-source">De Kegel et al.</div>
+                <div class="sl-pred-source">De Kegel et al. (2021)</div>
                 <div class="sl-pred-na">Loading…</div>
               </div>
             </div>
+            <div class="sl-pred-footer"></div>
           </div>
         </div>
         <div class="sl-card">
@@ -1168,7 +1175,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=11"></script>
+<script src="static/js/app.js?v=12"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
