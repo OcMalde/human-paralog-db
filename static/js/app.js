@@ -3256,10 +3256,10 @@ function initSlFunctionalSection() {
       const inTop2  = pct !== null && pct >= 98;
       const inTop10 = pct !== null && pct >= 90;
       const inTop25 = pct !== null && pct >= 75;
-      if (highScore || inTop2)          return { cls: 'likely',   txt: 'Likely SL' };
-      if (goodScore || inTop10)         return { cls: 'possibly',  txt: 'Possibly SL' };
-      if (inTop25)                       return { cls: 'unlikely', txt: 'Possibly not SL' };
-      return                             { cls: 'unlikely', txt: 'Likely not SL' };
+      if (highScore || inTop2)  return { cls: 'likely',       txt: 'Likely SL' };
+      if (goodScore || inTop10) return { cls: 'possibly',     txt: 'Possibly SL' };
+      if (inTop25)              return { cls: 'unlikely',     txt: 'Possibly not SL' };
+      return                           { cls: 'unlikely-neg', txt: 'Likely not SL' };
     };
 
     const renderPredCard = (elId, data, sourceName, featureNote) => {
@@ -3273,7 +3273,7 @@ function initSlFunctionalSection() {
       const scoreVal = sc !== null ? sc.toFixed(3) : '–';
       const pct = data.percentile !== null && data.percentile !== undefined ? data.percentile : null;
       const interp = combineInterp(sc, pct);
-      const cls = interp ? (interp.cls === 'likely' ? 'high' : interp.cls === 'possibly' ? 'mid' : 'low') : '';
+      const cls = interp ? (interp.cls === 'likely' ? 'high' : interp.cls === 'possibly' ? 'mid' : interp.cls === 'unlikely-neg' ? 'mid' : 'low') : '';
       const rankStr = data.rank !== null && data.rank !== undefined
         ? `#${data.rank.toLocaleString()} / ${data.total_pairs.toLocaleString()}`
         : '–';

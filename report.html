@@ -334,8 +334,9 @@
   .sl-pred-na{font-size:12px;color:#bbb;font-style:italic}
   .sl-pred-interp{display:inline-block;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;margin-top:5px}
   .sl-pred-interp.likely{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
-  .sl-pred-interp.possibly{background:#fff3e0;color:#e65100;border:1px solid #ffe0b2}
-  .sl-pred-interp.unlikely{background:#f5f5f5;color:#666;border:1px solid #e0e0e0}
+  .sl-pred-interp.possibly{background:#f1f8e9;color:#558b2f;border:1px solid #c5e1a5}
+  .sl-pred-interp.unlikely{background:#f5f5f5;color:#888;border:1px solid #e0e0e0}
+  .sl-pred-interp.unlikely-neg{background:#fff3e0;color:#bf360c;border:1px solid #ffccbc}
   .sl-pred-depmap{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;margin-top:4px;margin-left:4px}
   .sl-pred-depmap.yes{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
   .sl-pred-depmap.no{background:#f5f5f5;color:#999;border:1px solid #ddd}
@@ -708,7 +709,8 @@
     </div>
     <!-- SL & Functional Overlap Section -->
     <div class="sl-functional-wrapper" id="slFunctionalSection" style="padding:16px 0 0;margin:16px 0 16px;border-top:1px solid #e8e8e8;">
-      <h3 style="margin:0 0 16px;color:#37474f;">Synthetic Lethality & Functional Overlap</h3>
+      <h3 style="margin:0 0 8px;color:#37474f;">Synthetic Lethality & Functional Overlap</h3>
+      <p style="margin:0 0 16px;font-size:12px;color:#78909c;line-height:1.6;max-width:700px;">Synthetic lethality (SL) occurs when loss of either gene alone is tolerated by the cell, but simultaneous loss of both is lethal or severely reduces fitness. For paralogs, this often reflects functional buffering — one gene can compensate for the loss of the other, masking an otherwise essential function. SL is therefore a signature of redundancy with limits.</p>
       <div class="sl-functional-grid">
         <div class="sl-card">
           <h4>Synthetic Lethality</h4>
@@ -1175,7 +1177,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=13"></script>
+<script src="static/js/app.js?v=14"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
