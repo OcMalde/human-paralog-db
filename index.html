@@ -212,8 +212,8 @@ function renderFamilyBubbles(families) {
   const W = Math.min(container.clientWidth || 820, 820);
   const H = Math.max(260, Math.min(W * 0.52, 420));
 
-  // Pack layout — use sqrt(size) so large families don't dwarf small ones
-  const root = d3.hierarchy({ children: families }).sum(d => d.size ? Math.sqrt(d.size) + 1 : 0);
+  // Pack layout — area proportional to family size (radius ∝ √size, giving ~2x visual difference between 9 and 2 genes)
+  const root = d3.hierarchy({ children: families }).sum(d => d.size || 0);
   d3.pack().size([W, H]).padding(6)(root);
 
   const maxSize = Math.max(...families.map(f => f.size));
