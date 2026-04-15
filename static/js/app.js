@@ -5344,7 +5344,7 @@ function getPdbeColorLegendHtml(mode) {
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
     drugclip: '<strong>DrugCLIP:</strong> ' + sw('#c62828','Pocket') + sw('#f7f7f7','None'),
-    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350','Specific') + sw('#FF7043','+ family') + sw('#26A69A','Both paralogs only') + sw('#78909C','Both + family') + sw('#BDBDBD','Family only'),
+    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350','Specific') + sw('#FF7043',(DATA?.g1||'A')+' or '+(DATA?.g2||'B')+' + family (not partner)') + sw('#26A69A','Both paralogs only') + sw('#78909C','Both + family') + sw('#BDBDBD','Family only'),
   };
   const chainNote = sw('#C9B99A','Context') + sw('#1a1a1a','DNA/RNA');
   return (legends[mode] || '') + ' | ' + chainNote;
@@ -8351,11 +8351,11 @@ function updateColorLegend(mode) {
       title: 'PLMA Conservation Categories',
       items: [
         {color:'#EF5350',label:'Specific'},
-        {color:'#FF7043',label:'+ family'},
+        {color:'#FF7043',label:(DATA?.g1||'A')+' or '+(DATA?.g2||'B')+' + family (not partner)'},
         {color:'#26A69A',label:'Both paralogs only'},
         {color:'#78909C',label:'Both + family'},
         {color:'#BDBDBD',label:'Family only'},
-        {color:'#EEEEEE',label:'None'},
+        {color:'#EEEEEE',label:'No PLMA coverage'},
       ]
     },
   };
