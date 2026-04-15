@@ -328,7 +328,10 @@ function renderFamilyNetwork(family) {
     .force('center', d3.forceCenter(W / 2, H / 2))
     .force('collision', d3.forceCollide(26));
 
-  const svg = d3.create('svg').attr('width', W).attr('height', H);
+  const svg = d3.create('svg')
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .style('width', '100%').style('height', '100%');
 
   // Click on background clears selection
   svg.on('click', () => { selectedGene = null; applyHighlight(); document.getElementById('genePairsPanel').style.display = 'none'; });
@@ -400,7 +403,12 @@ function showGenePairs(geneId, family) {
     .sort((a, b) => (b.fi || 0) - (a.fi || 0));
 
   document.getElementById('genePairsTitle').textContent = geneId + ' pairs';
-  document.getElementById('genePairsList').innerHTML = genePairs.map(p => {
+  document.getElementById('genePairsList').innerHTML =
+    '<div style="display:flex;gap:6px;padding:0 0 6px;border-bottom:1px solid #eee;margin-bottom:2px">' +
+    '<span style="flex:1;font-size:10px;color:#aaa;font-style:italic">Partner</span>' +
+    '<span style="font-size:10px;color:#aaa;font-style:italic;white-space:nowrap">min. seq. id.</span>' +
+    '<span style="width:13px"></span></div>' +
+    genePairs.map(p => {
     const partner = p.gA === geneId ? p.gB : p.gA;
     const fi = p.fi != null ? `${(p.fi * 100).toFixed(0)}%` : '–';
     return `<div class="gene-pair-row">
