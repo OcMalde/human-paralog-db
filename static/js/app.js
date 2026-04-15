@@ -5326,7 +5326,7 @@ function getPdbeColorTheme(mode) {
   if (mode === 'plma') {
     // data: 0=none, 20=family-only, ..., 100=specific; chain shading at -25,-50,-75,-100
     return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
-      0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD,
+      0xEF5350, 0xFF7043, 0x26A69A, 0x78909C, 0xBDBDBD,
       0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
@@ -5344,7 +5344,7 @@ function getPdbeColorLegendHtml(mode) {
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
     drugclip: '<strong>DrugCLIP:</strong> ' + sw('#c62828','Pocket') + sw('#f7f7f7','None'),
-    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350','Specific') + sw('#FFA726','+Family') + sw('#26A69A','Pair-excl') + sw('#FFCA28','Shared') + sw('#BDBDBD','Family-only'),
+    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350','Specific') + sw('#FF7043','+ family') + sw('#26A69A','Both paralogs only') + sw('#78909C','Both + family') + sw('#BDBDBD','Family only'),
   };
   const chainNote = sw('#C9B99A','Context') + sw('#1a1a1a','DNA/RNA');
   return (legends[mode] || '') + ' | ' + chainNote;
@@ -8199,7 +8199,7 @@ function themeForColorMode(mode){
       name: 'uncertainty',
       params: {
         domain: [0, 5],
-        list: { kind: 'set', colors: [0xEF5350, 0xFFA726, 0x26A69A, 0xFFCA28, 0xBDBDBD, 0xEEEEEE] }
+        list: { kind: 'set', colors: [0xEF5350, 0xFF7043, 0x26A69A, 0x78909C, 0xBDBDBD, 0xEEEEEE] }
       }
     };
   }
@@ -8351,9 +8351,9 @@ function updateColorLegend(mode) {
       title: 'PLMA Conservation Categories',
       items: [
         {color:'#EF5350',label:'Specific'},
-        {color:'#FFA726',label:'+ Family'},
-        {color:'#26A69A',label:'Pair exclusive'},
-        {color:'#FFCA28',label:'Shared w/ family'},
+        {color:'#FF7043',label:'+ family'},
+        {color:'#26A69A',label:'Both paralogs only'},
+        {color:'#78909C',label:'Both + family'},
         {color:'#BDBDBD',label:'Family only'},
         {color:'#EEEEEE',label:'None'},
       ]
