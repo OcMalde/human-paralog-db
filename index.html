@@ -63,7 +63,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .family-modal-body{display:flex;flex:1;overflow:hidden;min-height:0}
 #familyNetwork{flex:1;overflow:hidden;min-width:0}
 #familyNetwork svg{display:block;width:100%;height:100%}
-.gene-pairs-panel{width:200px;border-left:1px solid #e8e8e8;padding:14px 12px;overflow-y:auto;flex-shrink:0}
+.gene-pairs-panel{width:160px;border-left:1px solid #e8e8e8;padding:14px 12px;overflow-y:auto;flex-shrink:0}
 .gene-pairs-title{font-size:11px;font-weight:700;color:#546e7a;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
 .gene-pair-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px}
 .gene-pair-row:last-child{border-bottom:none}
@@ -156,7 +156,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
     <h3>Gene Families</h3>
     <p class="family-section-desc">Each bubble is a gene family — size reflects the number of members. Click a bubble to explore the family network.</p>
     <div id="familyBubbleChart"></div>
-    <p style="margin:12px 0 0;font-size:11px;color:#888;font-style:italic;">Based on Ensembl 111 human paralog pairs (Dennler et al. 2025). A small number of highly divergent pairs without computable metrics are excluded.</p>
+    <p style="margin:12px 0 0;font-size:11px;color:#888;font-style:italic;">Based on Ensembl 111 human paralog pairs. A small number of highly divergent pairs without computable metrics are excluded.</p>
   </div>
 
   <div class="footer-note">
@@ -406,7 +406,7 @@ function showGenePairs(geneId, family) {
   document.getElementById('genePairsList').innerHTML =
     '<div style="display:flex;gap:6px;padding:0 0 6px;border-bottom:1px solid #eee;margin-bottom:2px">' +
     '<span style="flex:1;font-size:10px;color:#aaa;font-style:italic">Partner</span>' +
-    '<span style="font-size:10px;color:#aaa;font-style:italic;white-space:nowrap">min. seq. id.</span>' +
+    '<span style="font-size:10px;color:#aaa;font-style:italic">min. sequence identity</span>' +
     '<span style="width:13px"></span></div>' +
     genePairs.map(p => {
     const partner = p.gA === geneId ? p.gB : p.gA;
