@@ -23,18 +23,18 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .loading{display:flex;align-items:center;justify-content:center;height:200px;font-size:16px;color:#666}
 
 /* Homepage styles */
-.homepage{padding:40px 20px;max-width:900px;margin:0 auto}
+.homepage{padding:40px 20px;max-width:960px;margin:0 auto}
 .homepage.hidden{display:none}
-.hero{text-align:center;margin-bottom:50px}
+.hero{text-align:center;margin-bottom:44px}
 .hero h2{font-size:32px;color:#37474f;margin:0 0 12px 0}
 .hero p{font-size:18px;color:#666;margin:0}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:20px;margin-bottom:50px}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:44px}
 .stat-card{background:#fff;border-radius:12px;padding:24px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
 .stat-value{font-size:36px;font-weight:700;color:#00897b;margin-bottom:8px}
 .stat-label{font-size:14px;color:#666;text-transform:uppercase;letter-spacing:0.5px}
 .examples-section{background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
 .examples-section h3{margin:0 0 20px 0;color:#37474f;font-size:18px}
-.example-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px}
+.example-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px}
 .example-category{margin-bottom:20px}
 .example-category h4{margin:0 0 12px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px}
 .example-links{display:flex;flex-wrap:wrap;gap:8px}
@@ -49,20 +49,21 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .family-section{margin-top:32px;background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .family-section h3{margin:0 0 4px;color:#37474f;font-size:18px}
 .family-section-desc{margin:0 0 20px;color:#888;font-size:13px}
-#familyBubbleChart svg{display:block;margin:0 auto}
+#familyBubbleChart{width:100%}
+#familyBubbleChart svg{width:100%;height:auto;display:block}
 
 /* Family detail modal */
-.family-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center}
-.family-modal-box{background:#fff;border-radius:14px;width:700px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.25);overflow:hidden}
-.family-modal-header{padding:16px 20px;border-bottom:1px solid #e8e8e8;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.family-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center;padding:12px}
+.family-modal-box{background:#fff;border-radius:14px;width:740px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.25);overflow:hidden}
+.family-modal-header{padding:14px 18px;border-bottom:1px solid #e8e8e8;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0}
 .family-modal-title{font-size:17px;font-weight:700;color:#37474f}
 .family-modal-sub{font-size:12px;color:#888;margin-left:8px}
 .family-modal-close{background:none;border:none;font-size:18px;color:#888;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
 .family-modal-close:hover{background:#f5f5f5;color:#444}
-.family-modal-body{display:flex;flex:1;overflow:hidden;min-height:300px}
-#familyNetwork{flex:1;overflow:hidden}
-#familyNetwork svg{display:block}
-.gene-pairs-panel{width:210px;border-left:1px solid #e8e8e8;padding:14px 12px;overflow-y:auto;flex-shrink:0}
+.family-modal-body{display:flex;flex:1;overflow:hidden;min-height:0}
+#familyNetwork{flex:1;overflow:hidden;min-width:0}
+#familyNetwork svg{display:block;width:100%;height:100%}
+.gene-pairs-panel{width:200px;border-left:1px solid #e8e8e8;padding:14px 12px;overflow-y:auto;flex-shrink:0}
 .gene-pairs-title{font-size:11px;font-weight:700;color:#546e7a;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
 .gene-pair-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px}
 .gene-pair-row:last-child{border-bottom:none}
@@ -70,6 +71,26 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .gene-pair-fi{color:#888;font-size:11px;white-space:nowrap}
 .gene-pair-link{color:#00897b;text-decoration:none;font-size:13px;flex-shrink:0}
 .gene-pair-link:hover{color:#00695c}
+
+/* Responsive */
+@media(min-width:1280px){.homepage{max-width:1100px}}
+@media(max-width:700px){
+  .homepage{padding:20px 14px}
+  .hero{margin-bottom:26px}
+  .hero h2{font-size:22px}
+  .hero p{font-size:15px}
+  .stats-grid{gap:10px;margin-bottom:26px}
+  .stat-card{padding:16px 10px}
+  .stat-value{font-size:26px}
+  .stat-label{font-size:11px}
+  .examples-section{padding:18px 14px}
+  .family-section{padding:18px 14px}
+  .top-bar{padding:8px 12px;gap:8px}
+  .top-bar h1{font-size:15px}
+  .search-box{min-width:160px}
+  .family-modal-body{flex-direction:column}
+  .gene-pairs-panel{width:auto;border-left:none;border-top:1px solid #e8e8e8;max-height:160px}
+}
 .search-box{position:relative}
 .search-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;overflow:hidden}
 .search-dropdown .dd-item{padding:8px 12px;cursor:pointer;font-size:13px;color:#333;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
@@ -209,10 +230,9 @@ async function loadFamilyGraph() {
 
 function renderFamilyBubbles(families) {
   const container = document.getElementById('familyBubbleChart');
-  const W = Math.min(container.clientWidth || 820, 820);
-  const H = Math.max(260, Math.min(W * 0.52, 420));
+  // Use a fixed logical canvas — SVG scales to fill container via CSS (width:100%, height:auto)
+  const W = 820, H = 380;
 
-  // Pack layout — area proportional to family size (radius ∝ √size, giving ~2x visual difference between 9 and 2 genes)
   const root = d3.hierarchy({ children: families }).sum(d => d.size || 0);
   d3.pack().size([W, H]).padding(6)(root);
 
@@ -222,8 +242,8 @@ function renderFamilyBubbles(families) {
     .interpolator(d3.interpolate('#90cac4', '#00695c'));
 
   const svg = d3.create('svg')
-    .attr('width', W).attr('height', H)
     .attr('viewBox', `0 0 ${W} ${H}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet')
     .style('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
 
   const node = svg.selectAll('g')
@@ -245,7 +265,6 @@ function renderFamilyBubbles(families) {
     d3.select(this).select('circle').attr('fill', colorScale(d.data.size));
   });
 
-  // Family label — visible only when there's enough room
   node.append('text')
     .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
     .attr('fill', d => d.data.size >= 4 ? '#fff' : '#37474f')
@@ -253,7 +272,6 @@ function renderFamilyBubbles(families) {
     .attr('font-weight', '600').attr('pointer-events', 'none')
     .text(d => d.r > 16 ? d.data.label : '');
 
-  // Gene count sub-label for larger bubbles
   node.append('text')
     .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
     .attr('y', d => Math.min(Math.max(d.r * 0.38, 8), 13) + 2)
@@ -283,9 +301,9 @@ function closeFamilyModal() {
 function renderFamilyNetwork(family) {
   const container = document.getElementById('familyNetwork');
   const W = container.clientWidth || 460;
-  const H = 340;
+  const H = Math.max(container.clientHeight || 340, 300);
 
-  // Special case: family of 2 — just show a direct link
+  // Special case: family of 2
   if (family.pairs.length === 1 && family.size <= 2) {
     const p = family.pairs[0];
     const fi = p.fi != null ? `${(p.fi * 100).toFixed(0)}% sequence identity` : '';
@@ -299,7 +317,10 @@ function renderFamilyNetwork(family) {
 
   const nodes = family.genes.map(g => ({ id: g.s }));
   const maxFi = Math.max(...family.pairs.map(p => p.fi || 0), 0.01);
-  const links = family.pairs.map(p => ({ source: p.gA, target: p.gB, fi: p.fi || 0 }));
+  const links = family.pairs.map(p => ({ source: p.gA, target: p.gB, fi: p.fi || 0, id: p.id }));
+
+  // Highlight state — null means nothing selected
+  let selectedGene = null;
 
   const sim = d3.forceSimulation(nodes)
     .force('link', d3.forceLink(links).id(d => d.id).distance(72))
@@ -308,6 +329,9 @@ function renderFamilyNetwork(family) {
     .force('collision', d3.forceCollide(26));
 
   const svg = d3.create('svg').attr('width', W).attr('height', H);
+
+  // Click on background clears selection
+  svg.on('click', () => { selectedGene = null; applyHighlight(); document.getElementById('genePairsPanel').style.display = 'none'; });
 
   const link = svg.append('g').selectAll('line').data(links).join('line')
     .attr('stroke', '#b0bec5')
@@ -321,18 +345,44 @@ function renderFamilyNetwork(family) {
       .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
       .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
     )
-    .on('click', (_, d) => showGenePairs(d.id, family));
+    .on('click', (ev, d) => {
+      ev.stopPropagation(); // don't clear via svg background handler
+      selectedGene = selectedGene === d.id ? null : d.id;
+      applyHighlight();
+      if (selectedGene) showGenePairs(selectedGene, family);
+      else document.getElementById('genePairsPanel').style.display = 'none';
+    });
 
-  nodeG.append('circle').attr('r', 22)
+  const nodeCircle = nodeG.append('circle').attr('r', 22)
     .attr('fill', '#e8f5e9').attr('stroke', '#546e7a').attr('stroke-width', 1.5);
 
-  nodeG.append('text')
+  const nodeText = nodeG.append('text')
     .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
     .attr('font-size', d => d.id.length > 6 ? 9 : 10)
     .attr('font-weight', '600').attr('fill', '#37474f').attr('pointer-events', 'none')
     .text(d => d.id.length > 8 ? d.id.slice(0, 7) + '…' : d.id);
 
   nodeG.append('title').text(d => `${d.id} — click for pairs`);
+
+  function applyHighlight() {
+    const sel = selectedGene;
+    // Nodes: selected → slate fill + white text; others unchanged
+    nodeCircle
+      .attr('fill', d => d.id === sel ? '#546e7a' : '#e8f5e9')
+      .attr('stroke', d => d.id === sel ? '#37474f' : '#546e7a')
+      .attr('stroke-width', d => d.id === sel ? 2.5 : 1.5);
+    nodeText.attr('fill', d => d.id === sel ? '#fff' : '#37474f');
+
+    // Edges: connected to selected → teal + opaque; others → dim grey
+    const baseW = d => 1 + (d.fi / maxFi) * 3;
+    link
+      .attr('stroke', d => !sel ? '#b0bec5'
+        : (d.source.id === sel || d.target.id === sel) ? '#00897b' : '#cfd8dc')
+      .attr('stroke-opacity', d => !sel ? 0.75
+        : (d.source.id === sel || d.target.id === sel) ? 1 : 0.25)
+      .attr('stroke-width', d => !sel ? baseW(d)
+        : (d.source.id === sel || d.target.id === sel) ? baseW(d) + 1 : baseW(d));
+  }
 
   sim.on('tick', () => {
     link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
