@@ -311,7 +311,7 @@
   .center-radar{display:flex;flex-direction:column;align-items:center}
   .center-radar .radar-plot{width:340px;height:280px}
   .center-radar .radar-note{font-size:11px;color:#78909c;margin-top:8px;text-align:center}
-  .sl-functional-grid{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start}
+  .sl-functional-grid{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:24px;align-items:start}
   @media(max-width:700px){.sl-functional-grid{grid-template-columns:1fr}}
   .sl-card{background:none;border:none;border-radius:0;padding:0}
   .sl-card h4{font-size:11px;font-weight:700;color:#78909c;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e8e8e8}
@@ -341,7 +341,7 @@
   .sl-pred-depmap.yes{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
   .sl-pred-depmap.no{background:#f5f5f5;color:#999;border:1px solid #ddd}
   .sl-pred-footer{margin-top:8px;padding-top:6px;border-top:1px solid #f0f0f0}
-  .go-sim-grid{display:flex;flex-direction:column;gap:0;margin-top:8px;width:180px}
+  .go-sim-grid{display:flex;flex-direction:column;gap:0;margin-top:8px}
   .go-sim-item{background:none;border:none;border-radius:0;padding:6px 0;display:flex;align-items:baseline;gap:8px;border-bottom:1px solid #f0f0f0}
   .go-sim-item:last-child{border-bottom:none}
   .go-sim-item .label{font-size:10px;color:#78909c;text-transform:uppercase;flex:1;white-space:nowrap}
@@ -734,6 +734,7 @@
         </div>
         <div class="sl-card">
           <h4>GO Semantic Similarity</h4>
+          <p style="font-size:11px;color:#78909c;margin:0 0 8px;line-height:1.5;">How much biological function the two genes share, measured by the semantic overlap of their GO annotations (0 = unrelated, 1 = identical).</p>
           <div class="go-sim-grid" id="goSimGrid">
             <div class="go-sim-item">
               <div class="label">Biological Process</div>
@@ -1177,7 +1178,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=16"></script>
+<script src="static/js/app.js?v=17"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
