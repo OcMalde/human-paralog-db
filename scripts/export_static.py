@@ -5,7 +5,7 @@ export_static.py
 Exports database contents to static JSON files for GitHub Pages / CDN hosting.
 
 Usage:
-    python scripts/export_static.py                    # Export all pairs
+    python scripts/export_static.py                    # Export all pairs + genes
     python scripts/export_static.py SMARCA2_SMARCA4    # Export specific pair(s)
     python scripts/export_static.py --clean            # Clean and re-export
 
@@ -15,11 +15,23 @@ Output structure:
     ├── family_index.json       # Gene -> pair IDs mapping
     ├── meta/
     │   └── boxplot_stats.json  # Global statistics for boxplots
+    ├── genes/
+    │   └── {GENE}.json         # Per-gene data (PDB, AM, domains, drugs, ...)
     └── pairs/
         └── GENE1_GENE2/
-            ├── report.json     # Full report data
-            ├── summary.json    # Summary data
-            └── pdb.json        # PDB variants (base64)
+            ├── report.json     # Pair-specific report data (alignment, rects, domPairs)
+            ├── summary.json    # Pair-level summary (conservation, SL, sim search, ...)
+            └── pdb.json        # Combined aligned PDB only (pdb64_full)
+
+Per-gene data (in data/genes/{GENE}.json, NOT duplicated per pair):
+    - af_pdb64          Canonical AlphaFold PDB (unaligned)
+    - pdbeComplexes     PDBe experimental structures with coordB64
+    - bfactors          AlphaMissense per-residue scores
+    - plddt             pLDDT per-residue scores
+    - domains           All domain annotations (EBI, TED, disorder, cavities, DrugCLIP)
+    - amMatrixRects     AM saturation matrix rects by normalisation mode
+    - seq               Canonical protein sequence
+    - info              Gene metadata (description, known drugs, essentiality, ...)
 """
 
 import argparse
@@ -39,7 +51,22 @@ BASE_DIR = Path(__file__).parent.parent
 DB_PATH = BASE_DIR / "data" / "pairs.db"
 STRUCTURES_DIR = BASE_DIR / "data" / "structures"
 OUTPUT_DIR = BASE_DIR / "data" / "pairs"
+GENES_DIR = BASE_DIR / "data" / "genes"
 META_DIR = BASE_DIR / "data" / "meta"
+
+# Fields moved from report.json to per-gene files
+PER_GENE_REPORT_FIELDS = {
+    'bfactorsA', 'bfactorsB',
+    'plddtA', 'plddtB',
+    'domainsA', 'domainsB',
+    'amMatrixA_rectsByMode', 'amMatrixB_rectsByMode',
+    'seq1', 'seq2',
+    'pdbeComplexes',
+    'amModes',
+}
+
+# Fields moved from summary.json to per-gene files
+PER_GENE_SUMMARY_FIELDS = {'gene1', 'gene2'}
 
 
 def log(msg: str):
@@ -55,10 +82,99 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-def export_pair(conn: sqlite3.Connection, pair_id: str, output_dir: Path) -> bool:
-    """Export a single pair to JSON files."""
+# ============= Per-gene export =============
 
-    # Get pair info
+def export_gene(conn: sqlite3.Connection, gene: str, acc: str, genes_dir: Path) -> bool:
+    """Export per-gene data to data/genes/{GENE}.json.
+
+    Reads the canonical AF structure from proteins table and per-residue /
+    domain / AM data from the first pair in report_data that contains this gene.
+    """
+    # Canonical AlphaFold structure (unaligned, chain A)
+    prot = conn.execute("SELECT pdb_b64 FROM proteins WHERE acc = ?", (acc,)).fetchone()
+    af_pdb64 = prot['pdb_b64'] if prot else None
+
+    # All pairs for this gene, ordered for stability
+    pairs = conn.execute("""
+        SELECT pair_id, gene_a, gene_b, acc_a, acc_b FROM pairs
+        WHERE gene_a = ? OR gene_b = ?
+        ORDER BY pair_id
+    """, (gene, gene)).fetchall()
+
+    gene_out = {
+        'gene': gene,
+        'acc': acc,
+        'af_pdb64': af_pdb64,
+        'bfactors': [],
+        'plddt': [],
+        'domains': [],
+        'amMatrixRects': {},
+        'seq': '',
+        'pdbeComplexes': [],
+        'info': {},
+    }
+
+    for pair in pairs:
+        report = conn.execute(
+            "SELECT data_json, summary_json FROM report_data WHERE pair_id = ?",
+            (pair['pair_id'],)
+        ).fetchone()
+
+        if not report or not report['data_json']:
+            continue
+
+        data = json.loads(report['data_json'])
+        side = 'A' if pair['gene_a'] == gene else 'B'
+        seq_key = 'seq1' if side == 'A' else 'seq2'
+
+        gene_out['bfactors'] = data.get(f'bfactors{side}', [])
+        gene_out['plddt'] = data.get(f'plddt{side}', [])
+        gene_out['domains'] = data.get(f'domains{side}', [])
+        gene_out['amMatrixRects'] = data.get(f'amMatrix{side}_rectsByMode', {})
+        gene_out['seq'] = data.get(seq_key, '')
+        gene_out['pdbeComplexes'] = [
+            c for c in data.get('pdbeComplexes', [])
+            if c.get('source_acc') == acc
+        ]
+
+        if report['summary_json']:
+            summary = json.loads(report['summary_json'])
+            gene_key = 'gene1' if side == 'A' else 'gene2'
+            gene_out['info'] = summary.get(gene_key, {})
+
+        break  # First pair with data is sufficient
+
+    genes_dir.mkdir(parents=True, exist_ok=True)
+    with open(genes_dir / f"{gene}.json", 'w') as f:
+        json.dump(gene_out, f, separators=(',', ':'))
+
+    return True
+
+
+def export_all_genes(conn: sqlite3.Connection, genes_dir: Path):
+    """Export a gene file for every unique gene in the database."""
+    genes = conn.execute(
+        "SELECT gene_a AS gene, acc_a AS acc FROM pairs "
+        "UNION SELECT gene_b, acc_b FROM pairs ORDER BY gene"
+    ).fetchall()
+
+    log(f"Exporting {len(genes)} gene files...")
+    ok = 0
+    for g in genes:
+        try:
+            if export_gene(conn, g['gene'], g['acc'], genes_dir):
+                ok += 1
+        except Exception as e:
+            log(f"  ERROR exporting gene {g['gene']}: {e}")
+
+    log(f"Gene export complete: {ok}/{len(genes)} genes")
+
+
+# ============= Per-pair export =============
+
+def export_pair(conn: sqlite3.Connection, pair_id: str, output_dir: Path) -> bool:
+    """Export a single pair to JSON files (per-gene fields stripped)."""
+
     pair = conn.execute(
         "SELECT * FROM pairs WHERE pair_id = ?", (pair_id,)
     ).fetchone()
@@ -67,7 +183,6 @@ def export_pair(conn: sqlite3.Connection, pair_id: str, output_dir: Path) -> boo
         log(f"  Pair {pair_id} not found in database")
         return False
 
-    # Get report data
     report = conn.execute(
         "SELECT data_json, summary_json FROM report_data WHERE pair_id = ?", (pair_id,)
     ).fetchone()
@@ -76,22 +191,25 @@ def export_pair(conn: sqlite3.Connection, pair_id: str, output_dir: Path) -> boo
         log(f"  No report data for {pair_id}")
         return False
 
-    # Create output directory
     pair_dir = output_dir / pair_id
     pair_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parse and write report.json
+    # report.json — strip per-gene fields (now in data/genes/{GENE}.json)
     report_data = json.loads(report['data_json'])
+    for field in PER_GENE_REPORT_FIELDS:
+        report_data.pop(field, None)
     with open(pair_dir / "report.json", 'w') as f:
         json.dump(report_data, f, separators=(',', ':'))
 
-    # Write summary.json
+    # summary.json — strip per-gene fields
     if report['summary_json']:
         summary_data = json.loads(report['summary_json'])
+        for field in PER_GENE_SUMMARY_FIELDS:
+            summary_data.pop(field, None)
         with open(pair_dir / "summary.json", 'w') as f:
             json.dump(summary_data, f, separators=(',', ':'))
 
-    # Generate PDB variants
+    # pdb.json — only the combined aligned structure (pdb64_a/b moved to gene files)
     pdb_variants = generate_pdb_variants(conn, pair_id, pair['acc_a'], pair['acc_b'])
     if pdb_variants:
         with open(pair_dir / "pdb.json", 'w') as f:
@@ -101,9 +219,11 @@ def export_pair(conn: sqlite3.Connection, pair_id: str, output_dir: Path) -> boo
 
 
 def generate_pdb_variants(conn: sqlite3.Connection, pair_id: str, acc_a: str, acc_b: str) -> Dict[str, str]:
-    """Generate PDB variant files (base64 encoded)."""
+    """Generate pdb.json — only pdb64_full (combined aligned structure).
 
-    # Get protein structures
+    pdb64_a and pdb64_b (individual gene structures) are now stored in
+    data/genes/{GENE}.json as af_pdb64 (canonical, unaligned from proteins table).
+    """
     prot_a = conn.execute("SELECT pdb_b64 FROM proteins WHERE acc = ?", (acc_a,)).fetchone()
     prot_b = conn.execute("SELECT pdb_b64 FROM proteins WHERE acc = ?", (acc_b,)).fetchone()
 
@@ -113,7 +233,6 @@ def generate_pdb_variants(conn: sqlite3.Connection, pair_id: str, acc_a: str, ac
     pdb_a = base64.b64decode(prot_a['pdb_b64']).decode('utf-8', errors='ignore')
     pdb_b = base64.b64decode(prot_b['pdb_b64']).decode('utf-8', errors='ignore')
 
-    # Get alignment transformation
     aln = conn.execute(
         "SELECT u_matrix, t_vector FROM alignments WHERE pair_id = ?", (pair_id,)
     ).fetchone()
@@ -121,21 +240,8 @@ def generate_pdb_variants(conn: sqlite3.Connection, pair_id: str, acc_a: str, ac
     U = json.loads(aln['u_matrix']) if aln and aln['u_matrix'] else None
     T = json.loads(aln['t_vector']) if aln and aln['t_vector'] else None
 
-    variants = {}
-
-    # Full combined PDB
     combined = create_aligned_pdb(pdb_a, pdb_b, U, T, True, True)
-    variants['pdb64_full'] = base64.b64encode(combined.encode()).decode()
-
-    # Chain A only
-    chain_a = create_aligned_pdb(pdb_a, pdb_b, U, T, True, False)
-    variants['pdb64_a'] = base64.b64encode(chain_a.encode()).decode()
-
-    # Chain B only
-    chain_b = create_aligned_pdb(pdb_a, pdb_b, U, T, False, True)
-    variants['pdb64_b'] = base64.b64encode(chain_b.encode()).decode()
-
-    return variants
+    return {'pdb64_full': base64.b64encode(combined.encode()).decode()}
 
 
 def create_aligned_pdb(pdb_a: str, pdb_b: str, U: List[float], T: List[float],
@@ -143,13 +249,11 @@ def create_aligned_pdb(pdb_a: str, pdb_b: str, U: List[float], T: List[float],
     """Create combined PDB with chain B transformed."""
     lines = []
 
-    # Chain A - unchanged
     if include_chain_a:
         for line in pdb_a.splitlines():
             if line.startswith(("ATOM  ", "HETATM")):
                 lines.append(line[:21] + "A" + line[22:])
 
-    # Chain B - transformed
     if include_chain_b:
         if U and T and len(U) == 9 and len(T) == 3:
             for line in pdb_b.splitlines():
@@ -174,6 +278,8 @@ def create_aligned_pdb(pdb_a: str, pdb_b: str, U: List[float], T: List[float],
     lines.append("END")
     return "\n".join(lines)
 
+
+# ============= Index files =============
 
 def create_index_file(conn: sqlite3.Connection, output_path: Path):
     """Create index.json with all pairs and metadata."""
@@ -214,7 +320,6 @@ def create_family_index(conn: sqlite3.Connection, output_path: Path):
         family_index[p['gene_a']].append(p['pair_id'])
         family_index[p['gene_b']].append(p['pair_id'])
 
-    # Sort and deduplicate
     family_index = {gene: sorted(set(pair_ids)) for gene, pair_ids in family_index.items()}
 
     with open(output_path, 'w') as f:
@@ -231,7 +336,6 @@ def create_search_index(conn: sqlite3.Connection, output_path: Path):
         FROM pairs p
     """).fetchall()
 
-    # Simple search index: list of searchable terms per pair
     search_data = []
     for p in pairs:
         search_data.append({
@@ -257,7 +361,7 @@ def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
     Groups genes into families (connected components of pairs), computes a
     human-readable label for each family, and serialises genes + pairs so the
     frontend can render both the bubble chart and the per-family force network.
-    Regenerated automatically on every export run.
+    Reads gene metadata from data/genes/{GENE}.json (written by export_all_genes).
     """
 
     rows = conn.execute("""
@@ -266,7 +370,6 @@ def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
         LEFT JOIN alignments a ON p.pair_id = a.pair_id
     """).fetchall()
 
-    # Build adjacency and pair lookup
     adjacency = defaultdict(set)
     pair_map = {}
     for r in rows:
@@ -296,35 +399,47 @@ def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
             queue.extend(adjacency.get(g, set()) - visited)
         family_groups.append(sorted(group))
 
-    # Load per-gene info from summary files to prioritise label candidates
+    # Load per-gene info — prefer gene files, fall back to pair summary files
+    genes_dir = data_dir / 'genes'
     gene_info: dict = {}
-    for pair_id, pd in pair_map.items():
-        summary_path = data_dir / 'pairs' / pair_id / 'summary.json'
-        if not summary_path.exists():
-            continue
-        try:
-            with open(summary_path) as f:
-                s = json.load(f)
-            for gkey in ('gene1', 'gene2'):
-                g = s.get(gkey, {})
-                sym = g.get('symbol')
-                if sym and sym not in gene_info:
-                    desc = g.get('description', {}) or {}
+
+    for pair_id in pair_map:
+        for gkey in ('gA', 'gB'):
+            sym = pair_map[pair_id][gkey]
+            if sym in gene_info:
+                continue
+            # Try gene file first
+            gene_file = genes_dir / f"{sym}.json"
+            if gene_file.exists():
+                try:
+                    with open(gene_file) as f:
+                        gd = json.load(f)
+                    info = gd.get('info', {}) or {}
+                    desc = info.get('description', {}) or {}
                     dl = len((desc.get('function') or '') + (desc.get('name') or ''))
-                    nd = len(g.get('known_drugs') or [])
+                    nd = len(info.get('known_drugs') or [])
                     gene_info[sym] = {'dl': dl, 'nd': nd}
-        except Exception:
-            pass
+                    continue
+                except Exception:
+                    pass
+            # Fall back to summary.json
+            summary_path = data_dir / 'pairs' / pair_id / 'summary.json'
+            if summary_path.exists():
+                try:
+                    with open(summary_path) as f:
+                        s = json.load(f)
+                    for sk in ('gene1', 'gene2'):
+                        g = s.get(sk, {})
+                        gsym = g.get('symbol')
+                        if gsym and gsym not in gene_info:
+                            desc = g.get('description', {}) or {}
+                            dl = len((desc.get('function') or '') + (desc.get('name') or ''))
+                            nd = len(g.get('known_drugs') or [])
+                            gene_info[gsym] = {'dl': dl, 'nd': nd}
+                except Exception:
+                    pass
 
     def make_label(genes: list) -> str:
-        """Return a ≤5-token label summarising the family.
-
-        Logic:
-        1. Extract the alphabetic prefix of each gene name.
-        2. Keep prefixes that appear more than once (up to 5 total).
-        3. Fill remaining slots with uncovered gene names, prioritising genes
-           with longer UniProt descriptions + more known drugs.
-        """
         prefixes = [re.match(r'^([A-Za-z]+)', g).group(1) for g in genes
                     if re.match(r'^([A-Za-z]+)', g)]
         counts = Counter(prefixes)
@@ -338,7 +453,6 @@ def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
         parts = common[:5] + uncovered[:max(0, 5 - len(common))]
         return '/'.join(parts[:5]) if parts else genes[0]
 
-    # Build output families, sorted largest first
     families = []
     for i, genes in enumerate(sorted(family_groups, key=lambda g: -len(g))):
         gene_set = set(genes)
@@ -364,10 +478,13 @@ def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
     log(f"Created family_graph.json with {len(families)} families")
 
 
+# ============= Main =============
+
 def main():
     parser = argparse.ArgumentParser(description='Export database to static JSON files')
     parser.add_argument('pair_ids', nargs='*', help='Specific pair IDs to export')
     parser.add_argument('--clean', action='store_true', help='Remove existing exports first')
+    parser.add_argument('--skip-genes', action='store_true', help='Skip gene file export')
     args = parser.parse_args()
 
     if not DB_PATH.exists():
@@ -377,14 +494,20 @@ def main():
 
     conn = get_db()
 
-    # Clean if requested
-    if args.clean and OUTPUT_DIR.exists():
-        log(f"Cleaning {OUTPUT_DIR}...")
-        shutil.rmtree(OUTPUT_DIR)
+    if args.clean:
+        for d in [OUTPUT_DIR, GENES_DIR]:
+            if d.exists():
+                log(f"Cleaning {d}...")
+                shutil.rmtree(d)
 
-    # Create output directories
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    GENES_DIR.mkdir(parents=True, exist_ok=True)
     META_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Export per-gene files first (pair exports depend on gene data being available
+    # for family_graph; and gene export reads from DB, not from pair files)
+    if not args.skip_genes:
+        export_all_genes(conn, GENES_DIR)
 
     # Determine pairs to export
     if args.pair_ids:
@@ -392,7 +515,7 @@ def main():
     else:
         pair_ids = [r[0] for r in conn.execute("SELECT pair_id FROM pairs").fetchall()]
 
-    log(f"Exporting {len(pair_ids)} pairs...")
+    log(f"\nExporting {len(pair_ids)} pairs...")
 
     success = 0
     errors = 0
@@ -408,7 +531,7 @@ def main():
             log(f"  ERROR: {e}")
             errors += 1
 
-    # Create index files
+    # Index files
     log("\nCreating index files...")
     create_index_file(conn, BASE_DIR / "data" / "index.json")
     create_family_index(conn, BASE_DIR / "data" / "family_index.json")
@@ -419,13 +542,14 @@ def main():
 
     log(f"\n{'='*50}")
     log(f"Export complete!")
-    log(f"  Success: {success}")
-    log(f"  Errors: {errors}")
+    log(f"  Pairs: {success} ok, {errors} errors")
     log(f"  Output: {OUTPUT_DIR}")
 
-    # Calculate total size
-    total_size = sum(f.stat().st_size for f in OUTPUT_DIR.rglob('*') if f.is_file())
-    log(f"  Total size: {total_size / 1024 / 1024:.2f} MB")
+    pairs_size = sum(f.stat().st_size for f in OUTPUT_DIR.rglob('*') if f.is_file())
+    genes_size = sum(f.stat().st_size for f in GENES_DIR.rglob('*') if f.is_file())
+    log(f"  data/pairs/ size: {pairs_size / 1024 / 1024:.1f} MB")
+    log(f"  data/genes/ size: {genes_size / 1024 / 1024:.1f} MB")
+    log(f"  Total data size:  {(pairs_size + genes_size) / 1024 / 1024:.1f} MB")
 
 
 if __name__ == "__main__":

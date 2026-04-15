@@ -97,6 +97,60 @@ async function loadInlineData() {
     document.getElementById('loadingOverlay').style.display = 'none';
 }
 
+/**
+ * Merge per-gene data (from data/genes/{GENE}.json) into DATA and SUMMARY.
+ *
+ * Gene files hold data that is identical regardless of which pair the gene
+ * appears in: PDBe structures, AM matrix rects, bfactors, pLDDT, domains,
+ * sequences, and gene metadata.  Pair files hold only truly pair-specific
+ * data: alignment, alignment rects, domPairs, conservation, SL, etc.
+ *
+ * Falls back gracefully to any per-gene fields that may still be present in
+ * an old-format report.json (backward compatibility with pre-refactor exports).
+ */
+function mergeGeneData(geneA, geneB) {
+    // Per-residue annotation arrays
+    DATA.bfactorsA = geneA?.bfactors ?? DATA.bfactorsA ?? [];
+    DATA.bfactorsB = geneB?.bfactors ?? DATA.bfactorsB ?? [];
+    DATA.plddtA    = geneA?.plddt    ?? DATA.plddtA    ?? [];
+    DATA.plddtB    = geneB?.plddt    ?? DATA.plddtB    ?? [];
+
+    // Domain annotations
+    DATA.domainsA = geneA?.domains ?? DATA.domainsA ?? [];
+    DATA.domainsB = geneB?.domains ?? DATA.domainsB ?? [];
+
+    // AM saturation matrix rects (per-gene, not pair-specific)
+    DATA.amMatrixA_rectsByMode = geneA?.amMatrixRects ?? DATA.amMatrixA_rectsByMode ?? {};
+    DATA.amMatrixB_rectsByMode = geneB?.amMatrixRects ?? DATA.amMatrixB_rectsByMode ?? {};
+
+    // Canonical sequences
+    DATA.seq1 = geneA?.seq ?? DATA.seq1 ?? '';
+    DATA.seq2 = geneB?.seq ?? DATA.seq2 ?? '';
+
+    // PDBe experimental structures — merge both genes into one list
+    const pdbeA = geneA?.pdbeComplexes ?? [];
+    const pdbeB = geneB?.pdbeComplexes ?? [];
+    DATA.pdbeComplexes = pdbeA.length || pdbeB.length
+        ? [...pdbeA, ...pdbeB]
+        : (DATA.pdbeComplexes ?? []);
+
+    // Derive amModes from matrix rects keys (was a separate field, now implicit)
+    if (!DATA.amModes) {
+        const modes = Object.keys(DATA.amMatrixA_rectsByMode || DATA.amMatrixB_rectsByMode || {});
+        DATA.amModes = modes.length ? modes : ['raw'];
+    }
+
+    // Individual-protein PDB structures for separate Molstar viewers.
+    // Gene files store the canonical (unaligned) AF structure; individual
+    // viewers display each protein independently so orientation doesn't matter.
+    if (geneA?.af_pdb64) window.PDB64_A = geneA.af_pdb64;
+    if (geneB?.af_pdb64) window.PDB64_B = geneB.af_pdb64;
+
+    // Gene metadata into SUMMARY
+    if (geneA?.info && Object.keys(geneA.info).length) SUMMARY.gene1 = geneA.info;
+    if (geneB?.info && Object.keys(geneB.info).length) SUMMARY.gene2 = geneB.info;
+}
+
 // Main initialization - loads data then runs notebook code
 async function loadDataAndInit() {
     // Support inline mode (self-contained HTML reports)
@@ -106,9 +160,11 @@ async function loadDataAndInit() {
         document.getElementById('loadingOverlay').textContent = 'No pair specified';
         return;
     }
-    
+
     try {
-        // Static file fetches (GitHub Pages / CDN compatible)
+        // Load pair files and gene files in parallel.
+        // Gene files (data/genes/{GENE}.json) hold per-gene data that is shared
+        // across all pairs containing that gene, reducing duplication at scale.
         const [dataResp, summaryResp, variantsResp] = await Promise.all([
             fetch(`${DATA_BASE}/pairs/${PAIR_ID}/report.json`),
             fetch(`${DATA_BASE}/pairs/${PAIR_ID}/summary.json`),
@@ -120,43 +176,45 @@ async function loadDataAndInit() {
         DATA = await dataResp.json();
         SUMMARY = summaryResp.ok ? await summaryResp.json() : { gene1: {}, gene2: {}, pair: {}, conservation: {}, boxplots: {} };
 
-        // Load PDB variants from combined pdb.json file
+        // Load combined aligned PDB structure
+        window.PDB64_AM_BY_MODE = {};
+        window.PDB64_PLDDT = "";
+        window.PDB64_ALIGNED = null;
+        window.PDB64_DOMAINS = null;
         if (variantsResp.ok) {
             const variants = await variantsResp.json();
             PDB64_FULL = variants.pdb64_full || "";
-            window.PDB64_A = variants.pdb64_a || PDB64_FULL;
-            window.PDB64_B = variants.pdb64_b || PDB64_FULL;
-
-            // Store AM-colored PDB variants by mode
-            window.PDB64_AM_BY_MODE = {};
+            // pdb64_a / pdb64_b now come from gene files (see mergeGeneData)
+            window.PDB64_A = variants.pdb64_a || PDB64_FULL; // legacy fallback
+            window.PDB64_B = variants.pdb64_b || PDB64_FULL; // legacy fallback
             for (const key in variants) {
-                if (key.startsWith('pdb64_am_')) {
-                    const mode = key.replace('pdb64_am_', '');
-                    window.PDB64_AM_BY_MODE[mode] = variants[key];
-                }
+                if (key.startsWith('pdb64_am_'))
+                    window.PDB64_AM_BY_MODE[key.replace('pdb64_am_', '')] = variants[key];
             }
-
-            // Store other color mode variants
             window.PDB64_PLDDT = variants.pdb64_plddt || PDB64_FULL;
             window.PDB64_ALIGNED = variants.pdb64_aligned || null;
             window.PDB64_DOMAINS = variants.pdb64_domains || null;
-
-            console.log('Loaded PDB variants:', Object.keys(variants));
         } else {
             window.PDB64_A = PDB64_FULL;
             window.PDB64_B = PDB64_FULL;
-            window.PDB64_AM_BY_MODE = {};
-            window.PDB64_PLDDT = PDB64_FULL;
-            window.PDB64_ALIGNED = null;
-            window.PDB64_DOMAINS = null;
         }
-        
-        // Initialize DATA-dependent variables
-        AM_MODES = DATA.amModes || ['raw'];
-        PDBe_COMPLEXES = DATA.pdbeComplexes || [];
+
+        // Fetch per-gene files in parallel (non-fatal — falls back to any
+        // per-gene data that may still be present in legacy report.json)
         UNIPROT_A = DATA.a1 || '';
         UNIPROT_B = DATA.a2 || '';
-        
+        const [geneAResp, geneBResp] = await Promise.all([
+            fetch(`${DATA_BASE}/genes/${DATA.g1}.json`).catch(() => null),
+            fetch(`${DATA_BASE}/genes/${DATA.g2}.json`).catch(() => null),
+        ]);
+        const geneA = geneAResp?.ok ? await geneAResp.json() : null;
+        const geneB = geneBResp?.ok ? await geneBResp.json() : null;
+        mergeGeneData(geneA, geneB);
+
+        // Initialise globals that depend on merged DATA
+        AM_MODES = DATA.amModes || ['raw'];
+        PDBe_COMPLEXES = DATA.pdbeComplexes || [];
+
         // Update title
         document.title = `${DATA.g1} vs ${DATA.g2}`;
         document.getElementById('titleMain').textContent = `${DATA.g1} ↔ ${DATA.g2}`;
@@ -177,7 +235,7 @@ async function loadDataAndInit() {
 
         // Now run the notebook initialization code (main is defined at the end of the file)
         await main();
-        
+
         document.getElementById('loadingOverlay').style.display = 'none';
     } catch(e) {
         console.error(e);

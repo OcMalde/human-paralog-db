@@ -28,10 +28,12 @@
        c) gene in input/all_genes_ids.csv with Ensembl ID?
 
 5. /Users/olivierdennler/miniconda/bin/python3 scripts/export_static.py
-   — Exports DB → data/pairs/GENE1_GENE2/{report,summary,pdb,plma}.json
+   — Exports per-gene files: data/genes/{GENE}.json (PDB, AM, domains, drugs, ...)
+   — Exports per-pair files: data/pairs/GENE1_GENE2/{report,summary,pdb,plma}.json
+     (pair files no longer contain per-gene data — browser loads both in parallel)
    — Updates data/index.json, data/family_index.json, data/search_index.json
 
-6. git add data/pairs/ data/index.json data/family_index.json data/search_index.json input/pairs.csv
+6. git add data/pairs/ data/genes/ data/index.json data/family_index.json data/search_index.json input/pairs.csv
    git commit && git push
 ```
 
@@ -41,6 +43,8 @@
 - **conda Python**: `/Users/olivierdennler/miniconda/bin/python3` — required for pyarrow/drug data
 - **Repo root**: `/Users/olivierdennler/Documents/data/human-paralog-db` — all scripts must run from here
 - **pairs.db**: SQLite at `data/pairs.db` — source of truth; static JSONs are derived from it
+- **data/genes/**: Per-gene JSON files — shared across all pairs, avoid duplication at scale
+- **data/pairs/**: Per-pair JSON files — alignment, rects, domPairs, conservation, SL; NO per-gene data
 - **PLMA agraph caching**: `data/cache/plma/family_NNN/` — if paloma-D segfaults, check if agraph is already in the Docker container (`docker exec CONTAINER ls /family_*`) and copy it out manually with `docker cp`
 
 ### Common mistakes to avoid
@@ -51,4 +55,5 @@
 | Wrong working directory | "No such file" errors | `cd human-paralog-db` first |
 | Skip run_plma.py | "PLMA data not available" in UI | Run step 3, check Docker is running |
 | export_static.py overwrites file-level fixes | Drug data reverts to 0 | Always fix in DB via generate_report_data.py, not files |
+| Adding pairs without re-exporting gene files | Missing gene data in browser | export_static.py always re-exports gene files; no --skip-genes needed for normal runs |
 | paloma-D segfault | "ERROR: paloma-D did not produce .agraph" | Check if agraph is in container; copy out with docker cp |

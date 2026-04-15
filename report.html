@@ -502,6 +502,17 @@
     .kf-item{min-width:55px}
   }
 
+  /* Top-nav search dropdown */
+  .top-nav .search-box{position:relative}
+  .top-nav .search-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18);z-index:200;overflow:hidden}
+  .top-nav .search-dropdown .dd-item{padding:7px 11px;cursor:pointer;font-size:12px;color:#333;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+  .top-nav .search-dropdown .dd-item:last-child{border-bottom:none}
+  .top-nav .search-dropdown .dd-item:hover,.top-nav .search-dropdown .dd-item.active{background:#e8f5e9}
+  .top-nav .search-dropdown .dd-type{font-size:10px;color:#999;text-transform:uppercase;white-space:nowrap}
+  .top-nav .search-dropdown .dd-empty{padding:7px 11px;font-size:12px;color:#999;font-style:italic}
+  .top-nav-home{color:rgba(255,255,255,0.85);text-decoration:none;font-size:13px;white-space:nowrap;display:flex;align-items:center;gap:5px}
+  .top-nav-home:hover{color:#fff}
+
   /* Hint icons */
   .hint-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;background:#78909c;color:#fff;border-radius:50%;font-size:9px;font-weight:bold;cursor:help;margin-left:2px;vertical-align:middle;flex-shrink:0}
   .hint-icon:hover{background:#546e7a}
@@ -524,6 +535,15 @@
 </head>
 <body>
 <div class="loading-overlay" id="loadingOverlay">Loading pair data...</div>
+
+<nav class="top-nav">
+  <a class="top-nav-home" href="index.html" title="Back to database home">&#8592; Human Paralog DB</a>
+  <div class="search-box">
+    <input id="navSearchInput" type="text" placeholder="Search gene or pair…" autocomplete="off"/>
+    <button id="navSearchBtn">Go</button>
+    <div class="search-dropdown" id="navSearchDropdown"></div>
+  </div>
+</nav>
 
 <header>
   <div class="header-titles">
@@ -1178,7 +1198,7 @@ window.nightingaleReady = true;
 </script>
 
 <!-- Main application script -->
-<script src="static/js/app.js?v=21"></script>
+<script src="static/js/app.js?v=22"></script>
 
 <!-- Sidebar navigation scroll tracking -->
 <script>
@@ -1352,6 +1372,91 @@ window.nightingaleReady = true;
 
   // Initial update
   setTimeout(updateActiveLink, 500);
+})();
+</script>
+
+<!-- Top-nav search: navigate to another pair/gene report -->
+<script>
+(function() {
+  const DATA_BASE_NAV = (typeof DATA_BASE !== 'undefined') ? DATA_BASE : './data';
+  const input = document.getElementById('navSearchInput');
+  const btn = document.getElementById('navSearchBtn');
+  const dropdown = document.getElementById('navSearchDropdown');
+  if (!input || !dropdown) return;
+
+  let navPairs = null;
+  let navEntries = [];
+  let activeIdx = -1;
+
+  async function loadNavIndex() {
+    if (navPairs) return;
+    try {
+      const r = await fetch(`${DATA_BASE_NAV}/index.json`);
+      if (!r.ok) return;
+      navPairs = await r.json();
+      const genes = new Set();
+      navPairs.forEach(p => { genes.add(p.geneA); genes.add(p.geneB); });
+      genes.forEach(g => navEntries.push({ text: g, type: 'gene', id: g }));
+      navPairs.forEach(p => navEntries.push({ text: p.id, type: 'pair', id: p.id }));
+    } catch(e) {}
+  }
+
+  function goToPair(id) {
+    const q = id.trim().toUpperCase();
+    if (!navPairs) { window.location.href = `report.html?pair=${encodeURIComponent(q)}`; return; }
+    // Direct pair match
+    const pair = navPairs.find(p => p.id.toUpperCase() === q || p.id.toUpperCase().replace('_','') === q.replace('_',''));
+    if (pair) { window.location.href = `report.html?pair=${encodeURIComponent(pair.id)}`; return; }
+    // Gene match → highest fident pair
+    const byGene = navPairs.filter(p => p.geneA === q || p.geneB === q).sort((a, b) => (b.fident||0) - (a.fident||0));
+    if (byGene.length) { window.location.href = `report.html?pair=${encodeURIComponent(byGene[0].id)}&gene=${encodeURIComponent(q)}`; return; }
+    // Fallback
+    window.location.href = `report.html?pair=${encodeURIComponent(q)}`;
+  }
+
+  function updateDropdown() {
+    const q = input.value.trim().toUpperCase();
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    const scored = [];
+    for (const e of navEntries) {
+      const t = e.text.toUpperCase();
+      if (t === q) scored.push({ ...e, score: 100 });
+      else if (t.startsWith(q)) scored.push({ ...e, score: 50 });
+      else if (t.includes(q)) scored.push({ ...e, score: 10 });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const results = scored.slice(0, 5);
+    dropdown.innerHTML = '';
+    activeIdx = -1;
+    if (!results.length) {
+      dropdown.innerHTML = '<div class="dd-empty">No matches</div>';
+    } else {
+      results.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'dd-item';
+        const label = r.type === 'gene' ? 'gene' : 'pair';
+        div.innerHTML = `<strong>${r.text}</strong><span class="dd-type">${label}</span>`;
+        div.addEventListener('mousedown', e => { e.preventDefault(); input.value = r.id; dropdown.style.display = 'none'; goToPair(r.id); });
+        dropdown.appendChild(div);
+      });
+    }
+    dropdown.style.display = 'block';
+  }
+
+  input.addEventListener('focus', () => { loadNavIndex().then(updateDropdown); });
+  input.addEventListener('input', () => { loadNavIndex().then(updateDropdown); });
+  input.addEventListener('blur', () => { setTimeout(() => { dropdown.style.display = 'none'; }, 150); });
+  input.addEventListener('keydown', e => {
+    const items = dropdown.querySelectorAll('.dd-item');
+    if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); items.forEach((it, i) => it.classList.toggle('active', i === activeIdx)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); items.forEach((it, i) => it.classList.toggle('active', i === activeIdx)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && items[activeIdx]) { const id = items[activeIdx].querySelector('strong').textContent; goToPair(id); }
+      else goToPair(input.value);
+    }
+  });
+  btn.addEventListener('click', () => goToPair(input.value));
 })();
 </script>
 </body>
