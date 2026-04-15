@@ -3323,7 +3323,7 @@ function initSlFunctionalSection() {
       const val = info.value;
       const pct = info.percentile;
       const hasData = val !== null && val !== undefined;
-      pctEl.textContent = hasData && pct !== null && pct !== undefined ? `${pct.toFixed(0)}th pct` : '';
+      pctEl.textContent = hasData && pct !== null && pct !== undefined ? `Top ${pct.toFixed(1)}%` : '';
       pctEl.style.display = hasData ? '' : 'none';
     }
   };
