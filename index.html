@@ -44,6 +44,32 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
 .example-link:hover .desc{color:rgba(255,255,255,0.8)}
 .footer-note{text-align:center;margin-top:40px;padding:20px;color:#888;font-size:13px}
 .footer-note a{color:#00897b}
+
+/* Family bubble chart */
+.family-section{margin-top:32px;background:#fff;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.family-section h3{margin:0 0 4px;color:#37474f;font-size:18px}
+.family-section-desc{margin:0 0 20px;color:#888;font-size:13px}
+#familyBubbleChart svg{display:block;margin:0 auto}
+
+/* Family detail modal */
+.family-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center}
+.family-modal-box{background:#fff;border-radius:14px;width:700px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.25);overflow:hidden}
+.family-modal-header{padding:16px 20px;border-bottom:1px solid #e8e8e8;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.family-modal-title{font-size:17px;font-weight:700;color:#37474f}
+.family-modal-sub{font-size:12px;color:#888;margin-left:8px}
+.family-modal-close{background:none;border:none;font-size:18px;color:#888;cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1}
+.family-modal-close:hover{background:#f5f5f5;color:#444}
+.family-modal-body{display:flex;flex:1;overflow:hidden;min-height:300px}
+#familyNetwork{flex:1;overflow:hidden}
+#familyNetwork svg{display:block}
+.gene-pairs-panel{width:210px;border-left:1px solid #e8e8e8;padding:14px 12px;overflow-y:auto;flex-shrink:0}
+.gene-pairs-title{font-size:11px;font-weight:700;color:#546e7a;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.gene-pair-row{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f5f5f5;font-size:12px}
+.gene-pair-row:last-child{border-bottom:none}
+.gene-pair-name{color:#37474f;font-weight:500;flex:1}
+.gene-pair-fi{color:#888;font-size:11px;white-space:nowrap}
+.gene-pair-link{color:#00897b;text-decoration:none;font-size:13px;flex-shrink:0}
+.gene-pair-link:hover{color:#00695c}
 .search-box{position:relative}
 .search-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;overflow:hidden}
 .search-dropdown .dd-item{padding:8px 12px;cursor:pointer;font-size:13px;color:#333;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
@@ -105,51 +131,234 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,san
     </div>
   </div>
 
+  <div class="family-section" id="familySection" style="display:none">
+    <h3>Gene Families</h3>
+    <p class="family-section-desc">Each bubble is a gene family — size reflects the number of members. Click a bubble to explore the family network.</p>
+    <div id="familyBubbleChart"></div>
+  </div>
+
   <div class="footer-note">
     This project is in development.
     <a href="https://github.com/OcMalde/human-paralog-db" target="_blank">View on GitHub</a>
   </div>
 </div>
 
+<!-- Family detail modal -->
+<div id="familyModal" class="family-modal" style="display:none" onclick="if(event.target===this)closeFamilyModal()">
+  <div class="family-modal-box">
+    <div class="family-modal-header">
+      <div>
+        <span class="family-modal-title" id="modalTitle"></span>
+        <span class="family-modal-sub" id="modalSub"></span>
+      </div>
+      <button class="family-modal-close" onclick="closeFamilyModal()">✕</button>
+    </div>
+    <div class="family-modal-body">
+      <div id="familyNetwork"></div>
+      <div id="genePairsPanel" class="gene-pairs-panel" style="display:none">
+        <div class="gene-pairs-title" id="genePairsTitle"></div>
+        <div id="genePairsList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Report iframe (hidden initially) -->
 <iframe id="reportFrame" src="about:blank"></iframe>
 
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script>
 let pairs = [];
 let families = {};
 let familyData = {};
 let current = null;
+let familyGraph = null;
 
 async function init() {
   try {
-    // Load pairs data
     const pairsResp = await fetch('./data/index.json');
     pairs = await pairsResp.json();
-
-    // Load family data for statistics
-    try {
-      const familyResp = await fetch('./data/full_families.json');
-      const fullFamilies = await familyResp.json();
-      families = fullFamilies.families || {};
-      familyData = fullFamilies.family_data || {};
-    } catch(e) {
-      console.log('Family data not available');
-    }
 
     renderDatalist();
     renderStats();
     renderExamples();
+    loadFamilyGraph(); // async, fills in section when ready
 
-    // Check if we should show a specific pair
     const hash = window.location.hash.slice(1);
-    if (hash) {
-      loadPair(hash);
-    }
-    // Otherwise show homepage (default)
-
+    if (hash) loadPair(hash);
   } catch(e) {
     console.error('Init error:', e);
   }
+}
+
+// ── Family bubble chart ───────────────────────────────────────────────────────
+
+async function loadFamilyGraph() {
+  try {
+    const resp = await fetch('./data/family_graph.json');
+    familyGraph = await resp.json();
+    if (!familyGraph.families || familyGraph.families.length === 0) return;
+    document.getElementById('statFamilies').textContent = familyGraph.families.length;
+    renderFamilyBubbles(familyGraph.families);
+    document.getElementById('familySection').style.display = '';
+  } catch(e) {
+    console.log('Family graph not available:', e);
+  }
+}
+
+function renderFamilyBubbles(families) {
+  const container = document.getElementById('familyBubbleChart');
+  const W = Math.min(container.clientWidth || 820, 820);
+  const H = Math.max(260, Math.min(W * 0.52, 420));
+
+  // Pack layout — use sqrt(size) so large families don't dwarf small ones
+  const root = d3.hierarchy({ children: families }).sum(d => d.size ? Math.sqrt(d.size) + 1 : 0);
+  d3.pack().size([W, H]).padding(6)(root);
+
+  const maxSize = Math.max(...families.map(f => f.size));
+  const colorScale = d3.scaleSequential()
+    .domain([1, Math.max(maxSize, 2)])
+    .interpolator(d3.interpolate('#90cac4', '#00695c'));
+
+  const svg = d3.create('svg')
+    .attr('width', W).attr('height', H)
+    .attr('viewBox', `0 0 ${W} ${H}`)
+    .style('font-family', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+
+  const node = svg.selectAll('g')
+    .data(root.leaves())
+    .join('g')
+    .attr('transform', d => `translate(${d.x},${d.y})`)
+    .style('cursor', 'pointer')
+    .on('click', (_, d) => openFamilyModal(d.data));
+
+  node.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => colorScale(d.data.size))
+    .attr('stroke', d => d3.color(colorScale(d.data.size)).darker(0.5))
+    .attr('stroke-width', 1.2);
+
+  node.on('mouseenter', function(_, d) {
+    d3.select(this).select('circle').attr('fill', d3.color(colorScale(d.data.size)).brighter(0.35));
+  }).on('mouseleave', function(_, d) {
+    d3.select(this).select('circle').attr('fill', colorScale(d.data.size));
+  });
+
+  // Family label — visible only when there's enough room
+  node.append('text')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+    .attr('fill', d => d.data.size >= 4 ? '#fff' : '#37474f')
+    .attr('font-size', d => Math.min(Math.max(d.r * 0.38, 8), 13))
+    .attr('font-weight', '600').attr('pointer-events', 'none')
+    .text(d => d.r > 16 ? d.data.label : '');
+
+  // Gene count sub-label for larger bubbles
+  node.append('text')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+    .attr('y', d => Math.min(Math.max(d.r * 0.38, 8), 13) + 2)
+    .attr('fill', d => d.data.size >= 4 ? 'rgba(255,255,255,.7)' : '#78909c')
+    .attr('font-size', d => Math.min(d.r * 0.28, 10))
+    .attr('pointer-events', 'none')
+    .text(d => d.r > 28 ? `${d.data.size} genes` : '');
+
+  node.append('title').text(d => `${d.data.label}\n${d.data.size} genes · ${d.data.nPairs} pairs\nClick to explore`);
+
+  container.innerHTML = '';
+  container.appendChild(svg.node());
+}
+
+function openFamilyModal(family) {
+  document.getElementById('modalTitle').textContent = family.label + ' family';
+  document.getElementById('modalSub').textContent = `${family.size} gene${family.size > 1 ? 's' : ''} · ${family.nPairs} pair${family.nPairs !== 1 ? 's' : ''}`;
+  document.getElementById('genePairsPanel').style.display = 'none';
+  document.getElementById('familyModal').style.display = 'flex';
+  setTimeout(() => renderFamilyNetwork(family), 10); // let layout settle
+}
+
+function closeFamilyModal() {
+  document.getElementById('familyModal').style.display = 'none';
+}
+
+function renderFamilyNetwork(family) {
+  const container = document.getElementById('familyNetwork');
+  const W = container.clientWidth || 460;
+  const H = 340;
+
+  // Special case: family of 2 — just show a direct link
+  if (family.pairs.length === 1 && family.size <= 2) {
+    const p = family.pairs[0];
+    const fi = p.fi != null ? `${(p.fi * 100).toFixed(0)}% sequence identity` : '';
+    container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:${H}px;gap:12px;color:#37474f">
+      <div style="font-size:14px;font-weight:600">${p.gA} ↔ ${p.gB}</div>
+      <div style="font-size:12px;color:#888">${fi}</div>
+      <a href="report.html?pair=${p.id}" target="_blank" style="background:#00897b;color:#fff;padding:8px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">Open pair report ↗</a>
+    </div>`;
+    return;
+  }
+
+  const nodes = family.genes.map(g => ({ id: g.s }));
+  const maxFi = Math.max(...family.pairs.map(p => p.fi || 0), 0.01);
+  const links = family.pairs.map(p => ({ source: p.gA, target: p.gB, fi: p.fi || 0 }));
+
+  const sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(72))
+    .force('charge', d3.forceManyBody().strength(-200))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(26));
+
+  const svg = d3.create('svg').attr('width', W).attr('height', H);
+
+  const link = svg.append('g').selectAll('line').data(links).join('line')
+    .attr('stroke', '#b0bec5')
+    .attr('stroke-width', d => 1 + (d.fi / maxFi) * 3)
+    .attr('stroke-opacity', 0.75);
+
+  const nodeG = svg.append('g').selectAll('g').data(nodes).join('g')
+    .style('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (ev, d) => { if (!ev.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end',   (ev, d) => { if (!ev.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    )
+    .on('click', (_, d) => showGenePairs(d.id, family));
+
+  nodeG.append('circle').attr('r', 22)
+    .attr('fill', '#e8f5e9').attr('stroke', '#546e7a').attr('stroke-width', 1.5);
+
+  nodeG.append('text')
+    .attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+    .attr('font-size', d => d.id.length > 6 ? 9 : 10)
+    .attr('font-weight', '600').attr('fill', '#37474f').attr('pointer-events', 'none')
+    .text(d => d.id.length > 8 ? d.id.slice(0, 7) + '…' : d.id);
+
+  nodeG.append('title').text(d => `${d.id} — click for pairs`);
+
+  sim.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeG.attr('transform', d => `translate(${Math.max(24, Math.min(W - 24, d.x))},${Math.max(24, Math.min(H - 24, d.y))})`);
+  });
+
+  container.innerHTML = '';
+  container.appendChild(svg.node());
+}
+
+function showGenePairs(geneId, family) {
+  const genePairs = family.pairs
+    .filter(p => p.gA === geneId || p.gB === geneId)
+    .sort((a, b) => (b.fi || 0) - (a.fi || 0));
+
+  document.getElementById('genePairsTitle').textContent = geneId + ' pairs';
+  document.getElementById('genePairsList').innerHTML = genePairs.map(p => {
+    const partner = p.gA === geneId ? p.gB : p.gA;
+    const fi = p.fi != null ? `${(p.fi * 100).toFixed(0)}%` : '–';
+    return `<div class="gene-pair-row">
+      <span class="gene-pair-name">${partner}</span>
+      <span class="gene-pair-fi">${fi}</span>
+      <a class="gene-pair-link" href="report.html?pair=${p.id}" target="_blank" title="Open ${p.id}">↗</a>
+    </div>`;
+  }).join('');
+  document.getElementById('genePairsPanel').style.display = 'block';
 }
 
 function renderStats() {
@@ -160,12 +369,9 @@ function renderStats() {
     genes.add(p.geneB);
   });
 
-  // Count families
-  const familyIds = new Set(Object.values(families));
-
   document.getElementById('statPairs').textContent = pairs.length;
   document.getElementById('statGenes').textContent = genes.size;
-  document.getElementById('statFamilies').textContent = familyIds.size || '-';
+  document.getElementById('statFamilies').textContent = '-'; // filled by loadFamilyGraph
 }
 
 function renderExamples() {

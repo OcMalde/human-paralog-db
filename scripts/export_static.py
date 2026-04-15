@@ -29,7 +29,8 @@ import json
 import shutil
 import sqlite3
 import sys
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -250,6 +251,119 @@ def create_search_index(conn: sqlite3.Connection, output_path: Path):
     log(f"Created search_index.json with {len(search_data)} entries")
 
 
+def create_family_graph(conn: sqlite3.Connection, data_dir: Path):
+    """Create family_graph.json for the homepage bubble chart.
+
+    Groups genes into families (connected components of pairs), computes a
+    human-readable label for each family, and serialises genes + pairs so the
+    frontend can render both the bubble chart and the per-family force network.
+    Regenerated automatically on every export run.
+    """
+
+    rows = conn.execute("""
+        SELECT p.pair_id, p.gene_a, p.gene_b, a.fident
+        FROM pairs p
+        LEFT JOIN alignments a ON p.pair_id = a.pair_id
+    """).fetchall()
+
+    # Build adjacency and pair lookup
+    adjacency = defaultdict(set)
+    pair_map = {}
+    for r in rows:
+        adjacency[r['gene_a']].add(r['gene_b'])
+        adjacency[r['gene_b']].add(r['gene_a'])
+        pair_map[r['pair_id']] = {
+            'id': r['pair_id'],
+            'gA': r['gene_a'],
+            'gB': r['gene_b'],
+            'fi': round(float(r['fident']), 4) if r['fident'] else None,
+        }
+
+    # Connected components → families
+    visited = set()
+    family_groups = []
+    for gene in sorted(adjacency.keys()):
+        if gene in visited:
+            continue
+        group = set()
+        queue = [gene]
+        while queue:
+            g = queue.pop()
+            if g in visited:
+                continue
+            visited.add(g)
+            group.add(g)
+            queue.extend(adjacency.get(g, set()) - visited)
+        family_groups.append(sorted(group))
+
+    # Load per-gene info from summary files to prioritise label candidates
+    gene_info: dict = {}
+    for pair_id, pd in pair_map.items():
+        summary_path = data_dir / 'pairs' / pair_id / 'summary.json'
+        if not summary_path.exists():
+            continue
+        try:
+            with open(summary_path) as f:
+                s = json.load(f)
+            for gkey in ('gene1', 'gene2'):
+                g = s.get(gkey, {})
+                sym = g.get('symbol')
+                if sym and sym not in gene_info:
+                    desc = g.get('description', {}) or {}
+                    dl = len((desc.get('function') or '') + (desc.get('name') or ''))
+                    nd = len(g.get('known_drugs') or [])
+                    gene_info[sym] = {'dl': dl, 'nd': nd}
+        except Exception:
+            pass
+
+    def make_label(genes: list) -> str:
+        """Return a ≤5-token label summarising the family.
+
+        Logic:
+        1. Extract the alphabetic prefix of each gene name.
+        2. Keep prefixes that appear more than once (up to 5 total).
+        3. Fill remaining slots with uncovered gene names, prioritising genes
+           with longer UniProt descriptions + more known drugs.
+        """
+        prefixes = [re.match(r'^([A-Za-z]+)', g).group(1) for g in genes
+                    if re.match(r'^([A-Za-z]+)', g)]
+        counts = Counter(prefixes)
+        common = [p for p, c in counts.most_common() if c > 1]
+        covered = {g for g in genes if any(g.startswith(p) for p in common)}
+        uncovered = sorted(
+            [g for g in genes if g not in covered],
+            key=lambda g: (-(gene_info.get(g, {}).get('dl', 0)),
+                           -(gene_info.get(g, {}).get('nd', 0)))
+        )
+        parts = common[:5] + uncovered[:max(0, 5 - len(common))]
+        return '/'.join(parts[:5]) if parts else genes[0]
+
+    # Build output families, sorted largest first
+    families = []
+    for i, genes in enumerate(sorted(family_groups, key=lambda g: -len(g))):
+        gene_set = set(genes)
+        fam_pairs = [pd for pd in pair_map.values()
+                     if pd['gA'] in gene_set and pd['gB'] in gene_set]
+        fam_pairs.sort(key=lambda p: -(p['fi'] or 0))
+
+        families.append({
+            'id': i,
+            'label': make_label(genes),
+            'size': len(genes),
+            'nPairs': len(fam_pairs),
+            'genes': [{'s': g,
+                       'dl': gene_info.get(g, {}).get('dl', 0),
+                       'nd': gene_info.get(g, {}).get('nd', 0)}
+                      for g in genes],
+            'pairs': fam_pairs,
+        })
+
+    out_path = data_dir / 'family_graph.json'
+    with open(out_path, 'w') as f:
+        json.dump({'families': families}, f, separators=(',', ':'))
+    log(f"Created family_graph.json with {len(families)} families")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Export database to static JSON files')
     parser.add_argument('pair_ids', nargs='*', help='Specific pair IDs to export')
@@ -299,6 +413,7 @@ def main():
     create_index_file(conn, BASE_DIR / "data" / "index.json")
     create_family_index(conn, BASE_DIR / "data" / "family_index.json")
     create_search_index(conn, BASE_DIR / "data" / "search_index.json")
+    create_family_graph(conn, BASE_DIR / "data")
 
     conn.close()
 
