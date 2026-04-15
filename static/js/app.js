@@ -3320,8 +3320,11 @@ function initSlFunctionalSection() {
       }
     }
     if (pctEl) {
+      const val = info.value;
       const pct = info.percentile;
-      pctEl.textContent = pct !== null && pct !== undefined ? `${pct.toFixed(0)}th percentile` : '–';
+      const hasData = val !== null && val !== undefined;
+      pctEl.textContent = hasData && pct !== null && pct !== undefined ? `${pct.toFixed(0)}th pct` : '';
+      pctEl.style.display = hasData ? '' : 'none';
     }
   };
 
