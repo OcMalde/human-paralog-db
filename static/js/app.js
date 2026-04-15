@@ -366,6 +366,17 @@ async function loadFamilyData() {
     const pairsWithReports = allPairIds.size;
     console.log(`Family: ${familyGenes.size} genes total, ${pairsWithReports} pairs with reports`);
 
+    // If the comparable family (genes with computable metrics in dataset) is smaller
+    // than the total Ensembl family, annotate the family size display elements
+    const totalFamilySize = SUMMARY?.pair?.family_size;
+    if (totalFamilySize && familyGenes.size < totalFamilySize) {
+      const note = `<br><em style="font-size:10px;color:#aaa;font-style:italic;font-weight:normal;">${familyGenes.size} with comparable metrics</em>`;
+      const sumEl = document.getElementById('sum-family-size');
+      if (sumEl) sumEl.innerHTML = totalFamilySize + note;
+      const kfEl = document.getElementById('kfFamilySize');
+      if (kfEl) kfEl.innerHTML = totalFamilySize + ' members' + note;
+    }
+
     // 2-gene families: hide both family sections, show a simple note
     if (familyGenes.size <= 2) {
       // familyNav stays hidden (display:none by default — do NOT show it)
