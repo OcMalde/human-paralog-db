@@ -2941,7 +2941,9 @@ function drawPlmaAlignment() {
 
   const catColors = {
     specific_a:         '#EF5350',
+    uncovered_a:        '#FFCDD2',
     specific_b:         '#AB47BC',
+    uncovered_b:        '#E1BEE7',
     pair_exclusive:     '#26A69A',
     a_with_family:      '#FF7043',
     b_with_family:      '#7E57C2',
@@ -2950,7 +2952,9 @@ function drawPlmaAlignment() {
   };
   const catBorders = {
     specific_a:         '#C62828',
+    uncovered_a:        '#EF9A9A',
     specific_b:         '#6A1B9A',
+    uncovered_b:        '#CE93D8',
     pair_exclusive:     '#00796B',
     a_with_family:      '#BF360C',
     b_with_family:      '#4527A0',
@@ -2961,7 +2965,9 @@ function drawPlmaAlignment() {
     pair_exclusive:     'Both paralogs only',
     shared_with_family: 'Both + other family',
     specific_a:         `${geneA} only`,
+    uncovered_a:        `${geneA} only \u2014 human-specific`,
     specific_b:         `${geneB} only`,
+    uncovered_b:        `${geneB} only \u2014 human-specific`,
     a_with_family:      `${geneA} + family (not ${geneB})`,
     b_with_family:      `${geneB} + family (not ${geneA})`,
     family_only:        'Other family only',
@@ -3005,15 +3011,28 @@ function drawPlmaAlignment() {
 
     // Gap connectors (between merged groups only)
     const cy = yPos + th / 2;
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = row.isPair ? '#c0b69e' : '#d5d5d5';
-    ctx.lineWidth = row.isPair ? 1.2 : 0.8;
+    const uncovColor = row.isPairA ? '#FFCDD2' : row.isPairB ? '#E1BEE7' : null;
+    ctx.setLineDash(uncovColor ? [] : [3, 3]);
+    ctx.strokeStyle = uncovColor || (row.isPair ? '#c0b69e' : '#d5d5d5');
+    ctx.lineWidth = row.isPair ? 1.5 : 0.8;
+    // Leading connector (before first block) for pair rows
+    if (uncovColor && myGroupIndices.length > 0) {
+      const x2 = groupColX[myGroupIndices[0]];
+      if (x2 > labelWidth + 2) { ctx.beginPath(); ctx.moveTo(labelWidth, cy); ctx.lineTo(x2, cy); ctx.stroke(); }
+    }
     for (let k = 0; k < myGroupIndices.length - 1; k++) {
       const gi1 = myGroupIndices[k];
       const gi2 = myGroupIndices[k + 1];
       const x1 = groupColX[gi1] + groupColW[gi1];
       const x2 = groupColX[gi2];
       if (x2 > x1 + 1) { ctx.beginPath(); ctx.moveTo(x1, cy); ctx.lineTo(x2, cy); ctx.stroke(); }
+    }
+    // Trailing connector (after last block) for pair rows
+    if (uncovColor && myGroupIndices.length > 0) {
+      const lastGi = myGroupIndices[myGroupIndices.length - 1];
+      const x1 = groupColX[lastGi] + groupColW[lastGi];
+      const xEnd = displayWidth - padRight;
+      if (xEnd > x1 + 2) { ctx.beginPath(); ctx.moveTo(x1, cy); ctx.lineTo(xEnd, cy); ctx.stroke(); }
     }
     ctx.setLineDash([]);
 
@@ -3143,16 +3162,31 @@ function drawPlmaAlignment() {
   // Legend
   if (legendEl) {
     const usedCats = new Set(blocks.map(b => b.category));
+    // Compute uncovered categories
+    const activeFull = getActivePlmaCategories();
+    if (activeFull?.has('uncovered_a')) usedCats.add('uncovered_a');
+    if (activeFull?.has('uncovered_b')) usedCats.add('uncovered_b');
     let html = '';
     for (const [cat, lbl] of Object.entries(catLabels)) {
       if (!usedCats.has(cat)) continue;
-      html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
-        + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:${catColors[cat]};border:1px solid ${catBorders[cat]}"></span>`
-        + `<span>${lbl}</span></span>`;
+      if (cat === 'uncovered_a' || cat === 'uncovered_b') {
+        // Show as a line indicator (not a filled rect) to match the canvas connector style
+        const color = catColors[cat];
+        html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+          + `<span style="display:inline-block;width:14px;border-top:2px solid ${color};height:0;"></span>`
+          + `<span>${lbl}</span></span>`;
+      } else {
+        html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+          + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:${catColors[cat]};border:1px solid ${catBorders[cat]}"></span>`
+          + `<span>${lbl}</span></span>`;
+      }
     }
-    html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
-      + `<span style="display:inline-block;width:14px;border-top:1.5px dashed #b0a890;height:0;"></span>`
-      + `<span>Gap between blocks</span></span>`;
+    // Generic gap indicator only for non-pair rows (if they exist)
+    if (displayRows.some(r => !r.isPair)) {
+      html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
+        + `<span style="display:inline-block;width:14px;border-top:1.5px dashed #d5d5d5;height:0;"></span>`
+        + `<span>Gap (other seqs)</span></span>`;
+    }
     if (!showAllParalogs && displayRows.some(r => r.isGroup)) {
       html += `<span style="display:inline-flex;align-items:center;gap:4px;">`
         + `<span style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#78909C;opacity:0.45;border:1px dashed #546E7A"></span>`
@@ -5242,7 +5276,9 @@ function buildPdbeGenericBfactorMap(resSeqToUniprot, mode, isGeneB) {
   if (!builder) return null;
   const maps = builder();
   if (!maps) return null;
-  const geneMap = isGeneB ? (mode === 'plma' && maps.BPdbe ? maps.BPdbe : maps.B) : maps.A;
+  const geneMap = isGeneB
+    ? (mode === 'plma' && maps.BPdbe ? maps.BPdbe : maps.B)
+    : (mode === 'plma' && maps.APdbe ? maps.APdbe : maps.A);
   if (!geneMap) return null;
   const bfMap = {};
   for (const [resSeqStr, uniprotPos] of Object.entries(resSeqToUniprot)) {
@@ -5326,9 +5362,11 @@ function getPdbeColorTheme(mode, isGeneB) {
   if (mode === 'plma') {
     // Gene A: specific_a=red, a_with_family=orange; Gene B: specific_b=purple, b_with_family=deep-purple
     // Shared: pair_exclusive=teal, shared_with_family=blue-grey; chain shading at -25,-50,-75,-100
+    // sv=0 (uncovered target residues): light red (gene A) or light purple (gene B)
     const top2 = isGeneB ? [0xAB47BC, 0x7E57C2] : [0xEF5350, 0xFF7043];
+    const uncovColor = isGeneB ? 0xE1BEE7 : 0xFFCDD2;
     return { name: 'uncertainty', params: { domain: [-100, 100], list: { kind: 'interpolate', colors: [
-      ...top2, 0x26A69A, 0x78909C, 0xBDBDBD,
+      ...top2, 0x26A69A, 0x78909C, uncovColor,
       0xD4C5A9, 0xC0A882, 0x8B7355, 0x1a1a1a
     ]}}};
   }
@@ -5346,7 +5384,21 @@ function getPdbeColorLegendHtml(mode) {
     ss:       '<strong>2D Structure:</strong> ' + sw('#FF0066','&alpha;-helix') + sw('#FFCC00','&beta;-strand') + sw('#dddddd','Coil'),
     cavities: '<strong>Cavities:</strong> ' + sw('#e65100','Strong') + sw('#ff9800','Medium') + sw('#ffc107','Weak'),
     drugclip: '<strong>DrugCLIP:</strong> ' + sw('#c62828','Pocket') + sw('#f7f7f7','None'),
-    plma:     '<strong>PLMA:</strong> ' + sw('#EF5350',(DATA?.g1||'A')+' only') + sw('#AB47BC',(DATA?.g2||'B')+' only') + sw('#FF7043',(DATA?.g1||'A')+' + family (not '+(DATA?.g2||'B')+')') + sw('#7E57C2',(DATA?.g2||'B')+' + family (not '+(DATA?.g1||'A')+')') + sw('#26A69A','Both paralogs only') + sw('#78909C','Both + other family') + sw('#EEEEEE','Not in family alignment'),
+    plma: (() => {
+      const active = getActivePlmaCategories();
+      const g1 = DATA?.g1||'A', g2 = DATA?.g2||'B';
+      const all = [
+        ['#EF5350', g1+' only', 'specific_a'],
+        ['#FFCDD2', g1+' only \u2014 human-specific', 'uncovered_a'],
+        ['#AB47BC', g2+' only', 'specific_b'],
+        ['#E1BEE7', g2+' only \u2014 human-specific', 'uncovered_b'],
+        ['#FF7043', g1+' + family (not '+g2+')', 'a_with_family'],
+        ['#7E57C2', g2+' + family (not '+g1+')', 'b_with_family'],
+        ['#26A69A', 'Both paralogs only', 'pair_exclusive'],
+        ['#78909C', 'Both + other family', 'shared_with_family'],
+      ];
+      return '<strong>PLMA:</strong> ' + all.filter(([,,cat]) => !active || active.has(cat)).map(([c,l]) => sw(c,l)).join('');
+    })(),
   };
   const chainNote = sw('#C9B99A','Context') + sw('#1a1a1a','DNA/RNA');
   return (legends[mode] || '') + ' | ' + chainNote;
@@ -8031,19 +8083,50 @@ function buildDrugclipBfactorMaps() {
   };
 }
 
+function getActivePlmaCategories() {
+  if (!PLMA_DATA?.blocks) return null;
+  const seqA = PLMA_DATA.gene_a_seq, seqB = PLMA_DATA.gene_b_seq;
+  const active = new Set();
+  const covA = new Set(), covB = new Set();
+  let lenA = 0, lenB = 0;
+  for (const s of (PLMA_DATA.sequences || [])) {
+    if (s.num === seqA) lenA = s.length;
+    if (s.num === seqB) lenB = s.length;
+  }
+  for (const block of PLMA_DATA.blocks) {
+    const pA = block.positions?.[seqA], pB = block.positions?.[seqB];
+    if (pA) { active.add(block.category); for (let r = pA.start; r <= pA.end; r++) covA.add(r); }
+    if (pB) { active.add(block.category); for (let r = pB.start; r <= pB.end; r++) covB.add(r); }
+  }
+  if (lenA > 0 && covA.size < lenA) active.add('uncovered_a');
+  if (lenB > 0 && covB.size < lenB) active.add('uncovered_b');
+  return active;
+}
+
 function buildPlmaBfactorMaps() {
   if (!PLMA_DATA || !DATA) return null;
-  const mapA = {}, mapB = {}, mapBPdbe = {};
-  // Gene A: specific_a=5 (red), a_with_family=4 (orange)
-  // Gene B main Molstar (single theme, both chains): specific_b=7 (purple), b_with_family=6 (deep-purple)
-  // Gene B PDBe (per-gene theme): specific_b=5, b_with_family=4 — same scale as A, different theme applied
-  const catValA    = { specific_a:5, a_with_family:4, pair_exclusive:3, shared_with_family:2, family_only:1 };
-  const catValB    = { specific_b:7, b_with_family:6, pair_exclusive:3, shared_with_family:2, family_only:1 };
+  const mapA = {}, mapB = {}, mapAPdbe = {}, mapBPdbe = {};
+  // Main Molstar (both chains, single theme domain [0,9], high→low color order):
+  //   Gene A: specific_a=7, a_with_family=6; Gene B: specific_b=9, b_with_family=8
+  //   Shared: pair_exclusive=5, shared_with_family=4, family_only=3
+  //   Uncovered: uncovered_b=2, uncovered_a=1, fallback=0
+  // PDBe (per-gene theme, domain [-100,100], scale ×20):
+  //   Gene A/B: specific=5→100, with_family=4→80, pair_excl=3→60, shared=2→40, fam_only=1→20
+  //   Uncovered: not in map → targetDefaultBf=0 → colored via theme midpoint color
+  const catValA    = { specific_a:7, a_with_family:6, pair_exclusive:5, shared_with_family:4, family_only:3 };
+  const catValB    = { specific_b:9, b_with_family:8, pair_exclusive:5, shared_with_family:4, family_only:3 };
+  const catValAPdb = { specific_a:5, a_with_family:4, pair_exclusive:3, shared_with_family:2, family_only:1 };
   const catValBPdb = { specific_b:5, b_with_family:4, pair_exclusive:3, shared_with_family:2, family_only:1 };
   const seqA = PLMA_DATA.gene_a_seq, seqB = PLMA_DATA.gene_b_seq;
   for (const block of (PLMA_DATA.blocks || [])) {
     const pA = block.positions?.[seqA];
-    if (pA) { const va = catValA[block.category] || 0; for (let r = pA.start; r <= pA.end; r++) { if (!(r in mapA) || va > mapA[r]) mapA[r] = va; } }
+    if (pA) {
+      const va = catValA[block.category] || 0, vap = catValAPdb[block.category] || 0;
+      for (let r = pA.start; r <= pA.end; r++) {
+        if (!(r in mapA) || va > mapA[r]) mapA[r] = va;
+        if (!(r in mapAPdbe) || vap > mapAPdbe[r]) mapAPdbe[r] = vap;
+      }
+    }
     const pB = block.positions?.[seqB];
     if (pB) {
       const vb = catValB[block.category] || 0, vbp = catValBPdb[block.category] || 0;
@@ -8053,7 +8136,14 @@ function buildPlmaBfactorMaps() {
       }
     }
   }
-  return { A: mapA, B: mapB, BPdbe: mapBPdbe };
+  // Explicitly mark uncovered positions (not in any block) for main Molstar
+  const seqs = PLMA_DATA.sequences || [];
+  const seqAInfo = seqs.find(s => s.num === seqA);
+  const seqBInfo = seqs.find(s => s.num === seqB);
+  if (seqAInfo?.length) { for (let r = 1; r <= seqAInfo.length; r++) { if (!(r in mapA)) mapA[r] = 1; } }
+  if (seqBInfo?.length) { for (let r = 1; r <= seqBInfo.length; r++) { if (!(r in mapB)) mapB[r] = 2; } }
+  // mapAPdbe/mapBPdbe: uncovered positions left out → get targetDefaultBf=0 → light color via PDBe theme
+  return { A: mapA, B: mapB, APdbe: mapAPdbe, BPdbe: mapBPdbe };
 }
 
 function getColoredPdb(mode) {
@@ -8204,15 +8294,16 @@ function themeForColorMode(mode){
     };
   }
   if (m === 'plma') {
-    // Gene A: specific_a=5(red), a_with_family=4(orange)
-    // Gene B: specific_b=7(purple), b_with_family=6(deep-purple) — different vals so both chains coexist
-    // Shared: pair_exclusive=3(teal), shared_with_family=2(blue-grey), family_only=1(grey), none=0
-    // High→low order: spec_b, b_fam, spec_a, a_fam, pair, shared, fam_only, none
+    // Gene A: specific_a=7(red), a_with_family=6(orange)
+    // Gene B: specific_b=9(purple), b_with_family=8(deep-purple) — different vals so both chains coexist
+    // Shared: pair_exclusive=5(teal), shared_with_family=4(blue-grey), family_only=3(grey)
+    // Uncovered: uncovered_b=2(light-purple), uncovered_a=1(light-red), fallback=0(near-white)
+    // High→low order: spec_b, b_fam, spec_a, a_fam, pair, shared, fam_only, uncov_b, uncov_a, fallback
     return {
       name: 'uncertainty',
       params: {
-        domain: [0, 7],
-        list: { kind: 'set', colors: [0xAB47BC, 0x7E57C2, 0xEF5350, 0xFF7043, 0x26A69A, 0x78909C, 0xBDBDBD, 0xEEEEEE] }
+        domain: [0, 9],
+        list: { kind: 'set', colors: [0xAB47BC, 0x7E57C2, 0xEF5350, 0xFF7043, 0x26A69A, 0x78909C, 0xBDBDBD, 0xE1BEE7, 0xFFCDD2, 0xEEEEEE] }
       }
     };
   }
@@ -8360,18 +8451,24 @@ function updateColorLegend(mode) {
         {color:'#f7f7f7',label:'No pocket'},
       ]
     },
-    plma: {
-      title: 'PLMA Conservation Categories',
-      items: [
-        {color:'#EF5350',label:(DATA?.g1||'A')+' only'},
-        {color:'#AB47BC',label:(DATA?.g2||'B')+' only'},
-        {color:'#FF7043',label:(DATA?.g1||'A')+' + family (not '+(DATA?.g2||'B')+')'},
-        {color:'#7E57C2',label:(DATA?.g2||'B')+' + family (not '+(DATA?.g1||'A')+')'},
-        {color:'#26A69A',label:'Both paralogs only'},
-        {color:'#78909C',label:'Both + other family'},
-        {color:'#EEEEEE',label:'Not in family alignment'},
-      ]
-    },
+    plma: (() => {
+      const active = getActivePlmaCategories();
+      const g1 = DATA?.g1||'A', g2 = DATA?.g2||'B';
+      const allItems = [
+        {color:'#EF5350', label:g1+' only', cat:'specific_a'},
+        {color:'#FFCDD2', label:g1+' only \u2014 human-specific', cat:'uncovered_a'},
+        {color:'#AB47BC', label:g2+' only', cat:'specific_b'},
+        {color:'#E1BEE7', label:g2+' only \u2014 human-specific', cat:'uncovered_b'},
+        {color:'#FF7043', label:g1+' + family (not '+g2+')', cat:'a_with_family'},
+        {color:'#7E57C2', label:g2+' + family (not '+g1+')', cat:'b_with_family'},
+        {color:'#26A69A', label:'Both paralogs only', cat:'pair_exclusive'},
+        {color:'#78909C', label:'Both + other family', cat:'shared_with_family'},
+      ];
+      return {
+        title: 'PLMA Conservation Categories',
+        items: active ? allItems.filter(it => active.has(it.cat)) : allItems,
+      };
+    })(),
   };
 
   const cfg = legends[mode];
